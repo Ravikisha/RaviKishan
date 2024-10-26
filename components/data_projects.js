@@ -23,4 +23,26 @@ export const data = [
     github: "https://github.com/Ravikisha/ExpressCraft",
     skills: ["JavaScript"]
   },
+  {
+    name: "Relax Theme",
+    description:
+    "Relax Theme is a fully dark theme designed for Visual Studio Code, offering a calming and distraction-free coding environment.",
+    image: "relaxtheme.png",
+    link: "https://marketplace.visualstudio.com/items?itemName=RaviKishan.relax-theme",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_vscode-coding-programming-activity-7255178456437587968-Vj3X?utm_source=share&utm_medium=member_desktop",
+    tags: ["personal"],
+    github: "https://github.com/Ravikisha/Relax-Vscode-Theme",
+    skills: ["JavaScript"]
+  },
+  {
+    name: "Relax Templates",
+    description:
+    "Relaxtemplates is a simplified, educational template engine designed to help developers understand the inner workings of template rendering.",
+    image: "relaxtemplates.png",
+    link: "https://pypi.org/project/relaxtemplates",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_python-templateengine-webdevelopment-activity-7255922760755933184-vKdf?utm_source=share&utm_medium=member_desktop",
+    tags: ["personal"],
+    github: "https://github.com/Ravikisha/relaxtemplates",
+    skills: ["Python"]
+  },
 ];

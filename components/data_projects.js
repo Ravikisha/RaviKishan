@@ -19,8 +19,19 @@ export const data = [
     image: "expresscraft.png",
     link: "https://www.npmjs.com/package/expresscraft",
     linkedin: "https://www.linkedin.com/posts/ravikisha_expresscraft-nodejs-webdevelopment-activity-7250015815633174529-2FeF?utm_source=share&utm_medium=member_desktop",
-    tags: ["personal"],
+    tags: ["personal", "npm package"],
     github: "https://github.com/Ravikisha/ExpressCraft",
+    skills: ["JavaScript"]
+  },
+  {
+    name: "CommitMap",
+    description:
+    "CommitMap is an NPX package that generates a graphical representation of the commits made in the last 6 months across your repositories in Console.",
+    image: "commitmap.png",
+    link: "https://www.npmjs.com/package/commitmap",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "npm package"],
+    github: "https://github.com/Ravikisha/CommitMap",
     skills: ["JavaScript"]
   },
   {
@@ -30,7 +41,7 @@ export const data = [
     image: "relaxtheme.png",
     link: "https://marketplace.visualstudio.com/items?itemName=RaviKishan.relax-theme",
     linkedin: "https://www.linkedin.com/posts/ravikisha_vscode-coding-programming-activity-7255178456437587968-Vj3X?utm_source=share&utm_medium=member_desktop",
-    tags: ["personal"],
+    tags: ["personal", "vscode theme"],
     github: "https://github.com/Ravikisha/Relax-Vscode-Theme",
     skills: ["JavaScript"]
   },
@@ -41,8 +52,39 @@ export const data = [
     image: "relaxtemplates.png",
     link: "https://pypi.org/project/relaxtemplates",
     linkedin: "https://www.linkedin.com/posts/ravikisha_python-templateengine-webdevelopment-activity-7255922760755933184-vKdf?utm_source=share&utm_medium=member_desktop",
-    tags: ["personal"],
+    tags: ["personal", "python package"],
     github: "https://github.com/Ravikisha/relaxtemplates",
     skills: ["Python"]
+  },
+  {
+    name: "SnowUUID",
+    description:
+    "SnowUUID is a distributed UUID generator that implements the Snowflake algorithm, designed to create unique identifiers.",
+    image: "snowuuid.png",
+    link: "https://www.npmjs.com/package/snowuuid",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "npm package", "distributed"],
+    github: "https://github.com/Ravikisha/snowuuid",
+    skills: ["JavaScript"]
+  },
+  {
+    name: "Distributed Key-Value Database",
+    description:
+    "The Distributed Key-Value Database is a scalable, fault-tolerant key-value store implemented in Go.",
+    image: "distributedkv.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "distributed", "database"],
+    github: "https://github.com/Ravikisha/Distributed-KV-Database",
+    skills: ["Go"]
+  },
+  {
+    name: "Relax Search",
+    description:
+    "RelaxSearch is a lightweight, demonstration-based search engine project built with Go and Elasticsearch.",
+    image: "relaxsearch.jpg",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "distributed", "search engine"],
+    github: "https://github.com/Ravikisha/RelaxSearch",
+    skills: ["Go", "Elasticsearch"]
   },
 ];

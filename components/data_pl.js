@@ -501,5 +501,11 @@ export const data = [
     imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/grpc/grpc-original.svg",
     codelink: "https://www.google.com/search?q=grpc",
     tags: ["backend"],
+  },
+  {
+    name: "Elasticsearch",
+    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original-wordmark.svg",
+    codelink: "https://www.google.com/search?q=elasticsearch",
+    tags: ["backend"],
   }
 ];

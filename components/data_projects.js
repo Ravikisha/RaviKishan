@@ -72,7 +72,7 @@ export const data = [
     description:
     "The Distributed Key-Value Database is a scalable, fault-tolerant key-value store implemented in Go.",
     image: "distributedkv.png",
-    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "distributed", "database"],
     github: "https://github.com/Ravikisha/Distributed-KV-Database",
     skills: ["Go"]
@@ -82,9 +82,62 @@ export const data = [
     description:
     "RelaxSearch is a lightweight, demonstration-based search engine project built with Go and Elasticsearch.",
     image: "relaxsearch.jpg",
-    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "distributed", "search engine"],
     github: "https://github.com/Ravikisha/RelaxSearch",
     skills: ["Go", "Elasticsearch"]
+  },
+  {
+    name: "URL Shortener",
+    description:
+    "A URL Shortener application built in Go, which allows users to generate short links for long URLs.",
+    image: "urlshortener.png",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
+    tags: ["personal", "url shortener", "system design"],
+    github: "https://github.com/Ravikisha/URLShortener",
+    skills: ["Go", "Redis"]
+  },
+  {
+    name: "Redis Clone",
+    description:
+    "A Redis clone database implemented in both Go and Rust. This project aims to replicate the core functionalities of Redis, providing a simple and efficient in-memory data structure store.",
+    image: "redisclone.jpg",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
+    tags: ["personal", "system design", "database"],
+    github: "https://github.com/Ravikisha/redis-clone/",
+    skills: ["Go", "Redis", "Rust"]
+  },
+  {
+    name: "MatchGo",
+    description:
+    "matchgo is a minimalistic regex engine that allows you to compile regex patterns, check strings for matches, and extract matched groups.",
+    link: "https://pkg.go.dev/github.com/Ravikisha/matchgo",
+    image: "matchgo.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "system design", "regex engine", "TOC"],
+    github: "https://github.com/Ravikisha/matchgo",
+    skills: ["Go"]
+  },
+  {
+    name: "International Conference Website 🌐",
+    description:
+    "This platform serves as an interactive hub for scholars, students, and professionals to participate in the conference, submit research papers, and engage in knowledge exchange.",
+    image: "ic.png",
+    link: "https://statuesque-moxie-abc30a.netlify.app/",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "web development", "react", "firebase"],
+    github: "https://github.com/Ravikisha/International-Conference",
+    skills: ["React", "FireBase", "Tailwind Css", "TypeScript"]
+  },
+  {
+    name: "Portfolio Website",
+    description:
+    "Crafting my digital showcase with flair using this Next.js-powered portfolio application.",
+    image: "portfolio.png",
+    link: "https://ravikishan.me",
+    linkedin: "https://www.linkedin.com/posts/ravikisha_portfoliowebsite-webdevelopment-nextjs-activity-6977624910395244544-JwO0?utm_source=share&utm_medium=member_desktop",
+    tags: ["personal", "web development", "nextjs", "firebase"],
+    github: "https://github.com/Ravikisha/Ravikishan",
+    skills: ["Next Js", "FireBase", "Tailwind Css", "TypeScript"]
   },
 ];

@@ -504,7 +504,7 @@ export const data = [
   },
   {
     name: "Elasticsearch",
-    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original-wordmark.svg",
+    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg",
     codelink: "https://www.google.com/search?q=elasticsearch",
     tags: ["backend"],
   }

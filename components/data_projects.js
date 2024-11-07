@@ -140,4 +140,15 @@ export const data = [
     github: "https://github.com/Ravikisha/Ravikishan",
     skills: ["Next Js", "FireBase", "Tailwind Css", "TypeScript"]
   },
+  {
+    name: "NexaPHP",
+    description:
+    "NexaPHP is a lightweight and flexible MVC (Model-View-Controller) framework for PHP, designed to streamline the development of web applications.",
+    image: "nexaphp.png",
+    link: "https://packagist.org/packages/ravikisha/nexaphp",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "web development", "php", "MVC"],
+    github: "https://github.com/ravikisha/nexaphp",
+    skills: ["Php"]
+  },
 ];

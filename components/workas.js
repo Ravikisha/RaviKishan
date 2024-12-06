@@ -65,9 +65,9 @@ const WorkAs = () => {
           </div>
           <div className="workas__content">
             <div>
-              <h2>ML Engineer</h2>
+              <h2>Cloud Engineer</h2>
               <p>
-                Currently, I am learning machine learning and deep learning. I am also working on some projects in this field. 
+                Currently, I am learning cloud and cloud native development. I am also working on some projects in this field. 
               </p>
             </div>
           </div>

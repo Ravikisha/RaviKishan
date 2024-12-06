@@ -19,7 +19,7 @@ const Character = () => {
                 ? "character__video active__video"
                 : "character__video"
             }
-            src="https://assets.mixkit.co/videos/preview/mixkit-very-close-shot-of-the-leaves-of-a-tree-wet-18310-large.mp4"
+            src="https://videos.pexels.com/video-files/4828773/4828773-hd_1920_1080_25fps.mp4"
             autoPlay
             muted
             loop
@@ -30,7 +30,7 @@ const Character = () => {
                 ? "character__video active__video"
                 : "character__video"
             }
-            src="https://assets.mixkit.co/videos/preview/mixkit-top-aerial-shot-of-seashore-with-rocks-1090-large.mp4"
+            src="https://videos.pexels.com/video-files/857267/857267-hd_1920_1080_24fps.mp4"
             autoPlay
             muted
             loop
@@ -41,7 +41,7 @@ const Character = () => {
                 ? "character__video active__video"
                 : "character__video"
             }
-            src="https://assets.mixkit.co/videos/preview/mixkit-street-with-people-walking-at-dusk-3428-large.mp4"
+            src="https://videos.pexels.com/video-files/3764706/3764706-hd_1920_1080_30fps.mp4"
             autoPlay
             muted
             loop
@@ -52,7 +52,7 @@ const Character = () => {
                 ? "character__video active__video"
                 : "character__video"
             }
-            src="https://assets.mixkit.co/videos/preview/mixkit-fireworks-illuminating-the-beach-sky-4157-large.mp4"
+            src="https://videos.pexels.com/video-files/855222/855222-hd_1920_1080_25fps.mp4"
             autoPlay
             muted
             loop

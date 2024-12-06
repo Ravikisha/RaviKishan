@@ -42,6 +42,22 @@ const Qualification = () => {
         </div>  
         <div className="qualification__sections">
           <div className={toggleQualification === 1 ? "qualification__content qualification__content-active" : "qualification__content"}>
+          <div className="qualification__data" data-aos="zoom-in-up" data-aos-delay="125">
+              <div></div>
+              <div>
+                <span className="qualification__rounded"></span>
+                <span className="qualification__line"></span>
+              </div>
+              <div>
+                <h3 className="qualification__title">MCA</h3>
+                <span className="qualification__subtitle">
+                  Vellore Institute of Technology, Vellore
+                </span>
+                <div className="qualification__calendar">
+                  <i className="uil uil-calendar-alt"></i> 2024 - 26
+                </div>
+              </div>
+            </div>
             <div className="qualification__data" data-aos="zoom-in-up" data-aos-delay="100">
               <div>
                 <h3 className="qualification__title">BCA</h3>
@@ -49,7 +65,7 @@ const Qualification = () => {
                   Prestige Institute of Management & Research - Gwalior
                 </span>
                 <div className="qualification__calendar">
-                  <i className="uil uil-calendar-alt"></i> 2021 - Present
+                  <i className="uil uil-calendar-alt"></i> 2021 - 2024
                 </div>
               </div>
               <div>

@@ -1,17 +1,46 @@
 import React,{useState,useRef,useEffect} from "react";
 import Image from 'next/image';
 import Link from 'next/link';
-const Year5 = () => {
-  const [imgSrc,setImgSrc] = useState('https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg');
-  const [secColor,setSecColor] = useState('#111');
+import {IconCloud} from './globe';
 
-  function makeChanges(src,color){
-    setImgSrc(src);
-    setSecColor(color);
-  }
+const slugs = [
+  "typescript",
+  "javascript",
+  "dart",
+  "java",
+  "react",
+  "flutter",
+  "android",
+  "html5",
+  "css3",
+  "nodedotjs",
+  "express",
+  "nextdotjs",
+  "prisma",
+  "amazonaws",
+  "postgresql",
+  "firebase",
+  "nginx",
+  "vercel",
+  "testinglibrary",
+  "jest",
+  "cypress",
+  "docker",
+  "git",
+  "jira",
+  "github",
+  "gitlab",
+  "visualstudiocode",
+  "androidstudio",
+  "sonarqube",
+  "figma",
+];
+
+const Year5 = () => {
+
   return (
     <>
-      <section className="sec" style={{background: secColor}} data-aos="fade-up">
+      <section className="sec" data-aos="fade-up">
         <div className="sec__content">
           <div className="sec__textBox">
             <h2>
@@ -26,20 +55,9 @@ const Year5 = () => {
             </div>
           </div>
           <div className="sec__imgBox" data-aos="zoom-in" data-aos-delay="200">
-            <Image
-              src={imgSrc}
-              alt="img"
-              width={500}
-              height={500}
-              objectFit={'cover'}
-            />
+            <IconCloud iconSlugs={slugs} />
           </div>
         </div>
-        <ul className="sec__thumb">
-          <li className="animate-bounce animation-delay-100"><Image src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg" width={50} height={50} objectFit="cover" alt="react" onClick={()=>makeChanges('https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg','#111')}/></li>
-          <li className="animate-bounce animation-delay-200"><Image src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg" width={50} height={50} objectFit="cover" alt="python"  onClick={()=>makeChanges('https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg','#293462')}/></li>
-          <li className="animate-bounce animation-delay-300"><Image src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/flutter/flutter-original.svg" width={50} height={50} objectFit="cover" alt="flutter" onClick={()=>makeChanges('https://cdn.jsdelivr.net/gh/devicons/devicon/icons/flutter/flutter-original.svg','#194350')}/></li>
-        </ul>
       </section>
     </>
   );

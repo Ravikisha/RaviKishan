@@ -28,8 +28,8 @@ const MyselfAbout = () => {
       <div className="sm:flex gap-6 items-center border-t border-gray-200 pt-12 sm:border-0 sm:pt-0" data-aos="zoom-in-down" data-aos-delay="250">
         <Image width={200} height={200} objectFit='cover' src="https://images.unsplash.com/photo-1553933899-131780ba04a3?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=386&q=80" alt="Machine Learning" className="w-24 h-24 object-cover rounded-2xl flex-none" />
         <div>
-          <span className="mb-2 inline-block text-sm font-light mt-5 sm:mt-0">Machine Learning</span>
-          <p className="text-sm leading-relaxed font-semibold text-gray-900">“For a long time, i am try to learn more about machine learning and deep learning. i have working on machine learning projects.”</p>
+          <span className="mb-2 inline-block text-sm font-light mt-5 sm:mt-0">Cloud Learning</span>
+          <p className="text-sm leading-relaxed font-semibold text-gray-900">“For a long time, i am try to learn more about cloud engineering and cloud native architecture. i have working on cloud learning projects.”</p>
         </div>
       </div>
       <div className="sm:flex gap-6 items-center border-t border-gray-200 pt-12 sm:border-0 sm:pt-0" data-aos="zoom-in-down" data-aos-delay="300">

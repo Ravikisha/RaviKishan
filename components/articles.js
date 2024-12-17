@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { badgeColorGenerator } from "./utils/utils";
-import TimeIcon from "../public/assets/time.png";
+import TimeIcon from "../public/assets/time.jpg";
 
 const Articles = () => {
   const [articles, setArticles] = useState([]);

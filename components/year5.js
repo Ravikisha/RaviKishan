@@ -1,7 +1,7 @@
-import React,{useState,useRef,useEffect} from "react";
-import Image from 'next/image';
-import Link from 'next/link';
-import {IconCloud} from './globe';
+import React, { useState, useRef, useEffect, Suspense } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { IconCloud } from "./globe";
 
 const slugs = [
   "typescript",
@@ -38,7 +38,6 @@ const slugs = [
 ];
 
 const Year5 = () => {
-
   return (
     <>
       <section className="sec" data-aos="fade-up">
@@ -48,15 +47,20 @@ const Year5 = () => {
               That&apos;s What <br /> <span>I Build</span>
             </h2>
             <p>
-              I am a hardly working person. I always try to learn new things and best way to learn is to build something. I have built many projects and I am still learning. I love to do something innovative and creative things.
+              I am a hardly working person. I always try to learn new things and
+              best way to learn is to build something. I have built many
+              projects and I am still learning. I love to do something
+              innovative and creative things.
             </p>
             <div className="flex gap-3">
-            <Link href="/projects">View All Projects</Link>
-            <Link href="/skills">View My SKills</Link>
+              <Link href="/projects">View All Projects</Link>
+              <Link href="/skills">View My SKills</Link>
             </div>
           </div>
           <div className="sec__imgBox" data-aos="zoom-in" data-aos-delay="200">
-            <IconCloud iconSlugs={slugs} />
+            <Suspense fallback={<div>Loading...</div>}>
+              <IconCloud iconSlugs={slugs} />
+            </Suspense>
           </div>
         </div>
       </section>

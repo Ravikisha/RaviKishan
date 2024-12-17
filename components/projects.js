@@ -6,7 +6,7 @@ import { Cross2Icon } from "@radix-ui/react-icons";
 import Image from "next/image";
 import LinkedInLogo from "../public/company/linkedin.png";
 import GithubLogo from "../public/company/github.png";
-import LiveLogo from "../public/assets/live.png";
+import LiveLogo from "../public/assets/live.jpg";
 import { data as data_badge } from "./data_pl";
 import { DownloadIcon } from "lucide-react";
 import { badgeColorGenerator } from "./utils/utils";

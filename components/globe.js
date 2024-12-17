@@ -1,9 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Cloud,
-  fetchSimpleIcons,
-  renderSimpleIcon,
-} from "react-icon-cloud";
+import { useEffect, useState } from "react";
+import { Cloud, fetchSimpleIcons, renderSimpleIcon } from "react-icon-cloud";
 
 const cloudProps = {
   containerProps: {
@@ -28,45 +24,46 @@ const cloudProps = {
     outlineColour: "#0000",
     maxSpeed: 0.04,
     minSpeed: 0.02,
+    wheelZoom: true,
   },
 };
 
-const renderCustomIcon = (icon) => {
+const useIcons = (slugs) => {
+  const [icons, setIcons] = useState();
+  useEffect(() => {
+    fetchSimpleIcons({ slugs }).then(setIcons);
+  }, []);
   const bgHex = "#f3f2ef"; // Light theme background color
   const fallbackHex = "#6e6e73"; // Light theme fallback color
   const minContrastRatio = 1.2;
 
-  return renderSimpleIcon({
-    icon,
-    bgHex,
-    fallbackHex,
-    minContrastRatio,
-    size: 42,
-    aProps: {
-      href: undefined,
-      target: undefined,
-      rel: undefined,
-      onClick: (e) => e.preventDefault(),
-    },
-  });
+  if (icons) {
+    return Object.values(icons.simpleIcons).map((icon) =>
+      renderSimpleIcon({
+        icon,
+        bgHex,
+        fallbackHex,
+        minContrastRatio,
+        size: 42,
+        aProps: {
+          href: undefined,
+          target: undefined,
+          rel: undefined,
+          onClick: (e) => e.preventDefault(),
+        },
+      })
+    );
+  }
+
+  return <a>Loading</a>;
 };
 
 export const IconCloud = ({ iconSlugs }) => {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    fetchSimpleIcons({ slugs: iconSlugs }).then(setData);
-  }, [iconSlugs]);
-
-  const renderedIcons = useMemo(() => {
-    if (!data) return null;
-
-    return Object.values(data.simpleIcons).map((icon) => renderCustomIcon(icon));
-  }, [data]);
+  const icons = useIcons(iconSlugs);
 
   return (
     <Cloud {...cloudProps}>
-      <>{renderedIcons}</>
+      <>{icons}</>
     </Cloud>
   );
 };

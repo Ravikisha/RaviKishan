@@ -8,7 +8,7 @@ export const data = [
     image: "pythoncentralhub.png",
     link: "https://pythoncentralhub.com/",
     linkedin: "https://www.linkedin.com/posts/ravi-kishan-62ab51221_welcome-to-python-central-hub-activity-7166712300941262848-ZIuo?utm_source=share&utm_medium=member_desktop",
-    tags: ["personal"],
+    tags: ["personal", "open-source"],
     github: "https://github.com/ravikisha/pythoncentralhub",
     skills: ["Astro", "Python"],
   },
@@ -125,7 +125,7 @@ export const data = [
     image: "ic.png",
     link: "https://statuesque-moxie-abc30a.netlify.app/",
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
-    tags: ["personal", "web development", "react", "firebase"],
+    tags: ["web development", "react", "firebase", "team"],
     github: "https://github.com/Ravikisha/International-Conference",
     skills: ["React", "FireBase", "Tailwind Css", "TypeScript"]
   },
@@ -136,7 +136,7 @@ export const data = [
     image: "portfolio.png",
     link: "https://ravikishan.me",
     linkedin: "https://www.linkedin.com/posts/ravikisha_portfoliowebsite-webdevelopment-nextjs-activity-6977624910395244544-JwO0?utm_source=share&utm_medium=member_desktop",
-    tags: ["personal", "web development", "nextjs", "firebase"],
+    tags: ["personal", "web development", "nextjs", "firebase", "open-source"],
     github: "https://github.com/Ravikisha/Ravikishan",
     skills: ["Next Js", "FireBase", "Tailwind Css", "TypeScript"]
   },
@@ -147,8 +147,19 @@ export const data = [
     image: "nexaphp.png",
     link: "https://packagist.org/packages/ravikisha/nexaphp",
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
-    tags: ["personal", "web development", "php", "MVC"],
+    tags: ["personal", "web development", "php", "MVC", "open-source"],
     github: "https://github.com/ravikisha/nexaphp",
     skills: ["Php"]
+  },
+  {
+    name: "GitaVerse",
+    description:
+    "A TypeScript library to access Bhagavad Gita shlokas, translations, and metadata. This library allows developers to fetch chapters, verses, and complete shloka details from the Bhagavad Gita, including the translations and synonyms.",
+    image: "gitaverse.png",
+    link: "https://www.npmjs.com/package/gitaverse",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "web development", "npm", "package", "open-source"],
+    github: "https://github.com/ravikisha/gitaverse",
+    skills: ["Typescript", "Javascript"]
   },
 ];

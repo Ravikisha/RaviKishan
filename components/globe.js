@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
-import { Cloud, fetchSimpleIcons, renderSimpleIcon } from "react-icon-cloud";
+import { Suspense, useEffect, useState } from "react";
+import {
+  Cloud,
+  fetchSimpleIcons,
+  renderSimpleIcon,
+  SimpleIcon,
+} from "react-icon-cloud";
 
 const cloudProps = {
   containerProps: {
@@ -63,7 +68,7 @@ export const IconCloud = ({ iconSlugs }) => {
 
   return (
     <Cloud {...cloudProps}>
-      <>{icons}</>
+      <Suspense fallback={<div>Loading...</div>}>{icons}</Suspense>
     </Cloud>
   );
 };

@@ -58,9 +58,7 @@ const Year5 = () => {
             </div>
           </div>
           <div className="sec__imgBox" data-aos="zoom-in" data-aos-delay="200">
-            <Suspense fallback={<div>Loading...</div>}>
               <IconCloud iconSlugs={slugs} />
-            </Suspense>
           </div>
         </div>
       </section>

@@ -38,6 +38,7 @@
     "react-icon-cloud": "^4.1.4",
     "react-icons": "^4.4.0",
     "sass": "^1.54.5",
+    "simple-icons": "^6.19.0",
     "styled-components": "^5.3.5",
     "tailwind-merge": "^2.2.1",
     "tailwindcss-animate": "^1.0.7",

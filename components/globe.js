@@ -1,9 +1,13 @@
 import { Suspense, useEffect, useState } from "react";
+import typescript from "simple-icons/icons/typescript";
+import javascript from "simple-icons/icons/javascript";
+import java from "simple-icons/icons/java";
+import nextdotjs from "simple-icons/icons/nextdotjs";
+import nodedotjs from "simple-icons/icons/nodedotjs";
 import {
   Cloud,
   fetchSimpleIcons,
-  renderSimpleIcon,
-  SimpleIcon,
+  renderSimpleIcon
 } from "react-icon-cloud";
 
 const cloudProps = {
@@ -43,7 +47,7 @@ const useIcons = (slugs) => {
   const minContrastRatio = 1.2;
 
   if (icons) {
-    return Object.values(icons.simpleIcons).map((icon) =>
+    return [typescript, javascript, java, nextdotjs, nodedotjs].map((icon) =>
       renderSimpleIcon({
         icon,
         bgHex,

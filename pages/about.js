@@ -10,6 +10,10 @@ import WorkAs from '../components/workas'
 import Year5 from '../components/year5'
 import Head from 'next/head'
 
+export const config = {
+  runtime: 'nodejs',
+};
+
 const About = () => {
   return (
     <>

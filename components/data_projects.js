@@ -6,7 +6,7 @@ export const data = [
     description:
     "Python Central Hub is a platform for Python enthusiasts to learn, share and collaborate.",
     image: "pythoncentralhub.png",
-    link: "https://pythoncentralhub.com/",
+    link: "https://pythoncentralhub.tech/",
     linkedin: "https://www.linkedin.com/posts/ravi-kishan-62ab51221_welcome-to-python-central-hub-activity-7166712300941262848-ZIuo?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "open-source"],
     github: "https://github.com/ravikisha/pythoncentralhub",
@@ -170,6 +170,26 @@ export const data = [
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["team", "web development", "java", "servlet", "jsp"],
     github: "https://github.com/Ravikisha/Child-Adoption-Portal",
-    skills: ["Java"]
+    skills: ["Java", "Tailwind Css", "MySQL"]
+  },
+  {
+    name: "Single Sign-On (SSO) System",
+    description:
+    "This project demonstrates a simple implementation of a Single Sign-On (SSO) authentication system using Node.js and Express. With this solution, users can log in to a central authentication server and be automatically logged into multiple consumer applications without needing to log in repeatedly.",
+    image: "sso.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "cloud", "typescript"],
+    github: "https://github.com/Ravikisha/Node-SSO-Gateway",
+    skills: ["JavaScript", "TypeScript", "MongoDB"]
+  },
+  {
+    name: "Load Balancer Implementation",
+    description:
+    "This TypeScript load balancer project replicates features seen in popular load balancers like NGINX and HAProxy. It supports multiple load balancing algorithms (Random, Round-Robin, Weighted-Round-Robin) and performs health checks on backend servers.",
+    image: "loadbalancerposter.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "cloud", "typescript"],
+    github: "https://github.com/Ravikisha/Load-Balancer-Implementation",
+    skills: ["JavaScript", "TypeScript"]
   },
 ];

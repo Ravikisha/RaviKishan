@@ -67,7 +67,7 @@ const useIcons = (slugs) => {
   return <a>Loading</a>;
 };
 
-export const IconCloud = ({ iconSlugs }) => {
+const IconCloud = ({ iconSlugs }) => {
   const icons = useIcons(iconSlugs);
 
   return (
@@ -76,3 +76,5 @@ export const IconCloud = ({ iconSlugs }) => {
     </Cloud>
   );
 };
+
+export default IconCloud;

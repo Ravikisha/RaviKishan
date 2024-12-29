@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { IconCloud } from "./globe";
+import dynamic from "next/dynamic";
+
+const IconCloud = dynamic(() => import("./globe"), { ssr: false });
 
 const slugs = [
   "typescript",
@@ -58,7 +60,9 @@ const Year5 = () => {
             </div>
           </div>
           <div className="sec__imgBox" data-aos="zoom-in" data-aos-delay="200">
+            <React.Suspense fallback={<div>Loading...</div>}>
               <IconCloud iconSlugs={slugs} />
+            </React.Suspense>
           </div>
         </div>
       </section>

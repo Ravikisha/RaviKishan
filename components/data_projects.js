@@ -192,4 +192,25 @@ export const data = [
     github: "https://github.com/Ravikisha/Load-Balancer-Implementation",
     skills: ["JavaScript", "TypeScript"]
   },
+  {
+    name: "Stylesnap",
+    description:
+    "Stylesnap is a powerful CSS optimization tool designed to reduce the size of your CSS files by analyzing your content files and extracting only the necessary class names, tags, and global selectors.",
+    image: "stylesnap.jpg",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "css", "javascript"],
+    github: "https://github.com/Ravikisha/stylesnap",
+    skills: ["JavaScript", "css"],
+    link: "https://www.npmjs.com/package/stylesnap",
+  },
+  {
+    name: "Microfrontend Blog",
+    description:
+    "A comprehensive blogging platform built using the Microfrontend architecture. This project demonstrates how to build scalable and modular applications by leveraging React, Firebase, TailwindCSS, Clerk, and Module Federation.",
+    image: "microfrontend_blog.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "react", "javascript", "microfrontend"],
+    github: "https://github.com/Ravikisha/Microfrontend-Blog",
+    skills: ["React","JavaScript","Firebase","Tailwind CSS"],
+  },
 ];

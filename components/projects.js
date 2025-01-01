@@ -32,7 +32,7 @@ const Projects = () => {
           </span>
         </h2>
         <Filter
-          popular={project}
+          popular={project.sort((a, b) => a.rank - b.rank)}
           setFiltered={setFilterData}
           activeFilter={activeFilter}
           setActiveFilter={setActiveFilter}
@@ -148,7 +148,7 @@ export const Card = (props) => {
           <div className="relative m-0 overflow-hidden text-gray-700 bg-transparent rounded-none shadow-none bg-clip-border">
             <Image
               src={"/projects/" + image}
-              alt={name + " certificate Ravi Kishan"}
+              alt={name + " Ravi Kishan"}
               width={600}
               height={400}
               objectFit="contain"

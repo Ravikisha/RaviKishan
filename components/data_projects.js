@@ -11,6 +11,7 @@ export const data = [
     tags: ["personal", "open-source"],
     github: "https://github.com/ravikisha/pythoncentralhub",
     skills: ["Astro", "Python"],
+    rank: 2
   },
   {
     name: "ExpressCraft",
@@ -21,7 +22,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_expresscraft-nodejs-webdevelopment-activity-7250015815633174529-2FeF?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "npm package"],
     github: "https://github.com/Ravikisha/ExpressCraft",
-    skills: ["JavaScript"]
+    skills: ["JavaScript"],
+    rank: 10
   },
   {
     name: "CommitMap",
@@ -32,7 +34,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_opensource-developer-activity-7260373559657582593-zZd8?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "npm package"],
     github: "https://github.com/Ravikisha/CommitMap",
-    skills: ["JavaScript"]
+    skills: ["JavaScript"],
+    rank: 10
   },
   {
     name: "Relax Theme",
@@ -43,7 +46,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_vscode-coding-programming-activity-7255178456437587968-Vj3X?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "vscode theme"],
     github: "https://github.com/Ravikisha/Relax-Vscode-Theme",
-    skills: ["JavaScript"]
+    skills: ["JavaScript"],
+    rank: 10
   },
   {
     name: "Relax Templates",
@@ -54,7 +58,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_python-templateengine-webdevelopment-activity-7255922760755933184-vKdf?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "python package"],
     github: "https://github.com/Ravikisha/relaxtemplates",
-    skills: ["Python"]
+    skills: ["Python"],
+    rank: 9
   },
   {
     name: "SnowUUID",
@@ -65,7 +70,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_opensource-developer-activity-7260373559657582593-zZd8?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "npm package", "distributed"],
     github: "https://github.com/Ravikisha/snowuuid",
-    skills: ["JavaScript"]
+    skills: ["JavaScript"],
+    rank: 7
   },
   {
     name: "Distributed Key-Value Database",
@@ -75,7 +81,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "distributed", "database"],
     github: "https://github.com/Ravikisha/Distributed-KV-Database",
-    skills: ["Go"]
+    skills: ["Go"],
+    rank: 1
   },
   {
     name: "Relax Search",
@@ -85,7 +92,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "distributed", "search engine"],
     github: "https://github.com/Ravikisha/RelaxSearch",
-    skills: ["Go", "Elasticsearch"]
+    skills: ["Go", "Elasticsearch"],
+    rank: 1
   },
   {
     name: "URL Shortener",
@@ -95,7 +103,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "url shortener", "system design"],
     github: "https://github.com/Ravikisha/URLShortener",
-    skills: ["Go", "Redis"]
+    skills: ["Go", "Redis"],
+    rank: 2
   },
   {
     name: "Redis Clone",
@@ -105,7 +114,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_golang-distributedsystems-redis-activity-7259234584330964993-EJKp?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "system design", "database"],
     github: "https://github.com/Ravikisha/redis-clone/",
-    skills: ["Go", "Redis", "Rust"]
+    skills: ["Go", "Redis", "Rust"],
+    rank: 2
   },
   {
     name: "MatchGo",
@@ -116,7 +126,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_opensource-developer-activity-7260373559657582593-zZd8?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "system design", "regex engine", "TOC"],
     github: "https://github.com/Ravikisha/matchgo",
-    skills: ["Go"]
+    skills: ["Go"],
+    rank: 6
   },
   {
     name: "International Conference Website 🌐",
@@ -127,7 +138,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["web development", "react", "firebase", "team"],
     github: "https://github.com/Ravikisha/International-Conference",
-    skills: ["React", "FireBase", "Tailwind Css", "TypeScript"]
+    skills: ["React", "FireBase", "Tailwind Css", "TypeScript"],
+    rank: 8
   },
   {
     name: "Portfolio Website",
@@ -138,7 +150,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_portfoliowebsite-webdevelopment-nextjs-activity-6977624910395244544-JwO0?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "web development", "nextjs", "firebase", "open-source"],
     github: "https://github.com/Ravikisha/Ravikishan",
-    skills: ["Next Js", "FireBase", "Tailwind Css", "TypeScript"]
+    skills: ["Next Js", "FireBase", "Tailwind Css", "TypeScript"],
+    rank: 2
   },
   {
     name: "NexaPHP",
@@ -149,7 +162,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/posts/ravikisha_opensource-developer-activity-7260373559657582593-zZd8?utm_source=share&utm_medium=member_desktop",
     tags: ["personal", "web development", "php", "MVC", "open-source"],
     github: "https://github.com/ravikisha/nexaphp",
-    skills: ["Php"]
+    skills: ["Php"],
+    rank: 3
   },
   {
     name: "GitaVerse",
@@ -160,7 +174,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["personal", "web development", "npm", "package", "open-source"],
     github: "https://github.com/ravikisha/gitaverse",
-    skills: ["Typescript", "Javascript"]
+    skills: ["Typescript", "Javascript"],
+    rank: 9
   },
   {
     name: "Child Adoption Portal",
@@ -170,7 +185,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["team", "web development", "java", "servlet", "jsp"],
     github: "https://github.com/Ravikisha/Child-Adoption-Portal",
-    skills: ["Java", "Tailwind Css", "MySQL"]
+    skills: ["Java", "Tailwind Css", "MySQL"],
+    rank: 9
   },
   {
     name: "Single Sign-On (SSO) System",
@@ -180,7 +196,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["personal", "cloud", "typescript"],
     github: "https://github.com/Ravikisha/Node-SSO-Gateway",
-    skills: ["JavaScript", "TypeScript", "MongoDB"]
+    skills: ["JavaScript", "TypeScript", "MongoDB"],
+    rank: 2
   },
   {
     name: "Load Balancer Implementation",
@@ -190,7 +207,8 @@ export const data = [
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["personal", "cloud", "typescript"],
     github: "https://github.com/Ravikisha/Load-Balancer-Implementation",
-    skills: ["JavaScript", "TypeScript"]
+    skills: ["JavaScript", "TypeScript"],
+    rank: 2
   },
   {
     name: "Stylesnap",
@@ -202,6 +220,7 @@ export const data = [
     github: "https://github.com/Ravikisha/stylesnap",
     skills: ["JavaScript", "css"],
     link: "https://www.npmjs.com/package/stylesnap",
+    rank: 5
   },
   {
     name: "Microfrontend Blog",
@@ -212,5 +231,28 @@ export const data = [
     tags: ["personal", "react", "javascript", "microfrontend"],
     github: "https://github.com/Ravikisha/Microfrontend-Blog",
     skills: ["React","JavaScript","Firebase","Tailwind CSS"],
+    rank: 1
   },
+  {
+    name: "Relaxgram",
+    description:
+    " It's a social media application clone, inspired by Instagram. Leveraging the Laravel framework, we've created a web-based social media platform for users to share photos and videos, follow others, like, comment, and engage in real-time chat.",
+    image: "relaxgram.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["team", "laravel", "javascript", "mysql"],
+    github: "https://github.com/Ravikisha/Relaxgram",
+    skills: ["Laravel","JavaScript","MySQL","Tailwind CSS", "Php"],
+    rank: 4
+  },
+  {
+    name: "CloudSim Scheduling",
+    description:
+    "This project simulates scheduling in a cloud computing environment using CloudSim. Multiple scheduling algorithms are implemented, allowing for flexibility in assigning tasks (cloudlets) to virtual machines (VMs).",
+    image: "cloudsim.jpg",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "cloud", "cloudsim"],
+    github: "https://github.com/Ravikisha/CloudSim-Examples",
+    skills: ["Java"],
+    rank: 10
+  }
 ];

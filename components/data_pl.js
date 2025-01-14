@@ -294,6 +294,11 @@ export const data = [
     tags: ["backend", "database"],
   },
   {
+    name: "Kafka",
+    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg",
+    codelink: "https://www.google.com/search?q=kafka"
+  },
+  {
     name: "Java Android",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/androidstudio/androidstudio-original.svg",

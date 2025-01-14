@@ -6,7 +6,7 @@ const Header = () => {
   return (
     <header className="header" id="header">
       <nav className="nav container_mod">
-        <a href="#" className="nav__logo" style={{ fontFamily: "PlayFair Display" }}>
+        <a href="#" className="nav__logo" style={{ fontFamily: "Allison" }}>
           Ravi Kishan
         </a>
 

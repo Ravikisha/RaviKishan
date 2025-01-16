@@ -114,14 +114,14 @@ const Filter = ({ popular, setFiltered, activeFilter, setActiveFilter }) => {
         </button>
 
         <button
-          onClick={() => setActiveFilter("others")}
+          onClick={() => setActiveFilter("live")}
           className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${
-            activeFilter === "others"
+            activeFilter === "live"
               ? " bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold"
               : ""
           }`}
         >
-          Others
+          Live
         </button>
       </div>
     </>

@@ -268,12 +268,23 @@ export const data = [
   {
     name: "RelaxLang",
     description: "RelaxLang is a simple, educational programming language designed to help developers understand the basics of language parsing and interpretation.",
-    image: "relaxlang.jpg",
+    image: "relaxlang.png",
     link: "https://hub.docker.com/repository/docker/ravikishan63392/relaxlang",
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
     tags: ["personal", "programming language", "interpreter", "compiler", "live"],
     github: "https://github.com/Ravikisha/RelaxLang",
     skills: ["C", "Java"],
+    rank: 1
+  },
+  {
+    name: "Relax.js",
+    description: "Relax.js is a lightweight and modern frontend library designed to simplify building dynamic web applications using a virtual DOM and a component-based architecture.",
+    image: "relaxjslogo.png",
+    link: "https://www.npmjs.com/package/relaxcore",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "frontend library", "javascript", "live", "spa"],
+    github: "https://github.com/Ravikisha/Relax.js",
+    skills: ["Javascript", "React"],
     rank: 1
   }
 ];

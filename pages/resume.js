@@ -15,11 +15,11 @@ const Resume = () => {
       html2canvas(input, { logging: true, scale: 2, useCORS: true })
         .then((canvas) => {
           const imgData = canvas.toDataURL("image/jpeg");
-          const pdf = new jsPDF("p", "pt2", [canvas.width, canvas.height]);
+          const pdf = new jsPDF("p", "pt", [canvas.width, canvas.height]);
           var pdfWidth = pdf.internal.pageSize.getWidth();
           var pdfHeight = pdf.internal.pageSize.getHeight();
           pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
-          pdf.save("download.pdf");
+          pdf.save("Ravi_Kishan_Resume.pdf");
           setScaleCv(false);
         })
         .catch((err) => {

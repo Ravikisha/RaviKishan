@@ -82,7 +82,7 @@ const Resume = () => {
                     <div className="resune__home__address bd-grid">
                       <span className="resume__home__information">
                         <i className="uil uil-map-marker resume__home__icon"></i>{" "}
-                        Sari. Samastipur #123 Bihar - India
+                        Sari. Samastipur, Bihar - India 848101
                       </span>
                       <span className="resume__home__information">
                         <i className="uil uil-envelopes resume__home__icon"></i>{" "}
@@ -126,7 +126,7 @@ const Resume = () => {
                     <Link href="https://www.instagram.com/ravikishan.404/">
                       <a target="_blank" className="resume__social__link">
                         <i className="uil uil-instagram resume__social__icon"></i>{" "}
-                        @ravikishan.69
+                        @ravikishan.404
                       </a>
                     </Link>
                     <Link href="https://github.com/Ravikisha">
@@ -143,14 +143,7 @@ const Resume = () => {
                 >
                   <h2 className="resume__section__title">Profile</h2>
                   <p className="resume__profile__description">
-                    I am a Full Stack Developer with 1+ years of personal
-                    project experience in the development of web applications. I
-                    have worked on various projects using different
-                    technologies. I am a quick learner and a team player. I am
-                    always ready to learn new technologies and improve my
-                    skills. I am looking for a challenging role in a reputed
-                    organization where I can utilize my skills and knowledge to
-                    the best of my abilities.
+                  Performance-driven Full Stack Developer & Computer Science enthusiast skilled in building scalable, secure, high-performance solutions across web, mobile, and cloud platforms. Proficient in cloud-native development, microservices, and DevOps, with expertise in designing robust infrastructures optimized for seamless scalability and automation. Passionate about system optimization, CI/CD, and software reliability. Adept at solving complex problems in dynamic environments where innovation drives success. Seeking to contribute expertise in cutting-edge application development, efficiency enhancement, and technological excellence in a forward-thinking organization.
                   </p>
                 </section>
                 <section
@@ -159,6 +152,24 @@ const Resume = () => {
                 >
                   <h2 className="resume__section__title">Education</h2>
                   <div className="resume__education__container bd-grid">
+                  <div className="resume__education__content">
+                      <div className="resume__education__time">
+                        <span className="resume__education__rounded"></span>
+                        <span className="resume__education__line"></span>
+                      </div>
+                      <div className="resume__education__data bd-grid">
+                        <h3 className="resume__education__title">
+                          {" "}
+                          Master of Computer Application{" "}
+                        </h3>
+                        <span className="resume__education__studies">
+                          Vellore Institute of Technology, Vellore, TN
+                        </span>
+                        <span className="resume__education__year">
+                          2024 - Present
+                        </span>
+                      </div>
+                    </div>
                     <div className="resume__education__content">
                       <div className="resume__education__time">
                         <span className="resume__education__rounded"></span>
@@ -170,10 +181,10 @@ const Resume = () => {
                           Bachelor of Computer Application{" "}
                         </h3>
                         <span className="resume__education__studies">
-                          Prestige Institute of Management & Research
+                          Prestige Institute of Management & Research, Gwalior
                         </span>
                         <span className="resume__education__year">
-                          2021 - Present
+                          2021 - 2024
                         </span>
                       </div>
                     </div>
@@ -586,7 +597,7 @@ const Resume = () => {
                           width={30}
                           height={30}
                           alt="tailwindcss"
-                          src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tailwindcss/tailwindcss-plain.svg"
+                          src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/tailwindcss/tailwindcss-original.svg"
                         />
                         <span className="ml-2">TailwindCss</span>
                       </li>
@@ -649,7 +660,7 @@ const Resume = () => {
                           width={30}
                           height={30}
                           alt="laravel"
-                          src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/laravel/laravel-plain.svg"
+                          src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/laravel/laravel-original.svg"
                         />
                         <span className="ml-2">Laravel</span>
                       </li>
@@ -683,6 +694,17 @@ const Resume = () => {
                         />
                         <span className="ml-2">GraphQL</span>
                       </li>
+                      <li className="resume__skills_name">
+                        <Image 
+                        className="resue__skills__img"
+                          width={30}
+                          height={30}
+                          alt="kafka"
+                          src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg"
+                          />
+                          <span className="ml-2">Kafka</span>
+                      </li>
+
                     </ul>
                     <ul className="resume__skills__data">
                       <h2 className="mb-3">

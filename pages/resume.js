@@ -73,7 +73,7 @@ const Resume = () => {
                         >
                           <Link 
                             download
-                            href="/resume.pdf" >
+                            href="/Ravi_Kishan_Full_Stack_Developer_Resume.pdf" >
                           Download
                           </Link>
                         </div>

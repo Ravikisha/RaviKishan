@@ -41,7 +41,7 @@ const Certificate = () => {
                     data-aos="zoom-in-up"
                     className="px-4 md:px-0"
                   >
-                    <Card cert={cert} />
+                    <Card cert={cert} key={cert.name} />
                   </div>
                 );
               })}
@@ -189,15 +189,13 @@ export const Card = (props) => {
                     <Image
                       src={imageData[0]["imageUrl"]}
                       alt={skill}
-                      key={skill}
+                      key={imageData[0]['name'] + " badge" + skill}
                       width={40}
                       height={40}
                       objectFit="cover"
                       className="relative inline-block !rounded-md border-2 border-white object-cover object-center hover:z-10"
                     />
                   );
-                } else {
-                  return <></>;
                 }
               })}
             </div>

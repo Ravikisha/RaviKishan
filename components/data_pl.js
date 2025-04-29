@@ -504,7 +504,7 @@ export const data = [
   },
   {
     name: "GRPC",
-    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/grpc/grpc-original.svg",
+    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/grpc/grpc-plain.svg",
     codelink: "https://www.google.com/search?q=grpc",
     tags: ["backend"],
   },

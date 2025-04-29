@@ -5,10 +5,7 @@ const Filter = ({popular,setFiltered,activeFilter,setActiveFilter}) => {
         if(activeFilter === "All"){
             setFiltered(popular);
         }else{
-            setFiltered(popular.filter(PL => {  
-                console.log("PL : ", PL.tags)
-                console.log("Active Filter: ", activeFilter)
-                console.log("Filter: ", PL.tags.includes(activeFilter))
+            setFiltered(popular.filter(PL => {
                 return PL.tags.includes(activeFilter)
         }));
         }
@@ -31,10 +28,10 @@ const Filter = ({popular,setFiltered,activeFilter,setActiveFilter}) => {
             <button onClick={()=>setActiveFilter('app')}className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${activeFilter === 'app' ? ' bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold' : ''}`}>
             App Developement
             </button>
-            <button onClick={()=>setActiveFilter('devops')}className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${activeFilter === 'app' ? ' bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold' : ''}`}>
+            <button onClick={()=>setActiveFilter('devops')}className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${activeFilter === 'devops' ? ' bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold' : ''}`}>
             DevOps
             </button>
-            <button onClick={()=>setActiveFilter('aiml')}className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${activeFilter === 'app' ? ' bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold' : ''}`}>
+            <button onClick={()=>setActiveFilter('aiml')}className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${activeFilter === 'aiml' ? ' bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold' : ''}`}>
             AI/ML/DS
             </button>
             <button onClick={()=>setActiveFilter('others')}className={`hover:bg-teal-100 bg-white text-teal-800 rounded-full py-3 px-8 shadow-md hover:shadow-2xl transition duration-500  ${activeFilter === 'others' ? ' bg-black text-gray-100 hover:text-gray-100 hover:bg-black font-bold' : ''}`}>

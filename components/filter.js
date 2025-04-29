@@ -5,7 +5,12 @@ const Filter = ({popular,setFiltered,activeFilter,setActiveFilter}) => {
         if(activeFilter === "All"){
             setFiltered(popular);
         }else{
-            setFiltered(popular.filter(PL => PL.tags.includes(activeFilter)));
+            setFiltered(popular.filter(PL => {  
+                console.log("PL : ", PL.tags)
+                console.log("Active Filter: ", activeFilter)
+                console.log("Filter: ", PL.tags.includes(activeFilter))
+                return PL.tags.includes(activeFilter)
+        }));
         }
     },[activeFilter]);
   return (

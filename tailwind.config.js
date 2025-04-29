@@ -6,7 +6,7 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {
+    extend: {      
       colors: {
         ...mauve,
         ...violet,
@@ -14,6 +14,17 @@ module.exports = {
         ...blackA,
       },
       keyframes: {
+        meteor: {
+          "0%": {
+            transform: "rotate(var(--angle)) translateX(0)",
+            opacity: "1",
+          },
+          "70%": { opacity: "1" },
+          "100%": {
+            transform: "rotate(var(--angle)) translateX(-500px)",
+            opacity: "0",
+          },
+        },
         overlayShow: {
           from: { opacity: 0 },
           to: { opacity: 1 },
@@ -37,6 +48,7 @@ module.exports = {
         overlayShow: 'overlayShow 150ms cubic-bezier(0.16, 1, 0.3, 1)',
         contentShow: 'contentShow 150ms cubic-bezier(0.16, 1, 0.3, 1)',
         orbit: "orbit calc(var(--duration)*1s) linear infinite",
+        meteor: "meteor 5s linear infinite",
       },
     },
   },

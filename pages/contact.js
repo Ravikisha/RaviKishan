@@ -1,4 +1,4 @@
-import Earth from './../components/earth';
+import {Earth} from './../components/earth';
 import ContactForm from './../components/contactForm';
 import Head from 'next/head';
 

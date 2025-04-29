@@ -22,7 +22,7 @@ const Languages = () => {
             {filterData.filter((PL) => PL.show === undefined || PL.show === true ).map((PL) => {
                 return(
                     <div key={PL.name} data-aos="zoom-in-up">
-                        <Card  PL={PL}/>
+                        <Card PL={PL}/>
                     </div>
                 )
             }

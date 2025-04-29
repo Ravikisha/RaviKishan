@@ -296,7 +296,8 @@ export const data = [
   {
     name: "Kafka",
     imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apachekafka/apachekafka-original.svg",
-    codelink: "https://www.google.com/search?q=kafka"
+    codelink: "https://www.google.com/search?q=kafka",
+    tags: ["backend"]
   },
   {
     name: "Java Android",

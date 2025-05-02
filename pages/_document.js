@@ -27,22 +27,7 @@ export default function Document() {
         <meta name="theme-color" content="#fff" />
         <link rel="apple-touch-icon" href="favicon.ico" />
       </Head>
-      <Script
-        id="next"
-        strategy="lazyOnload"
-        async
-        src={`https://www.googletagmanager.com/gtag/js?id=G-7RHZZRFLT9`}
-      ></Script>
-      <Script id="next" strategy="lazyOnload">
-        {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-7RHZZRFLT9', {
-              page_path: window.location.pathname,
-              });
-          `}
-      </Script>
+      
       <Script
         id="box-icons"
         src="https://unpkg.com/boxicons@2.1.2/dist/boxicons.js"

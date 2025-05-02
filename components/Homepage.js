@@ -16,7 +16,7 @@ const HomePage = () => {
             <ScrollDown />
           </div>
         </section>
-      <div id="splash">
+      {/* <div id="splash">
         <div className="anim">
           <div id="loader">
             <svg version="1.1" width="60px" height="70px" viewBox="0 0 60 70">
@@ -54,7 +54,7 @@ const HomePage = () => {
             </svg>
           </div>
         </div>
-      </div>
+      </div> */}
     </>
   );
 };

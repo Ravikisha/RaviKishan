@@ -286,5 +286,15 @@ export const data = [
     github: "https://github.com/Ravikisha/Relax.js",
     skills: ["Javascript", "React"],
     rank: 1
+  },
+  {
+    name: "Academic Paper Archive with Research Topic Detection",
+    description: "A research-centric web application that allows users to upload academic papers (PDFs), automatically extract summaries and topics using Machine Learning, and store them in a custom-built distributed file storage system. Semantic search is enabled using Sentence Transformers and FAISS for lightning-fast and accurate retrieval of related papers.",
+    image: "distributed-paper.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "Distributed System", "Machine Learning", "Research"],
+    github: "https://github.com/Ravikisha/Academic-Paper-Archive-with-Research-Topic-Detection",
+    skills: ["Python", "FastAPI", "PyTorch"],
+    rank: 4
   }
 ];

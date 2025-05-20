@@ -277,7 +277,7 @@
     &__line {
       display: block;
       width: 2px;
-      height: 110%;
+      height: 100%;
       background-color: $text-color-light;
       transform: translate(7px, 0);
     }
@@ -445,4 +445,28 @@
     .resume__skills__content{
         grid-template-columns: repeat(2, 1fr);
     }
+}
+
+ul.fancy-bullet {
+  list-style: none;
+  padding-left: 1.5rem;
+
+  li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.6em;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 10px solid $title-color; // Monochrome pyramid (change to currentColor if needed)
+    }
+  }
 }

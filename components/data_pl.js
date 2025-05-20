@@ -513,5 +513,11 @@ export const data = [
     imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/elasticsearch/elasticsearch-original.svg",
     codelink: "https://www.google.com/search?q=elasticsearch",
     tags: ["backend"],
+  },
+  {
+    name: "FastAPI",
+    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/fastapi/fastapi-original.svg",
+    codelink: "https://www.google.com/search?q=fastapi",
+    tags: ["backend"]
   }
 ];

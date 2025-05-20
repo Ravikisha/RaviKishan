@@ -29,6 +29,120 @@ const Resume = () => {
     }
   };
 
+  const skills = [
+    {
+      category: "Programming Languages",
+      items: ["JavaScript", "TypeScript", "Java", "Python", "Go", "Rust", "C++", "C", "PHP"],
+    },
+    {
+      category: "Frontend Technologies",
+      items: [
+        "React.js",
+        "Next.js",
+        "Tailwind CSS",
+        "Astro",
+        "SASS/SCSS",
+        "PostCSS",
+        "Redux",
+        "Redux Saga",
+        "Redux Toolkit",
+        "Redux Thunk",
+        "JAM",
+        "Shadcn UI",
+        "Jest",
+        "Cypress",
+        "Playwright",
+        "WebPack",
+      ],
+    },
+    {
+      category: "Backend Frameworks",
+      items: [
+        "Node.js",
+        "Express",
+        "NestJS",
+        "Django",
+        "Flask",
+        "FastAPI",
+        "Laravel",
+        "Spring Boot",
+        "GraphQL",
+        "gRPC",
+        "REST API",
+        "OAuth 2.0",
+        "JWT",
+      ],
+    },
+    {
+      category: "Databases",
+      items: ["PostgreSQL", "MySQL", "MongoDB", "Firebase", "Redis", "Neo4j", "ElasticSearch", "SupaBase"],
+    },
+    {
+      category: "Cloud & DevOps",
+      items: [
+        "AWS",
+        "EC2",
+        "S3",
+        "Lambda",
+        "RDS",
+        "DynamoDB",
+        "ELB",
+        "AKS",
+        "IAM",
+        "Azure",
+        "GCP",
+        "Docker",
+        "Kubernetes",
+        "Terraform",
+        "CI/CD",
+        "GitHub Actions",
+        "Jenkins",
+        "CDN",
+        "Linux",
+        "Nginx",
+      ],
+    },
+    {
+      category: "Other Tools",
+      items: [
+        "Kafka",
+        "RabbitMQ",
+        "Selenium",
+        "Mocha",
+        "Chai",
+        "WebAssembly",
+        "Git",
+        "GitHub",
+        "Flutter",
+        "React Native",
+        "ELK Stack",
+        "Prometheus",
+        "Grafana",
+        "Markdown",
+      ],
+    },
+  ]
+
+  const courseWork = [
+    {
+      items: [
+      "Computer Programming",
+      "Computer Network",
+      "DBMS",
+      "Operating System",
+      "Machine Learning",
+      "Software Engineering",
+      "Data Structures and Algorithms",
+      "Artificial Intelligence",
+      "Cloud Computing",
+      "OOPS",
+      "Cyber Security",
+      "Software Testing",
+      "Web Development"
+    ]
+    }
+  ]
+
   return (
     <>
       <Head>
@@ -118,10 +232,10 @@ const Resume = () => {
                 <section className="resume__social resume__section">
                   <h2 className="resume__section__title">SOCIAL</h2>
                   <div className="resume__social__container bd-grid">
-                    <Link href="https://www.linkedin.com/in/ravi-kishan-62ab51221/">
+                    <Link href="https://www.linkedin.com/in/ravikisha/">
                       <a target="_blank" className="resume__social__link">
                         <i className="uil uil-linkedin resume__social__icon"></i>{" "}
-                        ravi-kishan-62ab51221
+                        ravikisha
                       </a>
                     </Link>
                     <Link href="https://www.instagram.com/ravikishan.404/">
@@ -239,6 +353,19 @@ const Resume = () => {
                   </div>
                 </section>
                 <section className="resume__languages resume__section">
+                  <h2 className="resume__section__title">Skills</h2>
+
+                  <div className="resume__languages__container">
+                    <MicroChips skills={skills} />
+                  </div>
+                </section>
+                <section className="resume__interests resume__section">
+                  <h2 className="resume__section__title">CourseWork</h2>
+                  <div className="resume__languages__container">
+                    <MicroChips skills={courseWork} />
+                  </div>
+                </section>
+                <section className="resume__languages resume__section">
                   <h2 className="resume__section__title">Languages</h2>
 
                   <div className="resume__languages__container">
@@ -282,12 +409,7 @@ const Resume = () => {
                     </div>
                   </div>
                 </section>
-                <section className="resume__interests resume__section">
-                  <h2 className="resume__section__title">CourseWork</h2>
-                  <p className="resume__profile__description">
-                    Computer Programming, Computer Network, DBMS, Operating System, Machine Learning, Software Engineering, Data Structures and Algorithms, Artificial Intelligence, Cloud Computing, OOPS, Cyber Security, Software Testing, Web Development
-                  </p>
-                </section>
+                
               </div>
               <div className="resume__right">
                 <section
@@ -831,21 +953,21 @@ const Resume = () => {
 
                   <div className="resume__experience__container bd-grid">
                     <div className="resume__experience__content">
-                      <ul className="fancy-bullet text-black">
-                        <li className="text-gray-900">
+                      <ul className="fancy-bullet">
+                        <li>
                           Participated in multiple <strong>Open-Source Contribution Events and Hackathons</strong>, demonstrating proficiency in <strong>collaborative development, version control (Git/GitHub), and Agile methodologies</strong>.
                         </li>
-                        <li className="text-gray-900">
+                        <li>
                           Successfully completed the <strong>Microsoft Learn Student Ambassador (MLSA)</strong> program, gaining expertise in <strong>Azure Cloud, AI, Full-Stack Development, and community leadership</strong>.
                         </li>
-                        <li className="text-gray-900">
+                        <li>
                           Solved <strong>1,200+ problems</strong> on <strong>LeetCode</strong> and <strong>GeeksforGeeks</strong>, demonstrating expertise in <strong>data structures, algorithms, problem-solving</strong>, and <strong>code optimization</strong>, aligning with industry standards.
                         </li>
                       </ul>
                       </div>
                     </div>
                   </section>
-                <div className="resume__skills resume__section" id="skills">
+                {/* <div className="resume__skills resume__section" id="skills">
                   <h2 className="resume__section__title">Skills</h2>
 
                   <div className="resume__skills__content bd-grid">
@@ -1287,7 +1409,7 @@ const Resume = () => {
                       </li>
                     </ul>
                   </div>
-                </div>
+                </div> */}
               </div>
             </div>
           </main>
@@ -1304,5 +1426,30 @@ const Resume = () => {
     </>
   );
 };
+
+function MicroChips({ skills }) {
+  return (
+    <div className="space-y-3 print:space-y-1.5">
+      {skills.map((skillGroup) => (
+        <div key={skillGroup.category} className="mb-1">
+          {
+            skillGroup.category && <h3 className="text-sm font-semibold text-gray-700 mb-1.5 print:text-xs">{skillGroup.category}:</h3>
+          }
+          <div className="flex flex-wrap gap-1">
+            {skillGroup.items.map((skill) => (
+              <span
+                key={skill}
+                className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-800 text-xs border border-gray-200 rounded"
+              >
+                {skill}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 
 export default Resume;

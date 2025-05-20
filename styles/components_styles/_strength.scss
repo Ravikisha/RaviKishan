@@ -120,3 +120,14 @@ ol.style_2{
       }
   }
 }
+
+.dark-theme ol.style_2{
+  color: white;
+  li{
+      color: #fff;
+      &:before{
+          background: #fff;
+          color: #222;
+      }
+  }
+}

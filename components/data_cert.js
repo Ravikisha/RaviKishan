@@ -2,6 +2,17 @@
 
 export const data = [
   {
+    name: "Microsoft Azure AZ-900",
+    organization: "microsoft",
+    description: "Microsoft Azure Fundamentals is an entry-level certification that demonstrates foundational knowledge of cloud services and how they are provided with Microsoft Azure. It is ideal for individuals starting their cloud journey or exploring Azure-based roles.",
+    image: "az-900.jpg",
+    link: "https://learn.microsoft.com/en-us/users/ravikishan-2421/credentials/13f8e52a4c9bc3eb",
+    linkedin:
+      "https://www.linkedin.com/posts/ravikisha_azurefundamentals-certificationachievement-activity-7185316444719464448-M8JF?utm_source=share&utm_medium=member_desktop&rcm=ACoAADfgc0IBxOzgWTU9v7KPtRemidGI0TOsK1Q",
+    tags: ["academic"],
+    skills: ["Azure"],
+  },
+  {
     name: "Microsoft Student Ambassador",
     organization: "microsoft",
     description:
@@ -10,7 +21,7 @@ export const data = [
     link: "https://mvp.microsoft.com/studentambassadors/certificate/6794df42-b10b-4ed6-9a8d-0029d0d0f6c3",
     linkedin:
       "https://www.linkedin.com/posts/ravi-kishan-62ab51221_microsoftstudentambassador-betacomplete-empoweringcommunities-activity-7161911263361392640-172W?utm_source=share&utm_medium=member_desktop",
-    tags: ["academic"],
+    tags: ["experience"],
     skills: ["JavaScript", "Python"],
   },
   {

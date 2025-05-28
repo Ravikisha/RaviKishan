@@ -14,6 +14,17 @@ export const data = [
     rank: 2
   },
   {
+    name: "GitaSaar",
+    description:
+    "GitaSaar, a unique project that combines machine learning, Shrimad Bhagavat Gita, and practical problem-solving. In this application, we leverage a machine learning model to teach the context of Shrimad Bhagavat Gita, providing insights and solutions to daily life problems through the wisdom of its slokas.",
+    image: "gitasaar.jpg",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "open-source", "live", "nlp", "machine learning"],
+    github: "https://github.com/Ravikisha/gitasaar",
+    skills: ["Python", "FastAPI","LangChain"],
+    rank: 1
+  },
+  {
     name: "ExpressCraft",
     description:
     "A npx based express app generator for creating express apps with ease. It support all types of tools and technologies related to express.",
@@ -104,7 +115,7 @@ export const data = [
     tags: ["personal", "url shortener", "system design"],
     github: "https://github.com/Ravikisha/URLShortener",
     skills: ["Go", "Redis"],
-    rank: 2
+    rank: 3
   },
   {
     name: "Redis Clone",
@@ -187,6 +198,16 @@ export const data = [
     github: "https://github.com/Ravikisha/Child-Adoption-Portal",
     skills: ["Java", "Tailwind Css", "MySQL"],
     rank: 9
+  },
+  {
+    name: "MyDocker",
+    description: "MyDocker is a lightweight container runtime built from scratch in Go that demonstrates how containerization works under the hood — similar to Docker but in a simplified form.",
+    image: "mydocker_banner.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "Distributed System", "Docker", "LLD"],
+    github: "https://github.com/ravikisha/mydocker",
+    skills: ["Go", "C", "Bash"],
+    rank: 2
   },
   {
     name: "Single Sign-On (SSO) System",
@@ -296,5 +317,15 @@ export const data = [
     github: "https://github.com/Ravikisha/Academic-Paper-Archive-with-Research-Topic-Detection",
     skills: ["Python", "FastAPI", "PyTorch"],
     rank: 4
+  },
+  {
+    name: "MyDocker",
+    description: "MyDocker is a lightweight container runtime built from scratch in Go that demonstrates how containerization works under the hood — similar to Docker but in a simplified form.",
+    image: "mydocker_banner.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "Distributed System", "Docker", "LLD"],
+    github: "https://github.com/ravikisha/mydocker",
+    skills: ["Go", "C", "Bash"],
+    rank: 2
   }
 ];

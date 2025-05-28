@@ -158,7 +158,7 @@ export const data = [
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/d3js/d3js-original.svg",
     codelink: "https://www.google.com/search?q=d3js+frontend",
-    tags: ["frontend"],
+    tags: ["frontend", "aiml"],
   },
   {
     name: "Wordpress",
@@ -354,14 +354,14 @@ export const data = [
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/git/git-original.svg",
     codelink: "https://www.google.com/search?q=git+devops",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "GitHub",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg",
     codelink: "https://www.google.com/search?q=github+devops",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "Jest",
@@ -375,14 +375,14 @@ export const data = [
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg",
     codelink: "https://www.google.com/search?q=docker+devops",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "Kubernetes",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg",
     codelink: "https://www.google.com/search?q=kubernetes+devops",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "Visual Studio Code",
@@ -396,35 +396,35 @@ export const data = [
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/terraform/terraform-original.svg",
     codelink: "https://www.google.com/search?q=terraform+cloud",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "Tensorflow",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tensorflow/tensorflow-original.svg",
     codelink: "https://www.google.com/search?q=tensorflow+ml",
-    tags: ["others"],
+    tags: ["aiml"],
   },
   {
     name: "PyTorch",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/pytorch/pytorch-original.svg",
     codelink: "https://www.google.com/search?q=pytorch+ml",
-    tags: ["others"],
+    tags: ["aiml"],
   },
   {
     name: "Matlab",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/matlab/matlab-original.svg",
     codelink: "https://www.google.com/search?q=matlab+ml",
-    tags: ["others"],
+    tags: ["aiml"],
   },
   {
     name: "Jupyter",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/jupyter/jupyter-original.svg",
     codelink: "https://www.google.com/search?q=jupyter+notebook",
-    tags: ["others"],
+    tags: ["aiml"],
   },
   {
     name: "Bash",
@@ -445,7 +445,7 @@ export const data = [
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/pandas/pandas-original.svg",
     codelink: "https://www.google.com/search?q=pandas+python",
-    tags: ["others"],
+    tags: ["aiml"],
   },
   {
     name: "Figma",
@@ -480,27 +480,27 @@ export const data = [
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linux/linux-original.svg",
     codelink: "https://www.google.com/search?q=linux+os",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "AWS",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-original-wordmark.svg",
     codelink: "https://www.google.com/search?q=aws+cloud",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "Azure",
     imageUrl:
       "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/azure/azure-original.svg",
     codelink: "https://www.google.com/search?q=azure+cloud",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "Google Cloud Platform",
     imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/googlecloud/googlecloud-original.svg",
     codelink: "https://www.google.com/search?q=google+cloud",
-    tags: ["others"],
+    tags: ["devops"],
   },
   {
     name: "GRPC",
@@ -519,5 +519,11 @@ export const data = [
     imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/fastapi/fastapi-original.svg",
     codelink: "https://www.google.com/search?q=fastapi",
     tags: ["backend"]
+  },
+  {
+    name: "LangChain",
+    imageUrl: "/company/langchain.svg",
+    codelink: "https://www.google.com/search?q=langchain",
+    tags: ["aiml"]
   }
 ];

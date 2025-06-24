@@ -96,6 +96,18 @@ export const data = [
     rank: 1
   },
   {
+     name: "RelaxCSS",
+    description:
+    "A next-generation, Tailwind-like JIT CSS/PostCSS plugin with a powerful plugin system, support for arbitrary values, variants (including dark mode and RTL), efficient watch mode, and CSS variable theme support.",
+    image: "relaxcss.png",
+    link: "https://www.npmjs.com/package/relaxcss",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "npm package", "tailwindcss", "postcss"],
+    github: "https://github.com/Ravikisha/relaxcss",
+    skills: ["JavaScript", "Typescript", "PostCSS"],
+    rank: 2
+  },
+  {
     name: "Relax Search",
     description:
     "RelaxSearch is a lightweight, demonstration-based search engine project built with Go and Elasticsearch.",

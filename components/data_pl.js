@@ -525,5 +525,11 @@ export const data = [
     imageUrl: "/company/langchain.svg",
     codelink: "https://www.google.com/search?q=langchain",
     tags: ["aiml"]
+  },
+  {
+    name: "PostCSS",
+    imageUrl: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postcss/postcss-original.svg",
+    codelink: "https://www.google.com/search?q=postcss",
+    tags: ["frontend"]
   }
 ];

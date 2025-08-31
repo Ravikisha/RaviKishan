@@ -1,0 +1,51 @@
+.container__mod5{
+    position: relative;
+    display: flex;
+    height: calc(100% - 200px);
+    width: calc(100% - 200px);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto;
+    margin-top: 5rem;
+    overflow: hidden;
+}
+
+.container__mod5 .box{
+    position: relative;
+    width: 25%;
+    height: 100%;
+    overflow: hidden;
+    border-right: 10px solid #fff;
+}
+
+.container__mod5 .box:last-child{
+    border-right: none;
+}
+.container__mod5 .box .img__box{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transition: 0.5s;
+    cursor: pointer;
+}
+
+.container__mod5 .box .img__box.active__super{
+    position: fixed;
+    top: 100px;
+    left: 100px;
+    width: calc(100% - 200px);
+    height: calc(100% - 200px);
+    z-index: 1000;
+    opacity: 1;
+}
+.container__mod5 .box .img__box img{
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;    
+    height: 100%;
+    object-fit: cover;
+}

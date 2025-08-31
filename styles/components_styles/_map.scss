@@ -1,0 +1,392 @@
+/* Primary Colors */
+$Violet: rgb(103, 75, 175);
+$Soft-Magenta: hsl(300, 69%, 71%);
+$white: #fff;
+
+/* Font Size */
+$head: 3rem;
+$text: 1.3rem;
+
+/* Font Weight */
+$regular: 400;
+$bold: 600;
+
+/* </---------Variables---------> */
+
+/* <---------Utility Classes---------> */
+
+.head {
+  font-size: $head;
+  font-weight: $bold;
+  color: $white;
+  font-family: "Poppins", sans-serif;
+}
+
+.text {
+  font-size: $text;
+  font-weight: $regular;
+  color: $white;
+  font-family: "Poppins", sans-serif;
+}
+
+/* </---------Utility Classes---------> */
+
+/* <---------General CSS---------> */
+
+.background {
+  min-height: 100vh;
+  background-color: $Violet;
+  background-image: url(https://bit.ly/3CA3FP6);
+  background-repeat: no-repeat;
+  background-size: 85% 100%;
+  background-position: center;
+  overflow: auto;
+  padding: 0 4em;
+  border-radius: 1.5rem;
+  box-shadow: 22px 27px 23px -6px rgba(103, 75, 175,0.3);
+}
+
+.container__mod2 {
+  margin: 5em auto 2em auto;
+  max-width: 1800px;
+}
+
+.hero {
+  margin: 5em 0 3em 0;
+  display: flex;
+  gap: 6em;
+}
+
+.hero-img {
+  flex-basis: 50%;
+}
+
+.mockup {
+  width: 100%;
+}
+
+.hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5em;
+  align-self: center;
+  max-width: 35em;
+}
+
+.btn {
+  background-color: $white;
+  color: $Violet;
+  border: 0;
+  width: 15em;
+  padding: 0.5em 1.5em;
+  border-radius: 2em;
+  box-shadow: 5px 5px 10px 0px rgba(63, 63, 63, 0.86);
+  cursor: pointer;
+}
+
+.btn:hover {
+  color: $white;
+  background-color: $Soft-Magenta;
+}
+
+.socials {
+  display: flex;
+  gap: 1em;
+  justify-content: flex-end;
+}
+
+/* </---------General CSS---------> */
+
+/* <---------Media Queries---------> */
+
+/* For medium screen */
+@media (min-width: 800px) and (max-width: 1200px) {
+  :root {
+    --head: 2.5rem;
+    --text: 1.2rem;
+  }
+
+  .hero-text {
+    max-width: 30em;
+  }
+}
+
+/* For smaller screen */
+@media (min-width: 200px) and (max-width: 800px) {
+  :root {
+    --head: 2rem;
+    --text: 1rem;
+  }
+
+  .background {
+    min-height: 100vh;
+    background-color: $Violet;
+    background-image: url(https://bit.ly/3PN5FGJ);
+    background-repeat: no-repeat;
+    background-size: 100% 60%;
+    background-position: top;
+    overflow: auto;
+    padding: 0 2em;
+  }
+
+  .container__mod2 {
+    margin: 2em 0 1em 0;
+  }
+
+  .logo {
+    width: 12em;
+  }
+
+  .hero {
+    flex-direction: column;
+    margin: 3em 0 2em 0;
+  }
+  .hero-text {
+    text-align: center;
+  }
+
+  .btn {
+    margin: 0 auto;
+  }  
+}
+
+/* For medium screen */
+@media (min-width: 600px) and (max-width: 800px) {
+  :root {
+    --head: 2.5rem;
+    --text: 1.2rem;
+  }
+}
+
+// .container__mod3 {
+//     position: relative;
+//     top: 50%;
+//     left: 50%;
+//     transform: translate(-50%, -50%);
+//     width: 90%;
+//     max-width: 1200px;
+//     text-align: center;
+// }
+
+.btn__social {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 90px;
+  height: 90px;
+  background: #fff;
+  box-shadow: 0 5px 15px -5px #aaa;
+  margin: 10px;
+  border-radius: 30%;
+  overflow: hidden;
+  position: relative;
+  color: #42d2ff;
+}
+
+.btn__social i {
+  position: relative;
+  z-index: 4;
+  line-height: 90px;
+  font-size: 36px;
+  transition: 0.3s ease-in-out;
+}
+
+.fa-github {
+  color: #383838;
+}
+
+.gh::before {
+  content: "";
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  background: linear-gradient(#7e7e7e, #3a3a3a);
+  transform: rotate(45deg);
+  left: -110%;
+  top: 90%;
+}
+
+.fa-linkedin {
+  color: #0a66c2;
+}
+
+.in::before {
+  content: "";
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  background: linear-gradient(#2391ff, #0059b3);
+  transform: rotate(45deg);
+  left: -110%;
+  top: 90%;
+}
+
+.fa-instagram {
+  color: #e33d68;
+}
+
+.ig::before {
+  content: "";
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  background: radial-gradient(
+    circle at 60% 100%,
+    #fed373 4%,
+    #f15245 30%,
+    #d92e7f 62%,
+    #9b36b7 85%,
+    #515ecf
+  );
+  transform: rotate(45deg);
+  left: -110%;
+  top: 90%;
+}
+
+.fa-twitter {
+  color: #00c6ff;
+}
+
+.tw::before {
+  content: "";
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  background: linear-gradient(#00c6ff, #0072ff);
+  transform: rotate(45deg);
+  left: -110%;
+  top: 90%;
+}
+
+.btn__social:hover i {
+  color: #fff;
+  transform: scale(1.4);
+}
+
+.btn__social:hover::before {
+  animation: onHover 0.7s 1;
+  left: -10%;
+  top: -10%;
+}
+
+@keyframes onHover {
+  0% {
+    left: -110%;
+    top: 90%;
+  }
+  50% {
+    left: 10%;
+    top: -30%;
+  }
+  100% {
+    top: -10%;
+    left: -10%;
+  }
+}
+
+.fa-youtube {
+  color: #ff0000;
+}
+
+.fa-whatsapp {
+  color: #25d366;
+}
+
+.yt::before {
+  content: "";
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  background: linear-gradient(#ff4949, #ff0000);
+  transform: rotate(45deg);
+  left: -110%;
+  top: 90%;
+}
+.wh::before {
+  content: "";
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  background: linear-gradient(#25d366, #18fc5c);
+  transform: rotate(45deg);
+  left: -110%;
+  top: 90%;
+}
+/* </---------Media Queries---------> */
+
+
+// @media screen and (max-width: 768px) {
+// 	.socials {
+// 		justify-content: center;
+// 		align-items: center;
+// 		margin-bottom: 4em;
+// 	  }
+
+// 	  .btn__social {
+// 		width: 5rem;
+// 		height: 5rem;
+// 		// box-shadow: 0 5px 15px -5px #aaa;
+// 		margin: 10px;
+// 		border-radius: 50%;
+// 		overflow: hidden;
+// 		position: relative;
+// 		color: #42d2ff;
+// 	  }
+// }
+
+// @media screen and (min-width: 768px) {
+// 	.socials {
+// 		margin-bottom: 2em;
+// 		display: grid;
+// 		grid-template-columns: 1fr 1fr;
+// 	  }	  
+// }
+
+@media screen and (max-width: 450px){
+	.text{
+		font-size: 1.2rem;
+	}
+	// .socials{
+	// 	display: grid;
+	// 	grid-template-columns: 1fr 1fr;
+	// 	gap: 1rem;
+	// 	row-gap: 2px;
+	// }	
+}
+
+@media screen and (max-width: 991px){
+  .socials{
+    align-items: center;
+    justify-content: center;
+    .btn__social {
+      width: 60px;
+      height: 60px;
+      margin: 0;
+      border-radius: 30%;
+    }
+    
+    .btn__social i {
+      line-height: 50px;
+      font-size: 28px;
+    }
+    
+  }
+}
+
+@media screen and (max-width: 390px){
+  .socials{
+    .btn__social {
+      width: 45px;
+      height: 45px;
+      margin: 0;
+      border-radius: 30%;
+    }
+    
+    .btn__social i {
+      line-height: 40px;
+      font-size: 23px;
+      transition: 0.3s ease-in-out;
+    }
+    
+  }
+}

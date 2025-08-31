@@ -1,0 +1,99 @@
+.qualification{
+    max-width: 768px;
+    margin: 0 auto;
+    height: 120vh;
+
+    &__tabs{
+        display: flex;
+        justify-content: center;
+        margin-bottom: $mb-2;
+    }
+    &__button{
+        font-size: $h3-font-size;
+        font-weight: $font-medium;
+        color: $title-color;
+        margin: 0 $mb-1;
+        cursor: pointer;
+    }
+    &__active{
+        // color: $title-color-dark;
+        @apply text-sky-500;
+        transform: scale(1.2);
+        transition: 0.3s;
+    }
+    &__sections{
+        display: grid;
+        grid-template-columns: 0.5fr;
+        justify-content: center;
+    }
+    &__content{
+        display: none;
+    }
+    &__content-active{
+        display: block;
+    }
+    &__data{
+        display: grid;
+        grid-template-columns: 1fr max-content 1fr;
+        column-gap: 1.5rem;
+    }
+    &__title{
+        font-size: $normal-font-size;
+        font-weight: $font-medium;
+    }
+    &__subtitle{
+        display: inline-block;
+        font-size: $small-font-size;
+        margin-bottom: $mb-1;
+    }
+    &__calendar{
+        font-size: $small-font-size;
+    }
+    &__rounded{
+        display: inline-block;
+        width: 13px;
+        height: 13px;
+        background-color: $text-color;
+        border-radius: 50%;
+    }
+    &__line{
+        display: block;
+        width: 1px;
+        height: 100%;
+        background-color: $text-color;
+        transform: translate(6px, -7px);
+    }
+}
+
+@media screen and (max-width: 992px) {
+    .qualification__container {
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .qualification__container{
+        margin-left: $mb-1-5;
+        margin-right: $mb-1-5;
+    }
+}
+
+@media screen and (max-width: 576px) {
+    .qualification__sections{
+        grid-template-columns: initial;
+    }
+    .qualification__button {
+        margin: 0 $mb-0-75;
+    }
+}
+
+@media screen and (max-width:350px) {
+    .qualification__container{
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .qualification__data {
+        gap: 0.5rem;
+    }
+}

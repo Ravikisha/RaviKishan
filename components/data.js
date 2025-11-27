@@ -62,7 +62,7 @@ const Data = () => {
           <span className="text-4xl">👋</span>
           <Badge
             variant="secondary"
-            className="bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 border-0"
+            className="bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 border-0 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-300 transition-all duration-300"
           >
             <Sparkles className="w-3 h-3 mr-1" />
             Available for work
@@ -70,18 +70,18 @@ const Data = () => {
         </div>
         {/* <h1 className="home__title">Ravi Kishan</h1> */}
         <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
-                <span className="bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 bg-clip-text text-transparent dark:from-gray-100 dark:via-purple-300 dark:to-gray-100 transition-all duration-300">
                   Ravi Kishan
                 </span>
               </h1>
-        <h3 className="home__subtitle">Full Stack Developer</h3>
-        <p className="home__description">
+        <h3 className="home__subtitle text-gray-700 dark:text-gray-300">Full Stack Developer</h3>
+        <p className="home__description text-gray-600 dark:text-gray-400">
           I&apos;m a full stack developer with a passion for creating beautiful
           and functional websites and applications.
         </p>
         <div className="flex flex-wrap gap-2">
                 {["React", "Next.js", "TypeScript", "Node.js", "Python"].map((skill) => (
-                  <Badge key={skill} variant="outline" className="bg-white/50 backdrop-blur-sm">
+                  <Badge key={skill} variant="outline" className="bg-white/50 backdrop-blur-sm dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-600 transition-all duration-300 hover:scale-105">
                     {skill}
                   </Badge>
                 ))}
@@ -91,7 +91,7 @@ const Data = () => {
                 <Link href="/contact">
                 <Button
                   size="lg"
-                  className="bg-gradient-to-r from-slate-900 to-slate-700 hover:from-slate-800 hover:to-slate-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer"
+                  className="bg-gradient-to-r from-slate-900 to-slate-700 hover:from-slate-800 hover:to-slate-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 group cursor-pointer dark:from-purple-600 dark:to-purple-700 dark:hover:from-purple-500 dark:hover:to-purple-600"
                 >
                   <Mail className="w-4 h-4 mr-2" />
                   Hire Me
@@ -102,7 +102,7 @@ const Data = () => {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="bg-white/50 backdrop-blur-sm  hover:bg-gray-800 transition-all duration-300 border hover:text-white"
+                  className="bg-white/50 backdrop-blur-sm hover:bg-gray-800 transition-all duration-300 border hover:text-white dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white"
                 >
                   View Projects
                 </Button>

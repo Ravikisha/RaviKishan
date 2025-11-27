@@ -30,6 +30,7 @@
     "framer-motion": "^7.2.1",
     "gsap": "^3.13.0",
     "html2canvas": "^1.4.1",
+    "jsonwebtoken": "^9.0.2",
     "jspdf": "^2.5.1",
     "lucide-react": "^0.316.0",
     "mine2": "file:",

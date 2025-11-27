@@ -44,6 +44,12 @@ $bold: 600;
   padding: 0 4em;
   border-radius: 1.5rem;
   box-shadow: 22px 27px 23px -6px rgba(103, 75, 175,0.3);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  
+  :global(.dark) & {
+    background-color: #111827; // gray-900 - same as homepage
+    box-shadow: 22px 27px 23px -6px rgba(139, 92, 246, 0.3);
+  }
 }
 
 .container__mod2 {

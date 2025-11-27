@@ -72,15 +72,15 @@ const Strength = () => {
         </div> */}
 
       <div
-        className="container min-h-2/3 max-w-screen-xl mx-auto py-10 px-7 md:px-16"
+        className="container min-h-2/3 max-w-screen-xl mx-auto py-10 px-7 md:px-16 bg-white dark:bg-gray-900 transition-colors duration-300"
         id="overview"
         data-aos="fade-down"
       >
-        <h2 className="text-5xl font-bold text-center text-gray-800 mb-10 ">
-          Strength & <span className="text-sky-500">Weakness</span>
+        <h2 className="text-5xl font-bold text-center text-gray-800 dark:text-gray-100 mb-10 transition-colors duration-300">
+          Strength & <span className="text-sky-500 dark:text-purple-400">Weakness</span>
         </h2>
         <div className="flex items-center flex-wrap mb-20 relatve">
-          <div className="w-full md:w-1/2 p-5 bg-black text-white h-full flex justify-center flex-col relative" data-aos="flip-left" data-aos-delay="100">
+          <div className="w-full md:w-1/2 p-5 bg-black dark:bg-gray-800 text-white dark:text-gray-100 h-full flex justify-center flex-col relative transition-colors duration-300" data-aos="flip-left" data-aos-delay="100">
             <h4 className="text-2xl md:text-3xl text-white font-bold mb-3">
               Strength
             </h4>
@@ -135,58 +135,68 @@ const Strength = () => {
             </div>
           </div>
 
-          <div className="w-full md:w-1/2 p-5 h-full flex justify-center flex-col relative" data-aos="flip-right" data-aos-delay="150">
-            <h4 className="text-2xl md:text-3xl text-gray-800 font-bold mb-3 " >
+          <div className="w-full md:w-1/2 p-5 h-full flex justify-center flex-col relative bg-gray-50 dark:bg-gray-700 transition-colors duration-300" data-aos="flip-right" data-aos-delay="150">
+            <h4 className="text-2xl md:text-3xl text-gray-800 dark:text-gray-100 font-bold mb-3 transition-colors duration-300" >
               Weakness
             </h4>
             <div className="mb-8 text-sm md:text-md">
               <ol className="style_1">
                 <li>
-                  <h2 className="text-black text-xl font-bold mb-2">
+                  <h2 className="text-black dark:text-gray-100 text-xl font-bold mb-2 transition-colors duration-300">
                     Self-criticism
                   </h2>
+                  <p className="text-gray-700 dark:text-gray-300 transition-colors duration-300">
                   I can be quite critical of myself, which can lead to negative
                   self-talk and eventual burnout. I&apos;ve found that I can
                   avoid this by recording my goals, objectives, and key results
                   and setting aside time to celebrate milestones and
                   achievements, big and small.
+                  </p>
                 </li>
                 <li>
-                  <h2 className="text-black text-xl font-bold mb-2">
+                  <h2 className="text-black dark:text-gray-100 text-xl font-bold mb-2 transition-colors duration-300">
                     Procrastination
                   </h2>
+                  <p className="text-gray-700 dark:text-gray-300 transition-colors duration-300">
                   Procrastination has long been a bad habit of mine. I think it
                   stems from a fear of failure, to be honest. I started using
                   Google calendar and apps like Trello to manage my time better.
                   Crossing things off my to-do list makes me feel accomplished.
+                  </p>
                 </li>
                 <li>
-                  <h2 className="text-black text-xl font-bold mb-2">
+                  <h2 className="text-black dark:text-gray-100 text-xl font-bold mb-2 transition-colors duration-300">
                     Lack of experience with skill
                   </h2>
+                  <p className="text-gray-700 dark:text-gray-300 transition-colors duration-300">
                   I am not very experienced with some of the skills that I have
                   on my resume. I have been working on improving my experience
                   with these skills and I am confident that I will be able to
-                  use them effectively in the future. 
+                  use them effectively in the future.
+                  </p> 
                 </li>
                 <li>
-                  <h2 className="text-black text-xl font-bold mb-2">
+                  <h2 className="text-black dark:text-gray-100 text-xl font-bold mb-2 transition-colors duration-300">
                     Issues with delegating tasks
                   </h2>
+                  <p className="text-gray-700 dark:text-gray-300 transition-colors duration-300">
                   I&apos;m a bit of a perfectionist, so I sometimes struggle to
                   delegate tasks to my teammates. This has led to taking on too
                   much. It was hard at first, but I&apos;ve seen that by
                   communicating clear expectations and trusting my team, they
                   rise to the occasion and I&apos;m able to manage projects more
                   efficiently.
+                  </p>
                 </li>
                 <li>
-                  <h2 className="text-black text-xl font-bold mb-2">
+                  <h2 className="text-black dark:text-gray-100 text-xl font-bold mb-2 transition-colors duration-300">
                     Fear of public speaking
                   </h2>
+                  <p className="text-gray-700 dark:text-gray-300 transition-colors duration-300">
                   I am a naturally shy person. Since I was a kid, I have always
                   felt nervous presenting in front of the class and that
                   translated into the workplace.
+                  </p>
                 </li>
               </ol>
             </div>

@@ -6,6 +6,11 @@
     min-height: 100vh;
     background: #222;
     position: relative;
+    transition: background-color 0.3s ease;
+
+    :global(.dark) & {
+        background: #111827; // gray-900
+    }
 
     &__container{
         position: relative;
@@ -50,6 +55,10 @@
             transition: transform 0.5s ease-in-out;
             transform-origin: right;
             transition-delay: 0.5s;
+            
+            :global(.dark) & {
+                background: #1f2937; // gray-800
+            }
         }
         &:hover &__contentBox::before{
                 transform: scaleX(1);
@@ -73,12 +82,24 @@
                 font-size: 1.3em;
                 text-transform: uppercase;
                 letter-spacing: 1px;  
-                font-weight: 700; 
+                font-weight: 700;
+                color: #333;
+                transition: color 0.3s ease;
+                
+                :global(.dark) & {
+                    color: #f1f5f9; // slate-100
+                }
             }
             p{
                 font-size: 1em;
                 line-height: 1.4em;
                 font-weight: 300;
+                color: #666;
+                transition: color 0.3s ease;
+                
+                :global(.dark) & {
+                    color: #cbd5e1; // slate-300
+                }
             }
         }
 

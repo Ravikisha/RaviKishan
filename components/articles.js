@@ -51,8 +51,8 @@ const Articles = () => {
   return (
     <>
       <div className="PL__container" data-aos="fade-up" data-aos-delay="100" id="articles">
-        <h2 className="text-4xl font-bold mb-2 text-center">Articles</h2>
-        <h2 className="text-2xl mb-2 text-center">
+        <h2 className="text-4xl font-bold mb-2 text-center dark:text-white">Articles</h2>
+        <h2 className="text-2xl mb-2 text-center dark:text-white">
           See what i write about{" "}
           <span className="text-sky-500 font-bold text-3xl underline">
             programming

@@ -8,6 +8,12 @@
     overflow: hidden;
     display: flex;
     align-items: center;
+    transition: background-color 0.3s ease;
+    
+    :global(.dark) & {
+      background: #111827; // gray-900 - same as homepage
+      color: #f1f5f9; // slate-100
+    }
   }
   &__lamp {
     &__container {
@@ -40,7 +46,24 @@
       h1 {
         color: #fff;
         font-size: 80px;
-        font-weight: 400;
+        font-weight: bold;
+        font-family: "Poppins", sans-serif;
+        transition: color 0.3s ease;
+        
+        :global(.dark) & {
+          color: #f1f5f9; // slate-100
+        }
+      }
+      
+      p {
+        font-family: "Poppins", sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        transition: color 0.3s ease;
+        
+        :global(.dark) & {
+          color: #cbd5e1; // slate-300
+        }
       }
       .gotolink {
         text-decoration: none;
@@ -49,10 +72,26 @@
         display: inline-block;
         color: #fff;
         font-size: 18px;
+        font-family: "Poppins", sans-serif;
+        font-weight: 500;
         margin-top: 30px;
         border-radius: 30px;
         cursor: pointer;
-        transition: 0.3s;
+        transition: all 0.3s ease;
+        
+        :global(.dark) & {
+          background: #8b5cf6; // purple-500
+          
+          &:hover {
+            background: #7c3aed; // purple-600
+            transform: translateY(-2px);
+          }
+        }
+        
+        &:hover {
+          background: rgb(0, 120, 200);
+          transform: translateY(-2px);
+        }
       }
 
       &__label {

@@ -69,7 +69,7 @@ const ProjectReference = () => {
         <div className="relative">
     
 
-    <section className="bg-yellow-50 overflow-hidden">
+    <section className="bg-yellow-50 dark:bg-gray-900 overflow-hidden transition-colors duration-300">
         <div className="flex flex-col lg:flex-row lg:items-stretch lg:min-h-[800px]">
             <div className="relative flex items-center justify-center w-full lg:order-2 lg:w-7/12">
                 <div className="absolute bottom-0 right-0 hidden lg:block" data-aos="fade-right" data-aos-delay="300">
@@ -77,15 +77,15 @@ const ProjectReference = () => {
                 </div>
 
                 <div className="relative px-4 pt-24 pb-16 text-center sm:px-6 md:px-24 2xl:px-32 lg:py-24 lg:text-left" data-aos="zoom-in-up">
-                    <h1 className="text-4xl font-bold text-black sm:text-6xl xl:text-8xl">
-                    I Build That You Always <span className="underline decoration-wavy text-indigo-600 decoration-sky-500">Love</span>
+                    <h1 className="text-4xl font-bold text-black dark:text-white sm:text-6xl xl:text-8xl transition-colors duration-300">
+                    I Build That You Always <span className="underline decoration-wavy text-indigo-600 dark:text-purple-400 decoration-sky-500 dark:decoration-purple-300 transition-colors duration-300">Love</span>
                     </h1>
-                    <p className="mt-8 text-xl text-black">I make websites that serve a purpose and bring value to your users.
+                    <p className="mt-8 text-xl text-black dark:text-gray-300 transition-colors duration-300">I make websites that serve a purpose and bring value to your users.
             I also love building accessible, inclusive products. I make building
             easy and interesting.</p>
 
                     <Link href="/projects">
-            <div className="box-border relative z-30 inline-flex items-center justify-center md:w-1/2 px-6 py-3 overflow-hidden font-bold text-white transition-all duration-300 bg-indigo-600 rounded-md cursor-pointer group ring-offset-2 ring-1 ring-indigo-300 ring-offset-indigo-200 hover:ring-offset-indigo-500 ease focus:outline-none mt-10">
+            <div className="box-border relative z-30 inline-flex items-center justify-center md:w-1/2 px-6 py-3 overflow-hidden font-bold text-white transition-all duration-300 bg-indigo-600 dark:bg-purple-600 rounded-md cursor-pointer group ring-offset-2 ring-1 ring-indigo-300 dark:ring-purple-300 ring-offset-indigo-200 dark:ring-offset-purple-200 hover:ring-offset-indigo-500 dark:hover:ring-offset-purple-500 ease focus:outline-none mt-10">
               <span className="absolute bottom-0 right-0 w-8 h-20 -mb-8 -mr-5 transition-all duration-300 ease-out transform rotate-45 translate-x-1 bg-white opacity-10 group-hover:translate-x-0"></span>
               <span className="absolute top-0 left-0 w-20 h-8 -mt-1 -ml-12 transition-all duration-300 ease-out transform -rotate-45 -translate-x-1 bg-white opacity-10 group-hover:translate-x-0"></span>
               <span className="relative z-20 flex items-center text-sm">

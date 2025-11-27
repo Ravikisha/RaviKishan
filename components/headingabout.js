@@ -20,8 +20,8 @@ const HeadingAbout = () => {
   }, []);
   return (
     <>
-      <div className={show ? "main__about active__mod" : "main__about"} onClick={clickHandler}>
-        <h2 className="h2__mod">About</h2>
+      <div className={show ? "main__about active__mod dark:bg-gray-900 transition-colors duration-300" : "main__about dark:bg-gray-900 transition-colors duration-300"} onClick={clickHandler}>
+        <h2 className="h2__mod text-white dark:text-gray-100 transition-colors duration-300">About</h2>
          <video className="about__video" autoPlay loop muted>
           <source src="https://videos.pexels.com/video-files/6963744/6963744-hd_1920_1080_25fps.mp4" />
         </video>

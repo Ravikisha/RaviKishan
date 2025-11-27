@@ -24,8 +24,8 @@ const Projects = () => {
         data-aos-delay="100"
         id="projects"
       >
-        <h2 className="text-4xl font-bold mb-2 text-center">Projects</h2>
-        <h2 className="text-2xl mb-2 text-center">
+        <h2 className="text-4xl font-bold mb-2 text-center dark:text-white">Projects</h2>
+        <h2 className="text-2xl mb-2 text-center dark:text-white">
           See what i build about{" "}
           <span className="text-sky-500 font-bold text-3xl underline">
             programming

@@ -30,12 +30,21 @@
     // background-color: black;
     background-position-x: center;
     background-size: cover;
+
+    :global(.dark) & {
+        background-color: #111827;
+    }
+
     .earthImage{
         position: absolute;
         width: 100%;
         height: 100%;
         overflow: hidden;
         animation: animateBg 50s linear infinite;
+
+        :global(.dark) & {
+            filter: brightness(0.7) hue-rotate(240deg);
+        }
     }
     span{
         position: absolute;
@@ -50,6 +59,13 @@
                     0 0 0 8px rgba(255,255,255,0.1),
                     0 0 20px rgba(255,255,255,1);
         animation: animateStar 3s linear infinite;
+
+        :global(.dark) & {
+            background: #a855f7;
+            box-shadow: 0 0 0 4px rgba(168,85,247,0.1),
+                        0 0 0 8px rgba(168,85,247,0.1),
+                        0 0 20px rgba(168,85,247,1);
+        }
         
         &::before {
             content: "";
@@ -59,6 +75,10 @@
             width: 300px;
             height: 1px;
             background: linear-gradient(90deg,#fff,transparent);
+
+            :global(.dark) & {
+                background: linear-gradient(90deg,#a855f7,transparent);
+            }
         }
         &:nth-child(1){
             top: 0;

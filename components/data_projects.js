@@ -37,6 +37,18 @@ export const data = [
     rank: 10
   },
   {
+    name: "RelaxIcons",
+    description:
+    "Fetch any Iconify icon and generate ready-to-use components for React, Vue, Angular, Laravel, Svelte, Solid, Web Components, and Next.js RSC-safe React.",
+    image: "relaxicons.png",
+    link: "https://www.npmjs.com/package/relaxicons",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "npm package", "icons", "open-source"],
+    github: "https://github.com/Ravikisha/relaxicons",
+    skills: ["JavaScript"],
+    rank: 5
+  },
+  {
     name: "CommitMap",
     description:
     "CommitMap is an NPX package that generates a graphical representation of the commits made in the last 6 months across your repositories in Console.",

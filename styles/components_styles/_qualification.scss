@@ -17,9 +17,13 @@
     }
     &__active{
         // color: $title-color-dark;
-        @apply text-sky-500;
+        color: #0ea5e9;
         transform: scale(1.2);
         transition: 0.3s;
+
+        :global(.dark) & {
+            color: #8b5cf6;
+        }
     }
     &__sections{
         display: grid;
@@ -40,14 +44,29 @@
     &__title{
         font-size: $normal-font-size;
         font-weight: $font-medium;
+        color: $title-color;
+
+        :global(.dark) & {
+            color: #f3f4f6;
+        }
     }
     &__subtitle{
         display: inline-block;
         font-size: $small-font-size;
         margin-bottom: $mb-1;
+        color: $text-color;
+
+        :global(.dark) & {
+            color: #d1d5db;
+        }
     }
     &__calendar{
         font-size: $small-font-size;
+        color: $text-color;
+
+        :global(.dark) & {
+            color: #9ca3af;
+        }
     }
     &__rounded{
         display: inline-block;
@@ -55,6 +74,10 @@
         height: 13px;
         background-color: $text-color;
         border-radius: 50%;
+
+        :global(.dark) & {
+            background-color: #8b5cf6;
+        }
     }
     &__line{
         display: block;
@@ -62,6 +85,10 @@
         height: 100%;
         background-color: $text-color;
         transform: translate(6px, -7px);
+
+        :global(.dark) & {
+            background-color: #6b7280;
+        }
     }
 }
 

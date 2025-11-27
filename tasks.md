@@ -1,0 +1,1 @@
+checke the theme button in responsive and also check the pages text and styles in both 

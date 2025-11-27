@@ -6,9 +6,10 @@ import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
 import { FaNpm, FaDocker } from "react-icons/fa";
+import { useTheme } from "../components/utils/ThemeProvider";
 
 const Resume = () => {
-  const [darkTheme, setDarkTheme] = React.useState(false);
+  const { theme, toggleTheme } = useTheme();
   const generateResume = () => {
     if (typeof window !== "undefined") {
       // setScaleCv(true);
@@ -150,9 +151,9 @@ const Resume = () => {
         <meta name="viewport" content="initial-scale=1.0, width=device-width" />
       </Head>
       <div
-        className={` ${
-          darkTheme ? "dark-theme main__div " : "light-theme main__div"
-        }`}
+        className={`${
+          theme === 'dark' ? "dark-theme main__div" : "light-theme main__div"
+        } transition-colors duration-300`}
       >
         <div className="resume" id="resume" data-aos="fade-up">
           <main className="l-main bd-container">
@@ -212,13 +213,13 @@ const Resume = () => {
                   <i
                     data-html2canvas-ignore
                     className={
-                      darkTheme
+                      theme === 'dark'
                         ? "uil uil-sun resume__home__change__theme"
                         : "uil uil-moon resume__home__change__theme"
                     }
                     title="Theme"
                     id="theme-button"
-                    onClick={() => setDarkTheme(!darkTheme)}
+                    onClick={toggleTheme}
                   ></i>
                   <i
                     data-html2canvas-ignore
@@ -574,7 +575,7 @@ const Resume = () => {
                           |{" "}
                           <a href="https://www.npmjs.com/package/relaxcore">
                             {" "}
-                            <FaNpm className="text-2xl inline" /> NPM
+                            <FaNpm className="text-2xl inline text-gray-700 dark:text-gray-300 transition-colors duration-300" /> NPM
                           </a>
                         </span>
                         <p className="resume__experience__description">
@@ -609,7 +610,7 @@ const Resume = () => {
                           |{" "}
                           <a href="https://hub.docker.com/repository/docker/ravikishan63392/relaxlang/">
                             {" "}
-                            <FaDocker className="text-2xl inline" /> Docker
+                            <FaDocker className="text-2xl inline text-gray-700 dark:text-gray-300 transition-colors duration-300" /> Docker
                           </a>
                         </span>
                         <p className="resume__experience__description">
@@ -1433,13 +1434,13 @@ function MicroChips({ skills }) {
       {skills.map((skillGroup) => (
         <div key={skillGroup.category} className="mb-1">
           {
-            skillGroup.category && <h3 className="text-sm font-semibold text-gray-700 mb-1.5 print:text-xs">{skillGroup.category}:</h3>
+            skillGroup.category && <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 print:text-xs transition-colors duration-300">{skillGroup.category}:</h3>
           }
           <div className="flex flex-wrap gap-1">
             {skillGroup.items.map((skill) => (
               <span
                 key={skill}
-                className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-800 text-xs border border-gray-200 rounded"
+                className="inline-block px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs border border-gray-200 dark:border-gray-600 rounded transition-colors duration-300"
               >
                 {skill}
               </span>

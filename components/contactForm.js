@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Database from "./utils/database";
 import { collection, addDoc } from "firebase/firestore";
+import { useTheme } from "./utils/ThemeProvider";
 
 const ContactForm = () => {
   const [fName, setFName] = useState("");
@@ -8,6 +9,7 @@ const ContactForm = () => {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
+  const { theme } = useTheme();
 
   function submitHandler(e) {
     e.preventDefault();
@@ -39,12 +41,12 @@ const ContactForm = () => {
 
   return (
     <>
-      <div className="contact overflow-x-hidden">
+      <div className={`contact overflow-x-hidden ${theme === 'dark' ? 'dark-theme' : 'light-theme'}`}>
         <section className="contact__section">
           {/* <span className="mybefore"></span>
         <span className="myafter"></span> */}
           <form className="contact__container" onSubmit={submitHandler}  data-aos="flip-up">
-            <h2>Contact To Me</h2>
+            <h2 className="text-white dark:text-gray-100 transition-colors duration-300">Contact To Me</h2>
             <div className="contact__row100" >
               <div className="contact__col">
                 <div className="contact__inputBox">

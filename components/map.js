@@ -4,23 +4,23 @@ import Link from "next/link";
 const Map = () => {
   return (
     <>
-      <div className="bg-gradient-to-b from-green-50 to-green-100">
+      <div className="bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 transition-colors duration-300">
         <section className="py-10 sm:py-16 lg:py-24">
           <div className="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
             <div className="grid items-center grid-cols-1 gap-12 lg:grid-cols-2">
               <div data-aos="flip-left">
-                <h1 className="text-4xl font-bold text-black sm:text-6xl lg:text-7xl">
+                <h1 className="text-4xl font-bold text-black dark:text-white sm:text-6xl lg:text-7xl transition-colors duration-300">
                   Languages I can&apos;t speak,
                   <div className="relative inline-flex">
-                    <span className="absolute inset-x-0 bottom-0 border-b-[30px] border-[#4ADE80]"></span>
-                    <h1 className="relative text-4xl font-bold text-black sm:text-6xl lg:text-7xl">
+                    <span className="absolute inset-x-0 bottom-0 border-b-[30px] border-[#4ADE80] dark:border-purple-400"></span>
+                    <h1 className="relative text-4xl font-bold text-black dark:text-white sm:text-6xl lg:text-7xl transition-colors duration-300">
                       Dev & Design
                     </h1>
                   </div>
                   Tools that I particularly enjoy
                 </h1>
 
-                <p className="mt-8 text-base text-black sm:text-xl">
+                <p className="mt-8 text-base text-black dark:text-gray-300 sm:text-xl transition-colors duration-300">
                   There are so many technologies out there, and I&apos;m always
                   looking to learn more. I&apos;ve been working with these for a
                   while now, and I&apos;m always looking to learn more.
@@ -28,11 +28,11 @@ const Map = () => {
 
                 <div className="mt-10 sm:flex sm:items-center sm:space-x-8">
                   <Link href="/skills">
-                    <div className="relative cursor-pointer inline-flex items-center justify-start py-3 pl-4 pr-12 overflow-hidden font-semibold text-[#F97316] transition-all duration-150 ease-in-out rounded hover:pl-10 hover:pr-6 bg-gray-50 group">
-                      <span className="absolute bottom-0 left-0 w-full h-1 transition-all duration-150 ease-in-out bg-[#F97316] group-hover:h-full"></span>
+                    <div className="relative cursor-pointer inline-flex items-center justify-start py-3 pl-4 pr-12 overflow-hidden font-semibold text-[#F97316] dark:text-purple-400 transition-all duration-150 ease-in-out rounded hover:pl-10 hover:pr-6 bg-gray-50 dark:bg-gray-800 group">
+                      <span className="absolute bottom-0 left-0 w-full h-1 transition-all duration-150 ease-in-out bg-[#F97316] dark:bg-purple-400 group-hover:h-full"></span>
                       <span className="absolute right-0 pr-4 duration-200 ease-out group-hover:translate-x-12">
                         <svg
-                          className="w-5 h-5 text-[#F97316]"
+                          className="w-5 h-5 text-[#F97316] dark:text-purple-400"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"

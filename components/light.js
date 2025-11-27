@@ -9,7 +9,7 @@ const Light = () => {
   const [checked, setChecked] = useState(true);
   return (
     <>
-      <div className="light__hero">
+      <div className="light__hero dark:bg-gray-900 transition-colors duration-300">
         <div className="light__lamp__container" data-aos="fade-up-right" >
           <div className="light__lamp__lamp-image">
             <Image
@@ -34,15 +34,15 @@ const Light = () => {
             </div>
           )}
         </div>
-        <div className="light__text__container" data-aos="fade-up-left">
-          <h1>About Me</h1>
-          <p>
+        <div className="light__text__container dark:text-gray-100" data-aos="fade-up-left">
+          <h1 className="text-gray-800 dark:text-gray-100 transition-colors duration-300" style={{ fontFamily: "Poppins" }}>About Me</h1>
+          <p className="text-gray-600 dark:text-gray-300 transition-colors duration-300" style={{ fontFamily: "Poppins" }}>
             I am a multipurpose developer with many characteristics and skills
             that make me a good developer. I am a person who is always looking
             for new challenges and new ways to improve myself.
           </p>
           <Link href="/about">
-            <div className="gotolink">
+            <div className="gotolink bg-purple-600 dark:bg-purple-700 hover:bg-purple-700 dark:hover:bg-purple-600 text-white transition-all duration-300" style={{ fontFamily: "Poppins" }}>
               Check About Me <i className="uil uil-arrow-right"></i>
             </div>
           </Link>
@@ -52,7 +52,7 @@ const Light = () => {
               defaultChecked={checked}
               onChange={() => setChecked(!checked)}
             />
-            <span className="light__text__container__label__span">
+            <span className="light__text__container__label__span text-purple-600 dark:text-purple-400">
               <i className="uil uil-lightbulb-alt"></i>
             </span>
           </div>

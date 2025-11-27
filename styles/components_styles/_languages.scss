@@ -70,6 +70,10 @@
         border-radius: 20px;
         transform-style: preserve-3d;
 
+        :global(.dark) & {
+            background: #1a1a1a;
+        }
+
         &::before{
             content: "PLAY";
             position: absolute;
@@ -115,6 +119,10 @@
         opacity: 0;
         z-index: 10;
         font-size: 2em;
+
+        :global(.dark) & {
+            color: #e5e7eb;
+        }
     }
     &__buy{
         position: absolute;
@@ -130,6 +138,17 @@
         transition: 0.5s;
         opacity: 0;
         z-index: 10;
+
+        :global(.dark) & {
+            color: #f3f4f6;
+            background: #4c1d95;
+        }
+
+        &:hover {
+            :global(.dark) & {
+                background: #5b21b6;
+            }
+        }
     }
     &__circle{
         position: absolute;

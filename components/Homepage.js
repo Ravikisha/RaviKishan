@@ -6,7 +6,7 @@ import ScrollDown from "./scrolldown";
 const HomePage = () => {
   return (
     <>
-        <section className="home section" id="home">
+  <section className="home section dark:bg-gray-900 dark:text-gray-100" id="home">
           <div className="home__container container_mod grid_mod">
             {/* Background Elements */}
         {/* <div className="absolute inset-0 overflow-hidden">
@@ -15,7 +15,9 @@ const HomePage = () => {
         </div> */}
             <div className="home__content grid_mod">
               <Social />
-              <div className="home__img"></div>
+              <div className="home__img">
+                {/* Example: If you have icons here, add theme classes */}
+              </div>
               <Data />
             </div>
             <ScrollDown />

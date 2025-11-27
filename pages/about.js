@@ -20,7 +20,7 @@ const About = () => {
         <meta name="viewport" content="initial-scale=1.0, width=device-width" />
       </Head>
     
-    <div className="about__page">
+    <div className="about__page dark:bg-gray-900 transition-colors duration-300">
     <HeadingAbout />
     <Character />
     <Strength />

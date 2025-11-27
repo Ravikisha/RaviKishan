@@ -6,21 +6,39 @@ import Image from 'next/image'
 const Year5 = () => {
   return (
     <>
-      <section className="sec" data-aos="fade-up">
+      <section className="sec bg-white dark:bg-gray-900 transition-colors duration-300" data-aos="fade-up">
         <div className="sec__content">
           <div className="sec__textBox">
-            <h2>
-              That&apos;s What <br /> <span>I Build</span>
+            <h2 className="text-gray-900 dark:text-gray-100 transition-colors duration-300">
+              That&apos;s What <br /> <span className="text-purple-600 dark:text-purple-400">I Build</span>
             </h2>
-            <p>
+            <p className="text-gray-700 dark:text-gray-300 transition-colors duration-300">
               I am a hardly working person. I always try to learn new things and
               best way to learn is to build something. I have built many
               projects and I am still learning. I love to do something
               innovative and creative things.
             </p>
-            <div className="flex gap-3">
-              <Link href="/projects">View All Projects</Link>
-              <Link href="/skills">View My SKills</Link>
+            <div className="flex gap-3 mt-6">
+              <Link href="/projects">
+                <button className="group relative inline-flex items-center justify-center px-6 py-3 text-lg font-medium text-white transition-all duration-300 ease-in-out bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 dark:from-purple-500 dark:to-purple-600 dark:hover:from-purple-600 dark:hover:to-purple-700 rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+                  <span className="flex items-center">
+                    View All Projects
+                    <svg className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                  </span>
+                </button>
+              </Link>
+              <Link href="/skills">
+                <button className="group relative inline-flex items-center justify-center px-6 py-3 text-lg font-medium transition-all duration-300 ease-in-out bg-transparent border-2 border-purple-600 text-purple-600 hover:bg-purple-600 hover:text-white dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-400 dark:hover:text-gray-900 rounded-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+                  <span className="flex items-center">
+                    View My Skills
+                    <svg className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </button>
+              </Link>
             </div>
           </div>
           <div className="sec__imgBox" data-aos="zoom-in" data-aos-delay="200">

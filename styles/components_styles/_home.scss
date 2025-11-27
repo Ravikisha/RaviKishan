@@ -1,6 +1,12 @@
 .home__container {
   row-gap: 7rem;
+  transition: background-color 0.3s ease;
+  
+  :global(.dark) & {
+    background-color: #111827; // gray-900
+  }
 }
+
 .home__content {
   grid-template-columns: 116px repeat(2, 1fr);
   padding-top: 5.5rem;
@@ -17,19 +23,46 @@
 .home__social-icon {
   font-size: 2rem;
   color: $title-color;
-  transition: 0.3s;
+  transition: all 0.3s ease;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  
+  :global(.dark) & {
+    color: #d1d5db; // gray-300
+    background-color: rgba(75, 85, 99, 0.1); // gray-600 with opacity
+    
+    &:hover {
+      background-color: rgba(75, 85, 99, 0.2);
+      transform: translateY(-2px);
+    }
+  }
 }
 
 .home__social-icon:nth-child(1):hover {
   color: rgb(208, 27, 240);
+  
+  :global(.dark) & {
+    color: rgb(233, 77, 255);
+  }
 }
+
 .home__social-icon:nth-child(2):hover {
   background-color: $title-color;
   color: $container-color;
   border-radius: 1rem;
+  
+  :global(.dark) & {
+    background-color: #374151; // gray-700
+    color: #f3f4f6;
+  }
 }
+
 .home__social-icon:nth-child(3):hover {
   color: rgb(20, 111, 231);
+  
+  :global(.dark) & {
+    color: rgb(59, 130, 246); // blue-500
+  }
 }
 
 .home__title {
@@ -37,15 +70,26 @@
   font-weight: 700;
   margin-bottom: $mb-0-25;
   display: flex;
+  color: $title-color;
+  transition: color 0.3s ease;
+  
+  :global(.dark) & {
+    color: #f9fafb; // gray-50
+  }
 }
 
 .home__subtitle {
   position: relative;
   font-size: $h3-font-size;
-  // padding-right: 5.4rem;
   font-weight: $font-medium;
   margin-bottom: $mb-1;
-  transition: 0.3s;
+  color: $text-color;
+  transition: all 0.3s ease;
+  
+  :global(.dark) & {
+    color: #d1d5db !important; // gray-300 - override any other styles
+  }
+  
   &::after {
     content: "";
     position: absolute;
@@ -54,19 +98,32 @@
     background: $text-color;
     left: 0;
     transition: 0.3s;
-
-    // top: 0;
     bottom: 0;
+    
+    :global(.dark) & {
+      background: #9ca3af; // gray-400
+    }
   }
+  
   &:hover::after {
     width: 180px;
     background: linear-gradient(90deg, rgba(2,0,36,1) 0%, rgba(9,9,121,1) 22%, rgba(0,212,255,1) 100%);
+    
+    :global(.dark) & {
+      background: linear-gradient(90deg, rgba(147, 51, 234, 1) 0%, rgba(79, 70, 229, 1) 50%, rgba(59, 130, 246, 1) 100%);
+    }
   }
 }
 
 .home__description {
   max-width: 400px;
   margin-bottom: $mb-1;
+  color: $text-color;
+  transition: color 0.3s ease;
+  
+  :global(.dark) & {
+    color: #9ca3af !important; // gray-400 - lighter than the subtitle
+  }
 }
 .home__hand {
   width: 38px;
@@ -89,6 +146,68 @@
   width: 300px;
   height: 300px;
   animation: profile__animation 8s ease-in-out infinite 1s;
+  transition: all 0.3s ease;
+  
+  :global(.dark) & {
+    box-shadow: inset 0 0 0 9px rgb(75 85 99 / 50%);
+    filter: brightness(0.9);
+  }
+}
+
+// Button styles for homepage
+.home__button,
+.button {
+  display: inline-block;
+  background-color: $first-color;
+  color: #fff;
+  padding: 1rem 1.75rem;
+  border-radius: 0.5rem;
+  font-weight: $font-medium;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    background-color: $first-color-alt;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  :global(.dark) & {
+    background-color: #8b5cf6; // purple-500
+    
+    &:hover {
+      background-color: #7c3aed; // purple-600
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+  }
+}
+
+// Badge styles
+.badge,
+.home__badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background-color: $first-color-lighter;
+  color: $first-color;
+  border-radius: 1rem;
+  font-size: $small-font-size;
+  font-weight: $font-medium;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: scale(1.05);
+  }
+  
+  :global(.dark) & {
+    background-color: rgba(139, 92, 246, 0.2);
+    color: #c4b5fd; // purple-300
+    
+    &:hover {
+      background-color: rgba(139, 92, 246, 0.3);
+    }
+  }
 }
 
 @keyframes profile__animation {
@@ -120,7 +239,6 @@
 }
 
 .home__scroll-name {
-  color: $title-color;
   font-weight: $font-medium;
   margin-right: $mb-0-25;
   margin-left: 2px;
@@ -128,7 +246,6 @@
 
 .home__scroll-arrow {
   font-size: 1.25rem;
-  color: $title-color;
 }
 
 .button_mod {

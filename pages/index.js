@@ -14,6 +14,7 @@ const Home = () => {
         <title>Ravi Kishan | Full Stack Developer Portfolio</title>
         <meta name="viewport" content="initial-scale=1.0, width=device-width" />
       </Head>
+      <div className="dark:bg-gray-900 transition-colors duration-300">
           <section className="main">
             <HomePage />
           </section>
@@ -22,6 +23,7 @@ const Home = () => {
           <ProjectReference />
           <Map className="map__page" />
           <WorkerSection />
+      </div>
         </>
   );
 };

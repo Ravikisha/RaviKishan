@@ -2,9 +2,10 @@ import React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Github, Linkedin, Mail } from "lucide-react";
-import { identity } from "../../lib/facts";
+import { useSiteContent } from "../../lib/useSiteContent";
 
 const ClosingCTA = () => {
+  const { identity } = useSiteContent();
   return (
     <section className="relative overflow-hidden border-t border-edge bg-bg py-28">
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-[480px] w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber/10 blur-[130px]" />

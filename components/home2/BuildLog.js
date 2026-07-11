@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { buildLog } from "../../lib/facts";
+import { useSiteContent } from "../../lib/useSiteContent";
 
 // The signature element: a live "build log" that types out Ravi's real
 // artifacts and metrics, like one of his own runtimes booting up.
@@ -9,6 +9,7 @@ const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const BuildLog = () => {
+  const { buildLog } = useSiteContent();
   const [typed, setTyped] = useState("");
   const [line, setLine] = useState(0);
   const [phase, setPhase] = useState("cmd"); // cmd -> out -> next

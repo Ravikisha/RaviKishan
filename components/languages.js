@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { AiFillEye, AiFillGithub } from "react-icons/ai";
 import { AnimatePresence, motion } from "framer-motion";
-import { data } from "./data_pl";
-import Card from './card'; 
+import { useSiteContent } from "../lib/useSiteContent";
+import Card from './card';
 import Filter from "./filter";
 
 const Languages = () => {
-    const [PLData, setPLData] = useState(data);
-    const [filterData, setFilterData] = useState(data);
+    const { languages: data } = useSiteContent();
+    const [PLData, setPLData] = useState(() => [...data]);
+    const [filterData, setFilterData] = useState(() => [...data]);
     const [activeFilter, setActiveFilter] = useState("All");
-    
+    useEffect(() => {
+      setPLData([...data]);
+      setFilterData([...data]);
+    }, [data]);
+
   return(
     <>
     <div className="PL__container" data-aos="fade-up" data-aos-delay="100" id="PL">

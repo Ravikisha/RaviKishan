@@ -1,10 +1,19 @@
 import React, { useState } from "react";
 import { useTheme } from "./utils/ThemeProvider";
 import Link from "next/link";
+import { useRouter } from "next/router";
+import TopNav from "./home2/TopNav";
 
 const Header = () => {
   const [Toggle, showMenu] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const router = useRouter();
+
+  // Whole public site now runs the new home2 identity + nav.
+  return <TopNav />;
+
+  // eslint-disable-next-line no-unreachable
+
   return (
   <header className="header dark:bg-gray-900 dark:text-white" id="header">
     <nav className="nav container_mod">

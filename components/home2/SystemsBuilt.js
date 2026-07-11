@@ -1,9 +1,37 @@
-import React, { useRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Github, ArrowUpRight, Package, Star } from "lucide-react";
-import { systems, github, identity } from "../../lib/facts";
+import { useSiteContent } from "../../lib/useSiteContent";
 
-const SystemCard = ({ s, i }) => {
+// Live star counts pulled straight from the GitHub REST API on mount.
+function useLiveStars(systems) {
+  const [stars, setStars] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      systems.map(async (s) => {
+        const m = s.href.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+        if (!m) return [s.name, s.stars];
+        try {
+          const r = await fetch(`https://api.github.com/repos/${m[1]}`);
+          if (!r.ok) return [s.name, s.stars];
+          const d = await r.json();
+          return [s.name, d.stargazers_count];
+        } catch {
+          return [s.name, s.stars];
+        }
+      })
+    ).then((pairs) => {
+      if (!cancelled) setStars(Object.fromEntries(pairs));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return stars;
+}
+
+const SystemCard = ({ s, i, star }) => {
   const ref = useRef(null);
 
   const onMove = (e) => {
@@ -37,10 +65,10 @@ const SystemCard = ({ s, i }) => {
           {s.kind}
         </span>
         <div className="flex items-center gap-1">
-          {s.stars ? (
+          {star ? (
             <span className="mr-1 inline-flex items-center gap-1 rounded-md border border-edge bg-bg px-1.5 py-0.5 font-mono text-[11px] text-muted">
               <Star className="h-3 w-3 fill-accent text-accent" />
-              {s.stars}
+              {star}
             </span>
           ) : null}
           {s.npm && (
@@ -99,6 +127,8 @@ const SystemCard = ({ s, i }) => {
 };
 
 const SystemsBuilt = () => {
+  const { systems, github, identity } = useSiteContent();
+  const stars = useLiveStars(systems);
   return (
     <section id="systems" className="relative bg-bg py-24">
       <div className="mx-auto max-w-6xl px-6">
@@ -130,7 +160,12 @@ const SystemsBuilt = () => {
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {systems.map((s, i) => (
-            <SystemCard key={s.name} s={s} i={i} />
+            <SystemCard
+              key={s.name}
+              s={s}
+              i={i}
+              star={stars[s.name] ?? s.stars}
+            />
           ))}
         </div>
       </div>

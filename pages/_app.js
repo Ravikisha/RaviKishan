@@ -13,12 +13,28 @@ import { useProgressStore } from "../components/useProgessStore.js";
 import AOS from "aos";
 import "aos/dist/aos.css";
 import { ThemeProvider } from "../components/utils/ThemeProvider";
+import { SiteContentProvider } from "../lib/useSiteContent";
 
 function MyApp({ Component, pageProps }) {
   const [loaderFinished, setLoaderFinished] = useState(false);
   const setIsAnimating = useProgressStore((state) => state.setIsAnimating);
   const isAnimating = useProgressStore((state) => state.isAnimating);
   const router = useRouter();
+
+  // Hidden admin CMS: render bare — no nav, footer, loader, analytics or the
+  // public SEO/meta. It manages its own Firebase state and must stay unindexed.
+  if (router.pathname === "/admin") {
+    return (
+      <ThemeProvider>
+        <Head>
+          <meta name="robots" content="noindex, nofollow" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Admin</title>
+        </Head>
+        <Component {...pageProps} />
+      </ThemeProvider>
+    );
+  }
   useEffect(() => {
     const handleStart = () => {
       setIsAnimating(true);
@@ -42,7 +58,7 @@ function MyApp({ Component, pageProps }) {
   }, []);
   return (
     <ThemeProvider>
-      <>
+      <SiteContentProvider>
         <Head>
           <meta charSet="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -122,7 +138,7 @@ function MyApp({ Component, pageProps }) {
         ) : (
           <Loader onComplete={() => setLoaderFinished(true)} />
         )}
-      </>
+      </SiteContentProvider>
     </ThemeProvider>
   );
 }

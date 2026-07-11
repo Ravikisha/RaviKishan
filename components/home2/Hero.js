@@ -3,8 +3,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Github, Linkedin, FileText, Star } from "lucide-react";
-import { identity, github, chips } from "../../lib/facts";
-import BuildLog from "./BuildLog";
+import { useSiteContent } from "../../lib/useSiteContent";
 
 const HeroCanvas = dynamic(() => import("./HeroCanvas"), { ssr: false });
 
@@ -18,6 +17,7 @@ const rise = {
 };
 
 const Hero = () => {
+  const { identity, github, chips } = useSiteContent();
   const reduced = useReducedMotion();
   const cardRef = useRef(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
@@ -144,7 +144,7 @@ const Hero = () => {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-            className="relative w-full max-w-[400px]"
+            className="relative w-full max-w-[440px]"
             style={{ perspective: "1200px" }}
           >
             <div
@@ -199,16 +199,6 @@ const Hero = () => {
             <Chip className="-left-3 bottom-20" delay={1} reduced={reduced}>
               {chips[2]}
             </Chip>
-          </motion.div>
-
-          {/* signature terminal */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full max-w-[400px]"
-          >
-            <BuildLog />
           </motion.div>
         </div>
       </div>

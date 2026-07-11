@@ -1,7 +1,16 @@
 import React from 'react'
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import Footer2 from './home2/Footer2';
 
 const Footer = () => {
+  const router = useRouter();
+
+  // Whole public site now uses the new home2 footer.
+  return <Footer2 />;
+
+  // eslint-disable-next-line no-unreachable
+
   return (
     <>
     <footer className="footer">

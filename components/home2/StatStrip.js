@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { stats, marquee } from "../../lib/facts";
+import { useSiteContent } from "../../lib/useSiteContent";
 
 function CountUp({ value, suffix }) {
   const ref = useRef(null);
@@ -61,6 +61,7 @@ function CountUp({ value, suffix }) {
 }
 
 const StatStrip = () => {
+  const { stats, marquee } = useSiteContent();
   const row = [...marquee, ...marquee];
   return (
     <section className="relative border-y border-edge bg-bg">

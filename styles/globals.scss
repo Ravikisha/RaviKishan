@@ -26,10 +26,39 @@
 @import "./components_styles/languages";
 // @import './components_styles/projectRef';
 
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Noto+Serif+Display:wght@300&family=Rubik:wght@400;500;700&display=swap");
 @import url('https://fonts.googleapis.com/css2?family=Allison&display=swap');
+
+/* ===== semantic theme tokens (home2 design system) ===== */
+:root {
+  --c-bg: #f6f7f9;
+  --c-surface: #ffffff;
+  --c-edge: #e4e7ec;
+  --c-muted: #5b6472;
+  --c-fg: #14161c;
+  --c-accent: #ffb020;
+  --c-accent-text: #92600a; /* amber legible as text on light */
+  --c-accent-fg: #14161c; /* text sitting on an amber fill */
+  --c-live: #0f9e8e;
+  --c-grid: #e6e8ee;
+  --c-glow: 8, 12, 20;
+}
+html.dark {
+  --c-bg: #0a0b0f;
+  --c-surface: #14161c;
+  --c-edge: #23262f;
+  --c-muted: #9aa1b2;
+  --c-fg: #eceef3;
+  --c-accent: #ffb020;
+  --c-accent-text: #ffb020;
+  --c-accent-fg: #0a0b0f;
+  --c-live: #4ed0c0;
+  --c-grid: #1a1d26;
+  --c-glow: 255, 176, 32;
+}
 
 html,
 body {

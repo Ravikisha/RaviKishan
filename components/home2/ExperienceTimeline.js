@@ -1,9 +1,10 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { GraduationCap } from "lucide-react";
-import { experience, credentials, education } from "../../lib/facts";
+import { useSiteContent } from "../../lib/useSiteContent";
 
 const ExperienceTimeline = () => {
+  const { experience, credentials, education } = useSiteContent();
   return (
     <section className="relative border-t border-edge bg-bg py-24">
       <div className="mx-auto max-w-6xl px-6">
@@ -27,20 +28,34 @@ const ExperienceTimeline = () => {
                 {education.map((e) => (
                   <div
                     key={e.degree}
-                    className="rounded-lg border border-edge bg-surface p-4"
+                    className="flex items-start gap-3 rounded-lg border border-edge bg-surface p-4"
                   >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <h3 className="font-display text-sm font-bold text-fg">
-                        {e.school}
-                      </h3>
-                      <span className="shrink-0 font-mono text-[11px] text-muted">
-                        {e.period}
-                      </span>
+                    <span
+                      className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-edge"
+                      style={{ background: e.logoBg }}
+                    >
+                      <img
+                        src={e.logo}
+                        alt={e.school}
+                        className="h-8 w-8 object-contain"
+                      />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h3 className="font-display text-sm font-bold text-fg">
+                          {e.school}
+                        </h3>
+                        <span className="shrink-0 font-mono text-[11px] text-muted">
+                          {e.period}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">{e.degree}</p>
+                      {e.gpa && (
+                        <p className="mt-2 font-mono text-xs text-accentText">
+                          {e.gpa.includes("%") ? e.gpa : `GPA ${e.gpa}`}
+                        </p>
+                      )}
                     </div>
-                    <p className="mt-1 text-xs text-muted">{e.degree}</p>
-                    <p className="mt-2 font-mono text-xs text-accentText">
-                      GPA {e.gpa}
-                    </p>
                   </div>
                 ))}
               </div>

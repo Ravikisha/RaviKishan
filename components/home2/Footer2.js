@@ -1,29 +1,30 @@
 import React from "react";
 import Link from "next/link";
 import { Github, Linkedin, Mail } from "lucide-react";
-import { identity } from "../../lib/facts";
-
-const cols = [
-  {
-    title: "Navigate",
-    links: [
-      { label: "Systems", href: "/#systems" },
-      { label: "Projects", href: "/projects" },
-      { label: "About", href: "/about" },
-      { label: "Résumé", href: "/resume" },
-    ],
-  },
-  {
-    title: "Connect",
-    links: [
-      { label: "GitHub", href: identity.github, ext: true },
-      { label: "LinkedIn", href: identity.linkedin, ext: true },
-      { label: "Email", href: `mailto:${identity.email}`, ext: true },
-    ],
-  },
-];
+import { useSiteContent } from "../../lib/useSiteContent";
 
 const Footer2 = () => {
+  const { identity } = useSiteContent();
+  const cols = [
+    {
+      title: "Navigate",
+      links: [
+        { label: "Systems", href: "/#systems" },
+        { label: "Projects", href: "/projects" },
+        { label: "Blog", href: "/blog" },
+        { label: "About", href: "/about" },
+        { label: "Résumé", href: "/resume" },
+      ],
+    },
+    {
+      title: "Connect",
+      links: [
+        { label: "GitHub", href: identity.github, ext: true },
+        { label: "LinkedIn", href: identity.linkedin, ext: true },
+        { label: "Email", href: `mailto:${identity.email}`, ext: true },
+      ],
+    },
+  ];
   return (
     <footer className="border-t border-edge bg-bg">
       <div className="mx-auto max-w-6xl px-6 py-14">

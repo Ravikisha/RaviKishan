@@ -1,11 +1,32 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Sun, Moon } from "lucide-react";
+import { useTheme } from "../utils/ThemeProvider";
+
+const ThemeToggle = ({ className = "" }) => {
+  const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return (
+    <button
+      onClick={toggleTheme}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+      className={`grid h-9 w-9 place-items-center rounded-lg border border-edge bg-surface text-muted transition-colors hover:text-accentText focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${className}`}
+    >
+      {mounted && theme === "dark" ? (
+        <Sun className="h-4 w-4" />
+      ) : (
+        <Moon className="h-4 w-4" />
+      )}
+    </button>
+  );
+};
 
 const links = [
   { label: "Systems", href: "/#systems" },
   { label: "About", href: "/about" },
   { label: "Projects", href: "/projects" },
+  { label: "Blog", href: "/blog" },
   { label: "Skills", href: "/skills" },
   { label: "Résumé", href: "/resume" },
 ];
@@ -48,20 +69,24 @@ const TopNav = () => {
               </a>
             </Link>
           ))}
+          <ThemeToggle className="ml-2" />
           <Link href="/contact">
-            <a className="ml-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accentFg transition-transform hover:-translate-y-0.5">
+            <a className="ml-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accentFg transition-transform hover:-translate-y-0.5">
               Get in touch
             </a>
           </Link>
         </div>
 
-        <button
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Toggle menu"
-          className="rounded-md p-2 text-fg md:hidden"
-        >
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle />
+          <button
+            onClick={() => setOpen((v) => !v)}
+            aria-label="Toggle menu"
+            className="rounded-md p-2 text-fg"
+          >
+            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
       </nav>
 
       {open && (

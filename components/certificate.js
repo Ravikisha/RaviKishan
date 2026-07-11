@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { data, languageBadge } from "./data_cert";
+import { languageBadge } from "./data_cert";
+import { useSiteContent } from "../lib/useSiteContent";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import Image from "next/image";
 import LinkedInLogo from "../public/company/linkedin.png";
 import CertificateLogo from "../public/assets/certificate.jpg";
-import { data as data_badge } from "./data_pl";
 import { DownloadIcon } from "lucide-react";
 import { badgeColorGenerator } from "./utils/utils";
 
 const Certificate = () => {
-  const [cert, setCert] = useState(data);
-  const [filterData, setFilterData] = useState(data);
+  const { certificates: data } = useSiteContent();
+  const [cert, setCert] = useState(() => [...data]);
+  const [filterData, setFilterData] = useState(() => [...data]);
   const [activeFilter, setActiveFilter] = useState("All");
+  useEffect(() => {
+    setCert([...data]);
+    setFilterData([...data]);
+  }, [data]);
 
   return (
     <>
@@ -142,6 +147,7 @@ const Filter = ({ popular, setFiltered, activeFilter, setActiveFilter }) => {
 };
 
 export const Card = (props) => {
+  const { languages: data_badge } = useSiteContent();
   const {
     name,
     organization,

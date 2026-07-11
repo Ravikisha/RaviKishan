@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { data } from "./data_projects";
+import { useSiteContent } from "../lib/useSiteContent";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import Image from "next/image";
 import LinkedInLogo from "../public/company/linkedin.png";
 import GithubLogo from "../public/company/github.png";
 import LiveLogo from "../public/assets/live.jpg";
-import { data as data_badge } from "./data_pl";
-import { DownloadIcon } from "lucide-react";
+import { DownloadIcon, BookOpen } from "lucide-react";
 import { badgeColorGenerator } from "./utils/utils";
 
 const Projects = () => {
-  const [project, setProject] = useState(data);
-  const [filterData, setFilterData] = useState(data);
+  const { projects: data } = useSiteContent();
+  const [project, setProject] = useState(() => [...data]);
+  const [filterData, setFilterData] = useState(() => [...data]);
   const [activeFilter, setActiveFilter] = useState("All");
+  useEffect(() => {
+    setProject([...data]);
+    setFilterData([...data]);
+  }, [data]);
 
   return (
     <>
@@ -129,12 +133,14 @@ const Filter = ({ popular, setFiltered, activeFilter, setActiveFilter }) => {
 };
 
 export const Card = (props) => {
+  const { languages: data_badge } = useSiteContent();
   const {
     name,
     organization,
     description,
     image,
     link,
+    docs,
     linkedin,
     tags,
     skills,
@@ -229,6 +235,18 @@ export const Card = (props) => {
                 />
               </a>
             )}
+            {docs && (
+              <a
+                href={docs}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 rounded-md bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+                title="Documentation site"
+              >
+                <BookOpen className="h-4 w-4" />
+                Docs
+              </a>
+            )}
           </div>
           <Dialog.Trigger asChild>
             <button className="shadow-blackA4 inline-flex items-center justify-center rounded-[4px] bg-sky-500 text-white hover:bg-sky-700 p-4 font-medium leading-none shadow-[0_2px_10px] focus:shadow-[0_0_0_2px] focus:shadow-black focus:outline-none">
@@ -302,6 +320,18 @@ export const Card = (props) => {
                         width={70}
                         objectFit="contain"
                       />
+                    </a>
+                  )}
+                  {docs && (
+                    <a
+                      href={docs}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 rounded-md bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+                      title="Documentation site"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Docs
                     </a>
                   )}
                 </div>

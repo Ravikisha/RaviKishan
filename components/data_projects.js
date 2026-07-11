@@ -98,6 +98,7 @@ export const data = [
   },
   {
     name: "Distributed Key-Value Database",
+    featured: true,
     description:
     "The Distributed Key-Value Database is a scalable, fault-tolerant key-value store implemented in Go.",
     image: "distributedkv.png",
@@ -121,6 +122,7 @@ export const data = [
   },
   {
     name: "Relax Search",
+    featured: true,
     description:
     "RelaxSearch is a lightweight, demonstration-based search engine project built with Go and Elasticsearch.",
     image: "relaxsearch.jpg",
@@ -143,6 +145,7 @@ export const data = [
   },
   {
     name: "Redis Clone",
+    featured: true,
     description:
     "A Redis clone database implemented in both Go and Rust. This project aims to replicate the core functionalities of Redis, providing a simple and efficient in-memory data structure store.",
     image: "redisclone.jpg",
@@ -225,6 +228,7 @@ export const data = [
   },
   {
     name: "MyDocker",
+    featured: true,
     description: "MyDocker is a lightweight container runtime built from scratch in Go that demonstrates how containerization works under the hood — similar to Docker but in a simplified form.",
     image: "mydocker_banner.png",
     linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
@@ -312,6 +316,7 @@ export const data = [
   },
   {
     name: "RelaxLang",
+    featured: true,
     description: "RelaxLang is a simple, educational programming language designed to help developers understand the basics of language parsing and interpretation.",
     image: "relaxlang.png",
     link: "https://hub.docker.com/repository/docker/ravikishan63392/relaxlang",
@@ -323,6 +328,7 @@ export const data = [
   },
   {
     name: "Relax.js",
+    featured: true,
     description: "Relax.js is a lightweight and modern frontend library designed to simplify building dynamic web applications using a virtual DOM and a component-based architecture.",
     image: "relaxjslogo.png",
     link: "https://www.npmjs.com/package/relaxcore",
@@ -352,5 +358,84 @@ export const data = [
     link: "https://www.npmjs.com/package/livelywatch",
     skills: ["Typescript", "Javascript"],
     rank: 5
+  },
+  {
+    name: "RelaxNative",
+    description:
+    "Native C/C++/Rust for Node.js with zero-config compilation, build caching, isolation modes, and a supply-chain trust system for third-party native packages.",
+    image: "relaxnative.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "node", "native-addons", "supply-chain", "open-source"],
+    github: "https://github.com/Ravikisha/RelaxNative",
+    skills: ["Typescript", "C++", "Rust"],
+    rank: 1
+  },
+  {
+    name: "ZenZip",
+    description:
+    "The agent-native backend framework for Node.js — durable workflows, queues, schedules, events, state machines and AI agents in one runtime.",
+    image: "zenzip.png",
+    docs: "https://zenzip.vercel.app",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "node", "framework", "workflows", "ai-agents", "live"],
+    github: "https://github.com/Ravikisha/ZenZip",
+    skills: ["Typescript", "Node Js"],
+    rank: 1
+  },
+  {
+    name: "JorvelJS",
+    description:
+    "An opinionated micro-frontend framework and tooling built on Rspack Module Federation for composing independently deployed frontends.",
+    image: "jorveljs.png",
+    docs: "https://jorveljs.vercel.app/",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "micro-frontend", "rspack", "module-federation", "live"],
+    github: "https://github.com/Ravikisha/JorvelJS",
+    skills: ["Typescript", "React"],
+    rank: 2
+  },
+  {
+    name: "RustDNS",
+    description:
+    "A DNS server built from scratch in Rust — parses and serves DNS queries, implementing the protocol end to end to understand how name resolution really works.",
+    image: "rustdns.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "rust", "dns", "networking", "system design"],
+    github: "https://github.com/Ravikisha/RustDNS",
+    skills: ["Rust"],
+    rank: 3
+  },
+  {
+    name: "SqliteC",
+    description:
+    "A SQLite reimplementation in C — a from-scratch build of the storage engine and SQL layer to learn how an embedded database works internally.",
+    image: "sqlitec.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "c", "database", "system design"],
+    github: "https://github.com/Ravikisha/SqliteC",
+    skills: ["C"],
+    rank: 3
+  },
+  {
+    name: "XPromise",
+    description:
+    "A from-scratch reimplementation of JavaScript Promises — replicating the native Promise API, chaining and resolution semantics from first principles.",
+    image: "xpromise.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "javascript", "library", "open-source"],
+    github: "https://github.com/Ravikisha/XPromise",
+    skills: ["JavaScript"],
+    rank: 6
+  },
+  {
+    name: "DronaUI",
+    description:
+    "A modern, lightweight CSS framework inspired by Bootstrap — focused on performance and a small footprint with a utility and component system.",
+    image: "dronaui.png",
+    linkedin: "https://www.linkedin.com/in/ravikisha/details/projects/",
+    tags: ["personal", "css", "css-framework", "open-source"],
+    github: "https://github.com/Ravikisha/DronaUI",
+    skills: ["css", "JavaScript"],
+    rank: 6
   }
 ];

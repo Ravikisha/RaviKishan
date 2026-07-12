@@ -1,12 +1,14 @@
 {
-    "theme_color": "#fff",
-    "background_color": "#fff",
+    "theme_color": "#FFB020",
+    "background_color": "#ffffff",
     "display": "standalone",
     "scope": "/",
     "start_url": "/",
-    "name": "Ravi Kishan",
-    "short_name": "Ravi",
-    "description": "Ravi a full-stack developer",
+    "name": "Ravi Kishan — Software Engineer",
+    "short_name": "Ravi Kishan",
+    "description": "Software engineer in distributed systems, systems programming and applied AI. Patent-holding open-source author.",
+    "categories": ["portfolio", "technology", "developer"],
+    "lang": "en",
     "icons": [
         {
             "src": "/icon-192x192.png",

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import { collection, addDoc } from "firebase/firestore";
 import { Mail, Github, Linkedin, MapPin, Send, Check } from "lucide-react";
@@ -60,14 +60,11 @@ const Contact = () => {
 
   return (
     <>
-      <Head>
-        <title>Contact — Ravi Kishan</title>
-        <meta
-          name="description"
-          content="Get in touch with Ravi Kishan — open to hard problems in distributed systems, AI and performance."
-        />
-        <meta name="viewport" content="initial-scale=1.0, width=device-width" />
-      </Head>
+      <Seo
+        title="Contact — Ravi Kishan"
+        description="Get in touch with Ravi Kishan — open to hard problems in distributed systems, AI and performance."
+        path="/contact"
+      />
 
       <main className="bg-bg font-sans text-fg antialiased">
         <PageHeader

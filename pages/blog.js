@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import { Heart, Clock, ArrowUpRight, PenLine } from "lucide-react";
 import PageHeader from "../components/home2/PageHeader";
@@ -207,11 +207,11 @@ const Blog = () => {
 
   return (
     <>
-      <Head>
-        <title>Blog — Ravi Kishan</title>
-        <meta name="description" content="Writing by Ravi Kishan on systems programming, distributed systems and building developer tools from scratch — from dev.to and Medium." />
-        <meta name="viewport" content="initial-scale=1.0, width=device-width" />
-      </Head>
+      <Seo
+        title="Blog — Ravi Kishan"
+        description="Writing by Ravi Kishan on systems programming, distributed systems and building developer tools from scratch — from dev.to and Medium."
+        path="/blog"
+      />
 
       <main className="bg-bg font-sans text-fg antialiased">
         <PageHeader

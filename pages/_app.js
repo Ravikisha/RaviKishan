@@ -77,77 +77,77 @@ function MyApp({ Component, pageProps }) {
   return (
     <ThemeProvider>
       <SiteContentProvider>
+        {/* Site-wide SEO defaults. Every routed page also renders <Seo/> which
+            overrides these via matching `key`s; these cover anything that doesn't
+            (and keep the positioning correct: Software Engineer, not Full Stack). */}
         <Head>
           <meta charSet="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <meta
-            name="title"
-            content="Ravi Kishan | Full Stack Developer Portfolio"
-          />
+          <meta name="viewport" content="width=device-width, initial-scale=1" key="viewport" />
+          <title key="title">Ravi Kishan — Software Engineer · Distributed Systems &amp; Applied AI</title>
           <meta
             name="description"
-            content="Explore Ravi Kishan's portfolio – a full stack developer skilled in building scalable web, cloud, and software systems."
+            key="description"
+            content="Ravi Kishan — software engineer in distributed systems, systems programming and applied AI. Builds infrastructure from first principles; patent-holding open-source author."
           />
           <meta
             name="keywords"
-            content="Ravi Kishan, full stack developer, software developer, web developer, cloud developer, backend engineer, frontend developer, JavaScript developer, React developer, Node.js developer, TypeScript developer, Next.js, Express.js, MongoDB, Firebase, DevOps engineer, scalable systems, distributed systems, database engineer, portfolio website, open source contributor, REST API developer, GraphQL, Docker, Kubernetes, microservices, CI/CD pipelines, GitHub portfolio, Git, serverless architecture, AWS developer, GCP developer, cloud engineering, responsive design, Tailwind CSS, ShadCN UI, performance optimization, software architect, code quality, scalable web apps, React projects, cloud-native apps, modern web development, frontend frameworks, backend frameworks, agile development, web performance, SEO developer, JAMstack, Progressive Web Apps, full stack portfolio, developer tools, software innovation, web engineering"
+            content="Ravi Kishan, software engineer, distributed systems, systems programming, applied AI, agentic AI, Go, Rust, TypeScript, LangChain, LangGraph, RAG, container runtime, language interpreter, backtesting, SIMD, open source, patent"
           />
-          <meta name="author" content="Ravi Kishan" />
-          <meta name="robots" content="index, follow" />
+          <meta name="author" content="Ravi Kishan" key="author" />
+          <meta name="robots" content="index, follow, max-image-preview:large" key="robots" />
           <meta name="language" content="English" />
-          <link rel="canonical" href="https://ravikishan.me/" />
+          <link rel="canonical" href="https://ravikishan.me/" key="canonical" />
 
-          <meta property="og:type" content="website" />
-          <meta property="og:url" content="https://ravikishan.me/" />
+          <meta property="og:type" content="website" key="og:type" />
+          <meta property="og:site_name" content="Ravi Kishan" key="og:site_name" />
+          <meta property="og:url" content="https://ravikishan.me/" key="og:url" />
           <meta
             property="og:title"
-            content="Ravi Kishan | Full Stack Developer Portfolio"
+            key="og:title"
+            content="Ravi Kishan — Software Engineer · Distributed Systems & Applied AI"
           />
           <meta
             property="og:description"
-            content="Explore Ravi Kishan's portfolio – a full stack developer skilled in building scalable web, cloud, and software systems."
+            key="og:description"
+            content="Ravi Kishan — software engineer in distributed systems, systems programming and applied AI. Patent-holding open-source author."
           />
-          <meta
-            property="og:image"
-            content="https://ravikishan.me/pagepreview.png"
-          />
-          <meta property="og:site_name" content="Ravi Kishan" />
+          <meta property="og:image" content="https://ravikishan.me/pagepreview.png" key="og:image" />
 
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:url" content="https://ravikishan.me/" />
+          <meta name="twitter:card" content="summary_large_image" key="twitter:card" />
+          <meta name="twitter:site" content="@RaviKishan_" key="twitter:site" />
+          <meta name="twitter:creator" content="@RaviKishan_" key="twitter:creator" />
           <meta
             name="twitter:title"
-            content="Ravi Kishan | Full Stack Developer Portfolio"
+            key="twitter:title"
+            content="Ravi Kishan — Software Engineer · Distributed Systems & Applied AI"
           />
           <meta
             name="twitter:description"
-            content="Explore Ravi Kishan's portfolio – a full stack developer skilled in building scalable web, cloud, and software systems."
+            key="twitter:description"
+            content="Ravi Kishan — software engineer in distributed systems, systems programming and applied AI. Patent-holding open-source author."
           />
-          <meta
-            name="twitter:image"
-            content="https://ravikishan.me/pagepreview.png"
-          />
-          <meta
-            name="twitter:image:alt"
-            content="Preview image of Ravi Kishan's Portfolio"
-          />
+          <meta name="twitter:image" content="https://ravikishan.me/pagepreview.png" key="twitter:image" />
+          <meta name="twitter:image:alt" content="Ravi Kishan — Software Engineer" key="twitter:image:alt" />
         </Head>
+        {/* Google Analytics (GA4). Two scripts need DISTINCT ids — next/script
+            dedups by id, so sharing one would silently drop the config. */}
         <Script
-          id="next"
+          id="ga4-lib"
           strategy="afterInteractive"
-          async
-          src={`https://www.googletagmanager.com/gtag/js?id=G-7RHZZRFLT9`}
-        ></Script>
-        <Script id="next" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-7RHZZRFLT9', {
-              page_path: window.location.pathname,
-            });
-          `}
-        </Script>
+          src="https://www.googletagmanager.com/gtag/js?id=G-7RHZZRFLT9"
+        />
+        <Script
+          id="ga4-init"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              window.gtag = function(){ window.dataLayer.push(arguments); };
+              gtag('js', new Date());
+              gtag('config', 'G-7RHZZRFLT9');
+            `,
+          }}
+        />
         <Header />
         <Progress isAnimating={isAnimating} />
         <Component {...pageProps} />

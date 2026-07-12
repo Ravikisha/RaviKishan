@@ -1,5 +1,5 @@
 import React from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import {
   Download,
@@ -62,14 +62,11 @@ const Resume = () => {
 
   return (
     <>
-      <Head>
-        <title>Résumé — Ravi Kishan</title>
-        <meta
-          name="description"
-          content="Ravi Kishan's résumé — software engineer in distributed systems, systems programming and applied AI."
-        />
-        <meta name="viewport" content="initial-scale=1.0, width=device-width" />
-      </Head>
+      <Seo
+        title="Résumé — Ravi Kishan"
+        description="Ravi Kishan's résumé — software engineer in distributed systems, systems programming and applied AI."
+        path="/resume"
+      />
 
       <main className="bg-bg font-sans text-fg antialiased">
         <PageHeader

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import { Github, ExternalLink, Package, BookOpen, Search, X, Box, LayoutGrid } from "lucide-react";
 import { useSiteContent } from "../lib/useSiteContent";
@@ -335,14 +335,11 @@ const Projects = () => {
 
   return (
     <>
-      <Head>
-        <title>Projects — Ravi Kishan</title>
-        <meta
-          name="description"
-          content="Open-source projects by Ravi Kishan — runtimes, developer tools, distributed systems and npm packages."
-        />
-        <meta name="viewport" content="initial-scale=1.0, width=device-width" />
-      </Head>
+      <Seo
+        title="Projects — Ravi Kishan"
+        description="Open-source projects by Ravi Kishan — runtimes, developer tools, distributed systems and npm packages."
+        path="/projects"
+      />
 
       <main className="bg-bg font-sans text-fg antialiased">
         <PageHeader

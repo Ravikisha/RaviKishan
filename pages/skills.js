@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import { ExternalLink, BadgeCheck } from "lucide-react";
 import PageHeader from "../components/home2/PageHeader";
@@ -223,14 +223,11 @@ const CertCard = ({ c, i }) => {
 const Skills = () => {
   return (
     <>
-      <Head>
-        <title>Skills — Ravi Kishan</title>
-        <meta
-          name="description"
-          content="Ravi Kishan's technical stack — languages, AI/ML, backend, infrastructure — and 40+ certifications."
-        />
-        <meta name="viewport" content="initial-scale=1.0, width=device-width" />
-      </Head>
+      <Seo
+        title="Skills — Ravi Kishan"
+        description="Ravi Kishan's technical stack — languages, AI/ML, backend, infrastructure — and 40+ certifications."
+        path="/skills"
+      />
 
       <main className="rm-only-block bg-bg font-sans text-fg antialiased">
         <PageHeader

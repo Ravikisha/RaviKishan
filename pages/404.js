@@ -1,5 +1,5 @@
 import React from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import Link from "next/link";
 import { ArrowLeft, Coffee } from "lucide-react";
 
@@ -7,11 +7,12 @@ import { ArrowLeft, Coffee } from "lucide-react";
 export default function NotFound() {
   return (
     <>
-      <Head>
-        <title>418 — I&apos;m a teapot · Ravi Kishan</title>
-        <meta name="robots" content="noindex" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      </Head>
+      <Seo
+        title="418 — I'm a teapot · Ravi Kishan"
+        description="This page brewed away. Head back to ravikishan.me."
+        path="/404"
+        noindex
+      />
 
       <main className="grid min-h-screen place-items-center bg-bg px-6 font-sans text-fg antialiased">
         <div className="w-full max-w-lg">

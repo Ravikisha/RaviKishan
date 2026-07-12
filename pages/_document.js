@@ -3,7 +3,7 @@ import Script from "next/script";
 
 export default function Document() {
   return (
-    <Html>
+    <Html lang="en">
       <Head>
         <link
           rel="stylesheet"
@@ -24,8 +24,10 @@ export default function Document() {
           type="text/css"
         />
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#fff" />
-        <link rel="apple-touch-icon" href="favicon.ico" />
+        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#0a0b0f" media="(prefers-color-scheme: dark)" />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/favicon.ico" />
       </Head>
       
       <Script

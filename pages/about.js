@@ -1,5 +1,5 @@
 import React from "react";
-import Head from "next/head";
+import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import { Cpu, Boxes, BrainCircuit, Layers } from "lucide-react";
 import { useSiteContent } from "../lib/useSiteContent";
@@ -31,14 +31,12 @@ const About = () => {
 
   return (
     <>
-      <Head>
-        <title>About — Ravi Kishan</title>
-        <meta
-          name="description"
-          content="Ravi Kishan — software engineer working in distributed systems, systems programming and applied AI. The story behind the builds."
-        />
-        <meta name="viewport" content="initial-scale=1.0, width=device-width" />
-      </Head>
+      <Seo
+        title="About — Ravi Kishan"
+        description="Ravi Kishan — software engineer working in distributed systems, systems programming and applied AI. The story behind the builds."
+        path="/about"
+        type="profile"
+      />
 
       <main className="bg-bg font-sans text-fg antialiased">
         <PageHeader

@@ -234,7 +234,6 @@ const APP_DEFS = [
     accent: "#A78BFA",
     w: 520,
     h: 700,
-    dark: true,
     singleton: true,
     Component: MusicApp,
   },
@@ -293,7 +292,6 @@ const APP_DEFS = [
     accent: "#60A5FA",
     w: 1040,
     h: 700,
-    dark: true,
     Component: Browser,
   },
   {

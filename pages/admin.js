@@ -13,7 +13,7 @@ import {
   GoogleAuthProvider,
   signOut,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { defaultContent, sectionMeta } from "../lib/siteContent";
 import { isAdminEmail } from "../lib/adminAllowlist";
@@ -305,6 +305,7 @@ function Editor({ user }) {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
+  const [view, setView] = useState("content"); // content | inbox
 
   // load current content (Firestore doc, or seed from defaults if none)
   useEffect(() => {
@@ -383,49 +384,206 @@ function Editor({ user }) {
         <div className="admin-brand">
           <span className="admin-dot" /> Site Admin
         </div>
+        <div className="admin-tabs">
+          <button
+            type="button"
+            className={`admin-tab${view === "content" ? " on" : ""}`}
+            onClick={() => setView("content")}
+          >
+            Content
+          </button>
+          <button
+            type="button"
+            className={`admin-tab${view === "inbox" ? " on" : ""}`}
+            onClick={() => setView("inbox")}
+          >
+            Inbox
+          </button>
+        </div>
         <div className="admin-top-actions">
-          <input
-            className="admin-search"
-            placeholder="Filter sections…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button className="admin-ghost" onClick={resetToDefaults} type="button">
-            Reset to file defaults
-          </button>
-          <button className="admin-primary" onClick={save} disabled={saving} type="button">
-            {saving ? "Saving…" : "Save & publish"}
-          </button>
+          {view === "content" && (
+            <>
+              <input
+                className="admin-search"
+                placeholder="Filter sections…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <button className="admin-ghost" onClick={resetToDefaults} type="button">
+                Reset to file defaults
+              </button>
+              <button className="admin-primary" onClick={save} disabled={saving} type="button">
+                {saving ? "Saving…" : "Save & publish"}
+              </button>
+            </>
+          )}
           <button className="admin-ghost" onClick={() => signOut(auth)} type="button">
             Sign out
           </button>
         </div>
       </header>
 
-      <div className="admin-userline">
-        <span>Signed in as <strong>{user.email}</strong></span>
-        {status && <span className="admin-status">{status}</span>}
-      </div>
+      {view === "content" ? (
+        <>
+          <div className="admin-userline">
+            <span>Signed in as <strong>{user.email}</strong></span>
+            {status && <span className="admin-status">{status}</span>}
+          </div>
 
-      <main className="admin-main">
-        {visible.map((s, i) => (
-          <Section
-            key={s.key}
-            k={s.key}
-            label={s.label}
-            value={content[s.key]}
-            onChange={onChange}
-            defaultOpen={i === 0}
-          />
-        ))}
-        <div className="admin-footer-actions">
-          <button className="admin-primary big" onClick={save} disabled={saving} type="button">
-            {saving ? "Saving…" : "Save & publish all changes"}
-          </button>
-        </div>
-      </main>
+          <main className="admin-main">
+            {visible.map((s, i) => (
+              <Section
+                key={s.key}
+                k={s.key}
+                label={s.label}
+                value={content[s.key]}
+                onChange={onChange}
+                defaultOpen={i === 0}
+              />
+            ))}
+            <div className="admin-footer-actions">
+              <button className="admin-primary big" onClick={save} disabled={saving} type="button">
+                {saving ? "Saving…" : "Save & publish all changes"}
+              </button>
+            </div>
+          </main>
+        </>
+      ) : (
+        <Inbox />
+      )}
       <Styles />
     </div>
+  );
+}
+
+/* ---------- inbox (incoming: mail · contact · chat) ---------- */
+
+const millisOf = (v) => {
+  if (v?.ts?.toMillis) return v.ts.toMillis();
+  if (v?.date) { const p = Date.parse(v.date); if (!Number.isNaN(p)) return p; }
+  return 0;
+};
+const when = (ms) => (ms ? new Date(ms).toLocaleString() : "—");
+
+// live subscription to a collection → sorted newest-first
+function useCollection(name) {
+  const [rows, setRows] = useState(null); // null = loading
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, name),
+      (snap) => {
+        const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        arr.sort((a, b) => millisOf(b) - millisOf(a));
+        setRows(arr);
+      },
+      (e) => setErr(e?.code || "read failed")
+    );
+    return () => unsub();
+  }, [name]);
+  return { rows, err };
+}
+
+function Avatar({ text }) {
+  const s = (text || "?").trim();
+  const hue = [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 360;
+  return (
+    <span className="inbox-av" style={{ background: `linear-gradient(140deg, hsl(${hue} 68% 55%), hsl(${(hue + 45) % 360} 68% 44%))` }}>
+      {s.slice(0, 2).toUpperCase() || "??"}
+    </span>
+  );
+}
+
+function MessageCard({ from, sub, meta, body, ms, onDelete }) {
+  return (
+    <div className="inbox-card">
+      <Avatar text={from} />
+      <div className="inbox-card-main">
+        <div className="inbox-card-top">
+          <span className="inbox-from">{from || "Anonymous"}</span>
+          {meta && <span className="inbox-meta">{meta}</span>}
+          <span className="inbox-time">{when(ms)}</span>
+          <button className="inbox-del" onClick={onDelete} title="Delete" aria-label="Delete">✕</button>
+        </div>
+        {sub && <div className="inbox-sub">{sub}</div>}
+        {body && <div className="inbox-body">{body}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Inbox() {
+  const [tab, setTab] = useState("mail");
+  const mail = useCollection("mail");
+  const contact = useCollection("myportifilio");
+  const chat = useCollection("chat");
+
+  const src = tab === "mail" ? mail : tab === "contact" ? contact : chat;
+
+  const del = (name, id) => async () => {
+    if (!confirm("Delete this message? This can't be undone.")) return;
+    try { await deleteDoc(doc(db, name, id)); } catch (_) {}
+  };
+  const coll = tab === "mail" ? "mail" : tab === "contact" ? "myportifilio" : "chat";
+
+  const count = (c) => (c.rows == null ? "…" : c.rows.length);
+
+  const TABS = [
+    { k: "mail", label: "Mail", c: mail },
+    { k: "contact", label: "Contact", c: contact },
+    { k: "chat", label: "Lobby chat", c: chat },
+  ];
+
+  return (
+    <main className="admin-main">
+      <div className="inbox-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.k}
+            type="button"
+            className={`inbox-tab${tab === t.k ? " on" : ""}`}
+            onClick={() => setTab(t.k)}
+          >
+            {t.label}
+            <span className="inbox-count">{count(t.c)}</span>
+          </button>
+        ))}
+      </div>
+
+      {src.err && <div className="admin-err" style={{ padding: "8px 2px" }}>Couldn&apos;t read messages ({src.err}). Check Firestore rules.</div>}
+
+      {src.rows == null ? (
+        <p className="admin-sub" style={{ padding: "20px 2px" }}>Loading messages…</p>
+      ) : src.rows.length === 0 ? (
+        <div className="inbox-empty">
+          <p>No {tab === "chat" ? "chat messages" : tab === "contact" ? "contact requests" : "mail"} yet.</p>
+          <span>New ones land here the moment they&apos;re sent.</span>
+        </div>
+      ) : (
+        <div className="inbox-list">
+          {src.rows.map((m) => {
+            if (tab === "mail") {
+              return (
+                <MessageCard key={m.id} from={m.name} meta={m.email} sub={m.subject}
+                  body={m.message} ms={millisOf(m)} onDelete={del(coll, m.id)} />
+              );
+            }
+            if (tab === "contact") {
+              const from = [m.first_name, m.last_name].filter(Boolean).join(" ");
+              const meta = [m.email, m.phone].filter(Boolean).join(" · ");
+              return (
+                <MessageCard key={m.id} from={from} meta={meta} body={m.message}
+                  ms={millisOf(m)} onDelete={del(coll, m.id)} />
+              );
+            }
+            return (
+              <MessageCard key={m.id} from={m.name} meta={m.title} body={m.text}
+                ms={millisOf(m)} onDelete={del(coll, m.id)} />
+            );
+          })}
+        </div>
+      )}
+    </main>
   );
 }
 
@@ -800,6 +958,44 @@ function Styles() {
         display: flex;
         justify-content: center;
       }
+
+      /* ---- top view toggle (Content / Inbox) ---- */
+      .admin-tabs { display: flex; gap: 4px; background: #0d0e13; border: 1px solid #262a35; border-radius: 10px; padding: 3px; }
+      .admin-tab {
+        background: none; border: none; color: #8b90a0; cursor: pointer;
+        font-family: inherit; font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 7px; transition: color .12s, background .12s;
+      }
+      .admin-tab:hover { color: #e7e8ee; }
+      .admin-tab.on { background: #ffb020; color: #1a1300; }
+
+      /* ---- inbox ---- */
+      .inbox-tabs { display: flex; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+      .inbox-tab {
+        display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+        background: #15171e; border: 1px solid #262a35; border-radius: 999px;
+        color: #c4c7d2; font-family: inherit; font-size: 13px; font-weight: 500; padding: 7px 14px; transition: border-color .12s, color .12s;
+      }
+      .inbox-tab:hover { border-color: #4a5065; }
+      .inbox-tab.on { border-color: #ffb020; color: #ffb020; background: rgba(255,176,32,.08); }
+      .inbox-count { font-family: "JetBrains Mono", monospace; font-size: 11px; background: #0d0e13; border: 1px solid #262a35; border-radius: 6px; padding: 1px 6px; color: #8b90a0; }
+      .inbox-tab.on .inbox-count { color: #ffb020; border-color: rgba(255,176,32,.4); }
+
+      .inbox-empty { text-align: center; padding: 60px 20px; }
+      .inbox-empty p { font-family: "Space Grotesk", sans-serif; font-size: 16px; font-weight: 600; color: #e7e8ee; margin: 0; }
+      .inbox-empty span { display: block; margin-top: 6px; font-size: 13px; color: #8b90a0; }
+
+      .inbox-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+      .inbox-card { display: flex; gap: 12px; background: #15171e; border: 1px solid #262a35; border-radius: 12px; padding: 14px 16px; }
+      .inbox-av { display: grid; place-items: center; height: 38px; width: 38px; flex-shrink: 0; border-radius: 10px; color: #fff; font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+      .inbox-card-main { flex: 1; min-width: 0; }
+      .inbox-card-top { display: flex; align-items: baseline; gap: 10px; }
+      .inbox-from { font-weight: 700; font-size: 14px; color: #e7e8ee; }
+      .inbox-meta { font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: #8b90a0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .inbox-time { margin-left: auto; flex-shrink: 0; font-family: "JetBrains Mono", monospace; font-size: 11px; color: #6b7080; }
+      .inbox-del { flex-shrink: 0; background: none; border: 1px solid #262a35; color: #6b7080; border-radius: 6px; width: 24px; height: 24px; cursor: pointer; font-size: 12px; line-height: 1; }
+      .inbox-del:hover { border-color: #ff6b6b; color: #ff6b6b; }
+      .inbox-sub { margin-top: 5px; font-weight: 600; font-size: 13.5px; color: #e7e8ee; }
+      .inbox-body { margin-top: 5px; font-size: 13.5px; line-height: 1.6; color: #b4b8c4; white-space: pre-wrap; word-break: break-word; }
     `}</style>
   );
 }

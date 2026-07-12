@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { ExternalLink, BadgeCheck } from "lucide-react";
 import PageHeader from "../components/home2/PageHeader";
 import ClosingCTA from "../components/home2/ClosingCTA";
+import ConfidenceMeter from "../components/home2/ConfidenceMeter";
+import NeuralNetSkills from "../components/home2/NeuralNetSkills";
 import { certifications } from "../lib/certifications";
 
 // devicon CDN — https://devicon.dev (colored logos)
@@ -137,10 +139,13 @@ const SkillCard = ({ item }) => {
             loading="lazy"
             className="h-full w-full object-contain"
             onError={(e) => {
-              e.currentTarget.style.display = "none";
-              e.currentTarget.parentElement.textContent = monogram(item.n);
-              e.currentTarget.parentElement.className =
-                "grid h-12 w-12 place-items-center rounded-lg bg-white font-display text-sm font-bold text-ink";
+              const img = e.currentTarget;
+              const parent = img.parentElement;
+              img.style.display = "none";
+              if (parent) {
+                parent.textContent = monogram(item.n);
+                parent.className = "grid h-12 w-12 place-items-center rounded-lg bg-white font-display text-sm font-bold text-ink";
+              }
             }}
           />
         ) : (
@@ -186,10 +191,13 @@ const CertCard = ({ c, i }) => {
             loading="lazy"
             className="h-full w-full object-contain"
             onError={(e) => {
-              e.currentTarget.style.display = "none";
-              e.currentTarget.parentElement.textContent = monogram(c.authority);
-              e.currentTarget.parentElement.className =
-                "grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white font-display text-xs font-bold text-ink";
+              const img = e.currentTarget;
+              const parent = img.parentElement;
+              img.style.display = "none";
+              if (parent) {
+                parent.textContent = monogram(c.authority);
+                parent.className = "grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white font-display text-xs font-bold text-ink";
+              }
             }}
           />
         ) : (
@@ -224,7 +232,7 @@ const Skills = () => {
         <meta name="viewport" content="initial-scale=1.0, width=device-width" />
       </Head>
 
-      <main className="bg-bg font-sans text-fg antialiased">
+      <main className="rm-only-block bg-bg font-sans text-fg antialiased">
         <PageHeader
           eyebrow="Skills"
           title="The"
@@ -232,8 +240,8 @@ const Skills = () => {
           subtitle="Seven languages, an AI stack, and the infrastructure to run it all in production."
         />
 
-        {/* clustered stack — icon cards */}
-        <section className="border-b border-edge bg-bg py-20">
+        {/* clustered stack — recruiter mode only; in dev mode it's a desktop app */}
+        <section className="rm-only-block border-b border-edge bg-bg py-20">
           <div className="mx-auto max-w-6xl space-y-12 px-6">
             {skillGroups.map((g) => (
               <div key={g.label}>
@@ -256,8 +264,14 @@ const Skills = () => {
           </div>
         </section>
 
-        {/* certifications from LinkedIn */}
-        <section id="certificate" className="bg-bg py-20">
+        {/* skill viz — recruiter mode only; in dev mode it's the Skill Insights app */}
+        <div className="rm-only-block">
+          <NeuralNetSkills />
+          <ConfidenceMeter />
+        </div>
+
+        {/* certifications — recruiter mode only; in dev mode it's a desktop app */}
+        <section id="certificate" className="rm-only-block bg-bg py-20">
           <div className="mx-auto max-w-6xl px-6">
             <div className="mb-10 flex items-center gap-3">
               <BadgeCheck className="h-4 w-4 text-accentText" />

@@ -1,8 +1,10 @@
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { Github, ArrowUpRight, ExternalLink, Package, BookOpen } from "lucide-react";
 import { useSiteContent } from "../../lib/useSiteContent";
+import { openAppOrRoute } from "../../lib/openResume";
 
 const isNpm = (p) => (p.link || "").includes("npmjs.com");
 
@@ -100,6 +102,7 @@ const FeaturedCard = ({ p, i }) => (
 
 const FeaturedProjects = () => {
   const { projects } = useSiteContent();
+  const router = useRouter();
   const all = projects || [];
   // Show the projects starred "featured" (in admin order); if none are starred
   // yet, fall back to the first 6 so the homepage never goes empty.
@@ -124,12 +127,14 @@ const FeaturedProjects = () => {
               The work I&apos;m proudest of right now — runtimes, developer tools
               and distributed systems, open and documented.
             </p>
-            <Link href="/projects">
-              <a className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-accentText transition-opacity hover:opacity-80">
-                Browse all projects
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </a>
-            </Link>
+            <button
+              type="button"
+              onClick={() => openAppOrRoute("projects", "/projects", router)}
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-accentText transition-opacity hover:opacity-80"
+            >
+              Browse all projects
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 

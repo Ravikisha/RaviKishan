@@ -23,10 +23,45 @@ service cloud.firestore {
     }
 
     // Public contact-form submissions (components/contactForm.js -> addDoc).
-    // Anyone may submit; nobody may read/modify/delete from the client.
+    // Anyone may submit; only the admin may read or delete (admin Inbox).
     match /myportifilio/{docId} {
       allow create: if true;
-      allow read, update, delete: if false;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // Direct messages from the Mail app (components/os/apps/Mail.js).
+    // Anyone may send a well-formed message; only the admin may read or delete.
+    match /mail/{docId} {
+      allow create: if request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 3
+        && request.resource.data.email.size() <= 200
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() >= 1
+        && request.resource.data.subject.size() <= 200
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 1
+        && request.resource.data.message.size() <= 5000;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // Public chat room / lobby (components/os/apps/Chat.js).
+    // World-readable; anyone may post a well-formed message; only the admin may
+    // delete (moderation from the Inbox). No client edits.
+    match /chat/{docId} {
+      allow read: if true;
+      allow create: if request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 24;
+      allow delete: if isAdmin();
+      allow update: if false;
     }
 
     // Deny everything else by default.

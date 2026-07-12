@@ -1,9 +1,13 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
+import { openResume } from "../../lib/openResume";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Github, Linkedin, FileText, Star } from "lucide-react";
 import { useSiteContent } from "../../lib/useSiteContent";
+import TokenStream from "./TokenStream";
+import PacketBackground from "./PacketBackground";
 
 const HeroCanvas = dynamic(() => import("./HeroCanvas"), { ssr: false });
 
@@ -18,9 +22,19 @@ const rise = {
 
 const Hero = () => {
   const { identity, github, chips } = useSiteContent();
-  const reduced = useReducedMotion();
+  const router = useRouter();
+  const prefersReduced = useReducedMotion();
   const cardRef = useRef(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [hov, setHov] = useState(false);
+  // LLM token-stream sequence: eyebrow → headline → intro paragraph.
+  const [mounted, setMounted] = useState(false);
+  const [headlineDone, setHeadlineDone] = useState(false);
+  const [introDone, setIntroDone] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // `useReducedMotion` only resolves on the client; gate it behind `mounted` so
+  // the server render and first client render agree (avoids a hydration mismatch).
+  const reduced = mounted ? prefersReduced : false;
 
   const onMove = (e) => {
     if (reduced) return;
@@ -49,6 +63,7 @@ const Hero = () => {
       />
       <div className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-amber/10 blur-[120px]" />
       <div className="pointer-events-none absolute right-0 top-1/3 h-[380px] w-[380px] rounded-full bg-teal/5 blur-[130px]" />
+      <PacketBackground />
 
       <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 px-6 lg:grid-cols-[1.02fr_0.98fr] lg:gap-10">
         {/* left — thesis */}
@@ -65,6 +80,16 @@ const Hero = () => {
             <span>{identity.role}</span>
           </motion.p>
 
+          {/* generation indicator — reads like an LLM producing the intro */}
+          <div className="mb-3 flex items-center gap-2 font-mono text-[11px] text-muted">
+            <span className="text-accentText">ravi.ai</span>
+            <span className="text-edge">›</span>
+            <span>{introDone ? "response complete" : "generating response…"}</span>
+            {!introDone && (
+              <span className="inline-block h-3 w-1.5 animate-blink bg-accent align-middle" />
+            )}
+          </div>
+
           <motion.h1
             variants={rise}
             initial="hidden"
@@ -72,10 +97,13 @@ const Hero = () => {
             custom={1}
             className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-fg sm:text-5xl lg:text-[3.4rem]"
           >
-            I rebuild the layers
-            <br />
-            most people take{" "}
-            <span className="text-accentText">for granted.</span>
+            <TokenStream
+              text={identity.tagline}
+              run={mounted}
+              speed={55}
+              accentLast
+              onDone={() => setHeadlineDone(true)}
+            />
           </motion.h1>
 
           <motion.p
@@ -85,7 +113,13 @@ const Hero = () => {
             custom={2}
             className="mt-6 max-w-xl text-base leading-relaxed text-muted sm:text-lg"
           >
-            {identity.intro}
+            <TokenStream
+              text={identity.intro}
+              run={mounted && headlineDone}
+              speed={28}
+              keepCursor
+              onDone={() => setIntroDone(true)}
+            />
           </motion.p>
 
           <motion.div
@@ -102,12 +136,14 @@ const Hero = () => {
               View the systems
               <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </a>
-            <Link href={identity.resume}>
-              <a className="inline-flex items-center gap-2 rounded-lg border border-edge bg-surface px-5 py-3 text-sm font-semibold text-fg transition-colors hover:border-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
-                <FileText className="h-4 w-4 text-muted" />
-                Résumé
-              </a>
-            </Link>
+            <button
+              type="button"
+              onClick={() => openResume(router)}
+              className="inline-flex items-center gap-2 rounded-lg border border-edge bg-surface px-5 py-3 text-sm font-semibold text-fg transition-colors hover:border-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <FileText className="h-4 w-4 text-muted" />
+              Résumé
+            </button>
             <div className="ml-1 flex items-center gap-1">
               <IconLink href={identity.github} label="GitHub">
                 <Github className="h-5 w-5" />
@@ -150,13 +186,27 @@ const Hero = () => {
             <div
               ref={cardRef}
               onMouseMove={onMove}
-              onMouseLeave={() => setTilt({ x: 0, y: 0 })}
+              onMouseEnter={() => setHov(true)}
+              onMouseLeave={() => {
+                setTilt({ x: 0, y: 0 });
+                setHov(false);
+              }}
               className="group relative aspect-[4/5] rounded-2xl border border-edge bg-surface/80 shadow-2xl shadow-black/20 backdrop-blur transition-transform duration-200 ease-out dark:shadow-black/50"
               style={{
                 transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
                 transformStyle: "preserve-3d",
               }}
             >
+              {/* easter egg: hover the portrait → fake hallucination check */}
+              <div
+                className={`pointer-events-none absolute inset-x-0 top-3 z-20 mx-auto w-max max-w-[90%] rounded-md border border-amber/40 bg-bg/90 px-2.5 py-1 font-mono text-[10px] text-live shadow-lg backdrop-blur transition-opacity duration-300 ${
+                  hov ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <span className="mr-1.5 text-accentText">◇</span>
+                hallucination check: none found · 99.2%
+              </div>
+
               {/* 3D wireframe backdrop */}
               <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
                 <div className="absolute inset-0 opacity-70">

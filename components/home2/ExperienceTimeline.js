@@ -1,10 +1,53 @@
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, GitCommit } from "lucide-react";
 import { useSiteContent } from "../../lib/useSiteContent";
+
+const shortHash = (s) => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(7, "0").slice(0, 7);
+};
+
+// Experience rendered as a git log.
+const GitLog = ({ experience }) => (
+  <div className="overflow-hidden rounded-xl border border-edge bg-[#0D0E13]">
+    <div className="flex items-center gap-2 border-b border-line px-4 py-2.5 font-mono text-[11px] text-mist">
+      <GitCommit className="h-3.5 w-3.5 text-amber" />
+      {'git log --oneline --author="Ravi Kishan"'}
+    </div>
+    <div className="space-y-5 p-4 font-mono text-[12px] leading-relaxed sm:text-[13px]">
+      {experience.map((job, i) => (
+        <div key={job.org}>
+          <div>
+            <span className="text-amber">commit {shortHash(job.org + job.title)}</span>
+            {i === 0 && <span className="text-teal"> (HEAD → main)</span>}
+          </div>
+          <div className="text-mist">Author: Ravi Kishan &lt;ravikishan63392@gmail.com&gt;</div>
+          <div className="text-mist">Date:   {job.period} · {job.place}</div>
+          <div className="mt-2 text-chalk">
+            <span className="text-teal">{job.title}</span> @ {job.org}
+          </div>
+          <div className="mt-1.5 space-y-1 pl-3">
+            {job.points.map((p, j) => (
+              <div key={j} className="text-mist">
+                <span className="text-teal">+</span> {p}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center text-chalk">
+        <span className="mr-2 text-amber">$</span>
+        <span className="h-3.5 w-2 animate-blink bg-amber" />
+      </div>
+    </div>
+  </div>
+);
 
 const ExperienceTimeline = () => {
   const { experience, credentials, education } = useSiteContent();
+  const [view, setView] = useState("timeline");
   return (
     <section className="relative border-t border-edge bg-bg py-24">
       <div className="mx-auto max-w-6xl px-6">
@@ -80,7 +123,30 @@ const ExperienceTimeline = () => {
             </div>
           </div>
 
-          {/* timeline */}
+          {/* right column: timeline | git log */}
+          <div>
+            <div className="mb-6 flex justify-end gap-2">
+              {[
+                { k: "timeline", label: "timeline" },
+                { k: "gitlog", label: "git log" },
+              ].map((v) => (
+                <button
+                  key={v.k}
+                  onClick={() => setView(v.k)}
+                  className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${
+                    view === v.k
+                      ? "border-accent bg-accent text-accentFg"
+                      : "border-edge bg-surface text-muted hover:text-fg"
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+
+            {view === "gitlog" ? (
+              <GitLog experience={experience} />
+            ) : (
           <div className="relative border-l border-edge pl-8">
             {experience.map((job, i) => (
               <motion.div
@@ -136,6 +202,8 @@ const ExperienceTimeline = () => {
                 </ul>
               </motion.div>
             ))}
+          </div>
+            )}
           </div>
         </div>
       </div>

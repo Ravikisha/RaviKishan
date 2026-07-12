@@ -2,7 +2,11 @@
 const withPWA = require("next-pwa")({
   dest: "public",
     register: true,
-    skipWaiting: true
+    skipWaiting: true,
+    // PWA service-worker generation writes into public/ on every build, which the
+    // dev file-watcher then treats as a change → infinite recompile loop (and the
+    // ENOENT ".next/server/pages/*" 500s). Disable it in dev; keep it in prod.
+    disable: process.env.NODE_ENV === "development",
 })
 const nextConfig = {
   images: {

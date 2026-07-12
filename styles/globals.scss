@@ -287,3 +287,32 @@ button {
   }
 }
 
+/* ── signature scrollbar ─────────────────────────────────────────────
+   A floating amber→teal capsule on a transparent track. Same in both
+   themes; app terminals (btop/kafka) keep their own darker bars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #ffb020 transparent;
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background: linear-gradient(180deg, #ffb020, #4ed0c0) padding-box;
+  transition: border-width 0.15s;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background: linear-gradient(180deg, #ffc24d, #6fe0d2) padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+

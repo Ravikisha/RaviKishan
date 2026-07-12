@@ -1,19 +1,22 @@
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { Github, Linkedin, Mail } from "lucide-react";
 import { useSiteContent } from "../../lib/useSiteContent";
+import { openAppOrRoute } from "../../lib/openResume";
 
 const Footer2 = () => {
   const { identity } = useSiteContent();
+  const router = useRouter();
   const cols = [
     {
       title: "Navigate",
       links: [
         { label: "Systems", href: "/#systems" },
-        { label: "Projects", href: "/projects" },
-        { label: "Blog", href: "/blog" },
+        { label: "Projects", app: "projects", route: "/projects" },
+        { label: "Blog", app: "blog", route: "/blog" },
         { label: "About", href: "/about" },
-        { label: "Résumé", href: "/resume" },
+        { label: "Résumé", app: "resume", route: "/resume" },
       ],
     },
     {
@@ -31,10 +34,15 @@ const Footer2 = () => {
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2 font-mono text-sm font-semibold text-fg">
-              <span className="grid h-8 w-8 place-items-center rounded-md border border-edge bg-surface text-accentText">
-                RK
+              <span className="h-8 w-8 overflow-hidden rounded-md border border-edge bg-surface">
+                <img
+                  src="/assets/banner-image.png"
+                  alt="Ravi Kishan"
+                  className="h-full w-full object-cover"
+                  style={{ objectPosition: "52% 12%" }}
+                />
               </span>
-              ravikishan<span className="text-accentText">.me</span>
+              Ravi Kishan
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">
               {identity.role} — distributed systems, systems programming &amp;
@@ -60,7 +68,17 @@ const Footer2 = () => {
               </h4>
               <ul className="mt-4 space-y-2.5">
                 {c.links.map((l) =>
-                  l.ext ? (
+                  l.app ? (
+                    <li key={l.label}>
+                      <button
+                        type="button"
+                        onClick={() => openAppOrRoute(l.app, l.route, router)}
+                        className="text-sm text-muted transition-colors hover:text-accentText"
+                      >
+                        {l.label}
+                      </button>
+                    </li>
+                  ) : l.ext ? (
                     <li key={l.label}>
                       <a
                         href={l.href}

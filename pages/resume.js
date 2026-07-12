@@ -14,14 +14,10 @@ import { useSiteContent } from "../lib/useSiteContent";
 import PageHeader from "../components/home2/PageHeader";
 import ClosingCTA from "../components/home2/ClosingCTA";
 
-// Stable, resume-sourced blocks (resume/Resume 11 June.pdf).
-const patent = {
-  title: "A Multilingual Chatbot for Indian Epics Using Generative AI & LLMs",
-  meta: "Indian Patent Application (Published) · App. No. 202541117128",
-  detail:
-    "RAG system over the Bhagavad Gita reaching >95% retrieval accuracy across 5 languages (OpenAI embeddings, LangChain, FAISS/Pinecone); evaluated with BLEU and BERTScore.",
-};
-
+// Routed résumé page. Primarily surfaced in *recruiter mode* — the clean,
+// distraction-free view — where the desktop-OS chrome (and the Résumé app) is
+// hidden. In dev/playground mode the résumé opens as an OS window instead; the
+// nav link to this route only appears in recruiter mode.
 const skillGroups = [
   { label: "Languages", items: "JavaScript · TypeScript · Python · Java · Go · Rust · C++" },
   { label: "AI / ML", items: "PyTorch · LangChain · LangGraph · RAG · Vector DBs · Fine-tuning" },
@@ -51,10 +47,11 @@ const Section = ({ children, delay = 0 }) => (
 );
 
 const Resume = () => {
-  const { resume, identity, experience, education, systems, credentials } =
+  const { resume, identity, experience, education, systems, credentials, patents } =
     useSiteContent();
   const url = resume?.url || "/Ravi_Kishan_Resume.pdf";
   const filename = resume?.filename || "Ravi_Kishan_Resume.pdf";
+  const pub = (patents && patents[0]) || null;
 
   const contacts = [
     { icon: Mail, label: identity.email, href: `mailto:${identity.email}` },
@@ -284,23 +281,27 @@ const Resume = () => {
                     </div>
                   </Section>
 
-                  <Section delay={0.15}>
-                    <Eyebrow>Patent</Eyebrow>
-                    <div className="rounded-lg border border-edge bg-bg p-4">
-                      <div className="flex items-start gap-2">
-                        <Award className="mt-0.5 h-4 w-4 shrink-0 text-accentText" />
-                        <h3 className="font-display text-sm font-bold leading-snug text-fg">
-                          {patent.title}
-                        </h3>
+                  {pub && (
+                    <Section delay={0.15}>
+                      <Eyebrow>Patent</Eyebrow>
+                      <div className="rounded-lg border border-edge bg-bg p-4">
+                        <div className="flex items-start gap-2">
+                          <Award className="mt-0.5 h-4 w-4 shrink-0 text-accentText" />
+                          <h3 className="font-display text-sm font-bold leading-snug text-fg">
+                            {pub.title}
+                          </h3>
+                        </div>
+                        <p className="mt-2 font-mono text-[11px] text-muted">
+                          {[pub.type, pub.status && `(${pub.status})`, pub.number]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                        <p className="mt-2 text-xs leading-relaxed text-muted">
+                          {pub.abstract}
+                        </p>
                       </div>
-                      <p className="mt-2 font-mono text-[11px] text-muted">
-                        {patent.meta}
-                      </p>
-                      <p className="mt-2 text-xs leading-relaxed text-muted">
-                        {patent.detail}
-                      </p>
-                    </div>
-                  </Section>
+                    </Section>
+                  )}
 
                   <Section delay={0.2}>
                     <Eyebrow>Highlights</Eyebrow>

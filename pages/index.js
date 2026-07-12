@@ -5,7 +5,10 @@ import StatStrip from "../components/home2/StatStrip";
 import SystemsBuilt from "../components/home2/SystemsBuilt";
 import FeaturedProjects from "../components/home2/FeaturedProjects";
 import ExperienceTimeline from "../components/home2/ExperienceTimeline";
+import Publications from "../components/home2/Publications";
 import ClosingCTA from "../components/home2/ClosingCTA";
+// QuantLab ("Quant Desk") and AILab ("AI Lab") are now dev-mode desktop apps
+// only — removed from the page / recruiter mode. See components/os/apps.js.
 
 const Home = () => {
   return (
@@ -19,12 +22,13 @@ const Home = () => {
         <meta name="viewport" content="initial-scale=1.0, width=device-width" />
       </Head>
 
-      <main className="bg-bg font-sans text-fg antialiased">
+      <main className="rm-only-block bg-bg font-sans text-fg antialiased">
         <Hero />
         <StatStrip />
         <SystemsBuilt />
         <FeaturedProjects />
         <ExperienceTimeline />
+        <Publications />
         <ClosingCTA />
       </main>
     </>

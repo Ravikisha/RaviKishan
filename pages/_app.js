@@ -14,6 +14,11 @@ import AOS from "aos";
 import "aos/dist/aos.css";
 import { ThemeProvider } from "../components/utils/ThemeProvider";
 import { SiteContentProvider } from "../lib/useSiteContent";
+import Easter from "../components/eggs/Easter";
+import DesktopOS from "../components/os/DesktopOS";
+import RecruiterMode from "../components/RecruiterMode";
+import dynamic from "next/dynamic";
+const BootScreen = dynamic(() => import("../components/os/BootScreen"), { ssr: false });
 
 function MyApp({ Component, pageProps }) {
   const [loaderFinished, setLoaderFinished] = useState(false);
@@ -21,20 +26,16 @@ function MyApp({ Component, pageProps }) {
   const isAnimating = useProgressStore((state) => state.isAnimating);
   const router = useRouter();
 
-  // Hidden admin CMS: render bare — no nav, footer, loader, analytics or the
-  // public SEO/meta. It manages its own Firebase state and must stay unindexed.
-  if (router.pathname === "/admin") {
-    return (
-      <ThemeProvider>
-        <Head>
-          <meta name="robots" content="noindex, nofollow" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Admin</title>
-        </Head>
-        <Component {...pageProps} />
-      </ThemeProvider>
-    );
-  }
+  useEffect(() => {
+    const q = window.location.search;
+    // Dev-mode desktop has its own boot sequence + wallpaper, so the word-cloud
+    // loader is skipped there (it otherwise covers the desktop for ~2s). The
+    // loader stays for recruiter mode — the clean, routed portfolio.
+    let mode = "recruiter";
+    try { mode = localStorage.getItem("mode") || "recruiter"; } catch (_) {}
+    if (q.includes("noload") || mode !== "recruiter") setLoaderFinished(true);
+    if (q.includes("dark")) document.documentElement.classList.add("dark");
+  }, []);
   useEffect(() => {
     const handleStart = () => {
       setIsAnimating(true);
@@ -56,6 +57,23 @@ function MyApp({ Component, pageProps }) {
   useEffect(() => {
     AOS.init();
   }, []);
+
+  // Hidden admin CMS: render bare — no nav, footer, loader, analytics or the
+  // public SEO/meta. It manages its own Firebase state and must stay unindexed.
+  // (Placed after all hooks so hook order stays constant across renders.)
+  if (router.pathname === "/admin") {
+    return (
+      <ThemeProvider>
+        <Head>
+          <meta name="robots" content="noindex, nofollow" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Admin</title>
+        </Head>
+        <Component {...pageProps} />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
       <SiteContentProvider>
@@ -138,6 +156,10 @@ function MyApp({ Component, pageProps }) {
         ) : (
           <Loader onComplete={() => setLoaderFinished(true)} />
         )}
+        <Easter />
+        <DesktopOS />
+        <RecruiterMode />
+        <BootScreen />
       </SiteContentProvider>
     </ThemeProvider>
   );

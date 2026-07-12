@@ -101,19 +101,24 @@ export default async function handler(req, res) {
   // Cross-posts often differ slightly (edited subtitle, truncation), so treat
   // two posts as the same when one normalized title is a prefix of the other
   // and the shared prefix is long enough to be unambiguous.
-  const seenKeys = [];
   const posts = [];
+  const matchIdx = (k) =>
+    posts.findIndex((e) => {
+      const ek = key(e.title);
+      if (ek === k) return true;
+      const [short, long] = ek.length < k.length ? [ek, k] : [k, ek];
+      return short.length >= 25 && long.startsWith(short);
+    });
   for (const p of [...devto, ...medium]) {
     const k = key(p.title);
     if (!k) continue;
-    const dup = seenKeys.some((sk) => {
-      if (sk === k) return true;
-      const [short, long] = sk.length < k.length ? [sk, k] : [k, sk];
-      return short.length >= 25 && long.startsWith(short);
-    });
-    if (dup) continue;
-    seenKeys.push(k);
-    posts.push(p);
+    const idx = matchIdx(k);
+    if (idx >= 0) {
+      // cross-post: keep the richer dev.to entry, but remember the Medium link
+      if (p.source === "Medium" && !posts[idx].medium) posts[idx].medium = p.url;
+      continue;
+    }
+    posts.push(p.source === "Medium" ? { ...p, medium: p.url } : p);
   }
   posts.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 

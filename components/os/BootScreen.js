@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 // and is skipped in recruiter mode and under reduced-motion — recruiters and
 // a11y users go straight to content.
 const SEQ = [
-  { t: "raviOS 4.8.0 (opus-kernel) — Ravi Kishan", c: "accent" },
+  { t: "raviOS 4.8.0 (relax-kernel) — Ravi Kishan", c: "accent" },
   { t: "POST … cpu ok · mem ok · gpu RTX 3050 ok", c: "dim" },
   { t: "mount /skills ............ 50+ loaded", c: "out" },
   { t: "mount /projects .......... 69 repos", c: "out" },

@@ -48,9 +48,9 @@ export default function NotFound() {
                 Back to safety
               </a>
             </Link>
-            <span className="font-mono text-xs text-muted">
+            {/* <span className="font-mono text-xs text-muted">
               or press <span className="text-accentText">`</span> for the console
-            </span>
+            </span> */}
           </div>
         </div>
       </main>

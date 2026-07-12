@@ -161,7 +161,7 @@ export default function Console() {
 
     if (lower === "/model" || lower === "model")
       return push([
-        L("model    claude-ravi-4.8 (opus-class)", "out"),
+        L("model    claude-ravi-4.8 (relax-class)", "out"),
         L("context  128k · used 4k (mostly coffee)", "out"),
         L("status   ready · temperature 0.7", "ok"),
       ]);

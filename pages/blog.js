@@ -31,7 +31,9 @@ export default function Blog() {
   const router = useRouter();
   const [posts, setPosts] = useState([]);
   const [status, setStatus] = useState("loading");
+  const [error, setError] = useState("");
   const [tag, setTag] = useState("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const t = router.query?.tag;
@@ -40,6 +42,8 @@ export default function Blog() {
 
   useEffect(() => {
     let cancelled = false;
+    setStatus("loading");
+    setError("");
     fetchPublishedPosts()
       .then((rows) => {
         if (cancelled) return;
@@ -50,10 +54,11 @@ export default function Blog() {
         );
         setStatus("ok");
       })
-      .catch(() => {
+      .catch((e) => {
         if (cancelled) return;
         setPosts([]);
-        setStatus("ok");
+        setError(e?.message || "Could not load the writing archive.");
+        setStatus("error");
       });
     return () => {
       cancelled = true;
@@ -69,7 +74,13 @@ export default function Blog() {
       .map(([t]) => t);
   }, [posts]);
 
-  const shown = tag === "all" ? posts : posts.filter((p) => (p.tags || []).includes(tag));
+  const searchTerm = search.trim().toLowerCase();
+  const shown = posts.filter((p) => {
+    const matchesTag = tag === "all" || (p.tags || []).includes(tag);
+    if (!searchTerm) return matchesTag;
+    const haystack = [p.title, p.description, ...(p.tags || [])].join(" ").toLowerCase();
+    return matchesTag && haystack.includes(searchTerm);
+  });
   const [lead, ...rest] = shown;
 
   const setFilter = (t) => () => {
@@ -84,7 +95,13 @@ export default function Blog() {
       <>
         {p.cover && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className={big ? "wr-lead-cover" : "wr-row-cover"} src={p.cover} alt="" />
+          <img
+            className={big ? "wr-lead-cover" : "wr-row-cover"}
+            src={p.cover}
+            alt=""
+            loading={big ? "eager" : "lazy"}
+            decoding="async"
+          />
         )}
         <h2 className={big ? "wr-lead-title" : "wr-row-title"}>{p.title}</h2>
         {p.description && <p className={big ? "wr-lead-deck" : "wr-row-deck"}>{p.description}</p>}
@@ -134,19 +151,35 @@ export default function Blog() {
               ))}
             </div>
           )}
+          <label className="wr-search">
+            <span>Search writing</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search titles, topics, tags"
+            />
+          </label>
         </header>
 
         {status === "loading" ? (
           <p className="wr-empty">Loading…</p>
+        ) : status === "error" ? (
+          <div className="wr-empty wr-error">
+            <p>{error}</p>
+            <button type="button" className="wr-link" onClick={() => window.location.reload()}>
+              Try again
+            </button>
+          </div>
         ) : posts.length === 0 ? (
           <p className="wr-empty">
             Nothing published yet. New writing appears here as soon as it goes live.
           </p>
         ) : shown.length === 0 ? (
           <p className="wr-empty">
-            Nothing tagged “{tag}”.{" "}
-            <button type="button" className="wr-link" onClick={setFilter("all")}>
-              Show everything
+            No writing matches {search ? `“${search}”` : `the “${tag}” filter`}.{" "}
+            <button type="button" className="wr-link" onClick={() => { setSearch(""); setFilter("all")(); }}>
+              Clear filters
             </button>
           </p>
         ) : (
@@ -221,6 +254,34 @@ export default function Blog() {
           background: var(--c-accent);
           border-color: var(--c-accent);
           font-weight: 600;
+                }
+                .wr-search {
+                  display: flex;
+                  align-items: center;
+                  gap: 12px;
+                  max-width: 440px;
+                  margin-top: 24px;
+                  color: var(--c-muted);
+                  font-size: 12px;
+                }
+                .wr-search span {
+                  white-space: nowrap;
+                }
+                .wr-search input {
+                  width: 100%;
+                  min-width: 0;
+                  border: 1px solid var(--c-edge);
+                  border-radius: 8px;
+                  background: var(--c-surface);
+                  color: var(--c-fg);
+                  padding: 9px 11px;
+                  font: inherit;
+                  outline: none;
+                }
+                .wr-search input:focus {
+                  border-color: var(--c-accent);
+                  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 18%, transparent);
+                }
         }
 
         .wr-body {
@@ -259,6 +320,7 @@ export default function Blog() {
           max-height: 360px;
           margin: 0 0 28px;
           object-fit: cover;
+                    aspect-ratio: 2.4 / 1;
           border: 1px solid var(--c-edge);
         }
         .wr-lead-deck {
@@ -291,6 +353,7 @@ export default function Blog() {
           padding-left: 14px;
         }
         .wr-row-cover {
+                    aspect-ratio: 1.6 / 1;
           display: block;
           width: 132px;
           height: 82px;
@@ -348,6 +411,17 @@ export default function Blog() {
         }
 
         .wr-empty {
+                  }
+                  .wr-error p {
+                    margin: 0 0 10px;
+                  }
+                  @media (max-width: 520px) {
+                    .wr-search {
+                      align-items: stretch;
+                      flex-direction: column;
+                      gap: 6px;
+                    }
+                  }
           max-width: 1060px;
           margin: 0 auto;
           padding: 40px 24px 80px;

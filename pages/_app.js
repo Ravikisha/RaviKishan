@@ -26,6 +26,7 @@ function MyApp({ Component, pageProps }) {
   const setIsAnimating = useProgressStore((state) => state.setIsAnimating);
   const isAnimating = useProgressStore((state) => state.isAnimating);
   const router = useRouter();
+  const isBlogRoute = router.pathname === "/blog" || router.pathname === "/blog/[slug]";
 
   useEffect(() => {
     const q = window.location.search;
@@ -37,6 +38,9 @@ function MyApp({ Component, pageProps }) {
     if (q.includes("noload") || mode !== "recruiter") setLoaderFinished(true);
     if (q.includes("dark")) document.documentElement.classList.add("dark");
   }, []);
+  useEffect(() => {
+    if (isBlogRoute) setLoaderFinished(true);
+  }, [isBlogRoute]);
   useEffect(() => {
     const handleStart = () => {
       setIsAnimating(true);
@@ -196,7 +200,7 @@ function MyApp({ Component, pageProps }) {
         <Header />
         <Progress isAnimating={isAnimating} />
         <Component {...pageProps} />
-        {loaderFinished ? (
+        {loaderFinished || isBlogRoute ? (
           <Footer />
         ) : (
           <Loader onComplete={() => setLoaderFinished(true)} />

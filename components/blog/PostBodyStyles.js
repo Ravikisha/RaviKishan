@@ -16,7 +16,8 @@ export default function PostBodyStyles() {
         .post-body {
           font-size: 1.0625rem;
           line-height: 1.78;
-          max-width: 64ch;
+          width: 100%;
+          max-width: none;
         }
         .post-body > * + * {
           margin-top: 1.15em;
@@ -66,6 +67,7 @@ export default function PostBodyStyles() {
         /* Break out: code gets the whole column, because it is the thing that
            actually needs the width. */
         .post-body pre {
+          position: relative;
           background: #0a0b0f;
           color: #eceef3;
           border-radius: 14px;
@@ -89,6 +91,70 @@ export default function PostBodyStyles() {
           padding: 0;
           font-size: inherit;
           color: inherit;
+        }
+        .post-body pre.has-copy {
+          padding-top: 46px;
+        }
+        .post-body .code-copy {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          border: 1px solid #394050;
+          border-radius: 6px;
+          padding: 5px 9px;
+          background: #151923;
+          color: #c8ceda;
+          font: 11px "JetBrains Mono", ui-monospace, monospace;
+          cursor: pointer;
+        }
+        .post-body .code-copy:hover {
+          border-color: var(--c-accent);
+          color: var(--c-accent);
+        }
+        .post-body .code-language {
+          position: absolute;
+          top: 17px;
+          left: 20px;
+          color: #7d8496;
+          font: 11px "JetBrains Mono", ui-monospace, monospace;
+          text-transform: lowercase;
+        }
+        .post-body pre code .hljs-comment,
+        .post-body pre code .hljs-quote {
+          color: #7f9f73;
+        }
+        .post-body pre code .hljs-keyword,
+        .post-body pre code .hljs-selector-tag,
+        .post-body pre code .hljs-literal,
+        .post-body pre code .hljs-type {
+          color: #c792ea;
+        }
+        .post-body pre code .hljs-string,
+        .post-body pre code .hljs-regexp,
+        .post-body pre code .hljs-addition {
+          color: #c3e88d;
+        }
+        .post-body pre code .hljs-number,
+        .post-body pre code .hljs-symbol,
+        .post-body pre code .hljs-bullet {
+          color: #f78c6c;
+        }
+        .post-body pre code .hljs-title,
+        .post-body pre code .hljs-section,
+        .post-body pre code .hljs-function {
+          color: #82aaff;
+        }
+        .post-body pre code .hljs-variable,
+        .post-body pre code .hljs-attr,
+        .post-body pre code .hljs-attribute {
+          color: #ffcb6b;
+        }
+        .post-body pre code .hljs-built_in,
+        .post-body pre code .hljs-name {
+          color: #89ddff;
+        }
+        .post-body pre code .hljs-deletion {
+          color: #f07178;
         }
         .post-body blockquote {
           margin-left: 0;

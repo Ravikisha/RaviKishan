@@ -39,7 +39,21 @@ app, so no one can create an admin account through the site.
 > refused, verify that address (Authentication → Users → ⋮ → or trigger a
 > verification email) — or just log in with Google, which is simplest.
 
-### 3. Publish the security rules  ← this is what actually protects it
+### 3. Allow the site domains for Google sign-in
+Firebase console → **Authentication** → **Settings** → **Authorized domains**.
+Add every browser origin where `/admin` is opened:
+
+- `localhost` (local development)
+- `127.0.0.1` (if you use that instead of `localhost`)
+- `ravikishan.me`
+- `www.ravikishan.me`
+- the exact Vercel/preview hostname, if testing a preview deployment
+
+Do not add the protocol (`https://`) or a path (`/admin`). The domain must be
+added to the Firebase project configured in `lib/firebase.js`:
+`myportifilio-3ab5f`.
+
+### 4. Publish the security rules  ← this is what actually protects it
 Firestore Database → **Rules** → replace the contents with the rules from
 [`firestore.rules`](../firestore.rules) in this repo → **Publish**.
 

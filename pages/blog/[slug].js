@@ -15,7 +15,7 @@ import Link from "next/link";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import Seo from "../../components/Seo";
-import { excerptFrom } from "../../lib/posts";
+import { excerptFrom, fetchPublishedPosts, toListItem } from "../../lib/posts";
 import PostView from "../../components/blog/PostView";
 import { track } from "../../lib/analytics";
 
@@ -23,6 +23,7 @@ export default function Post() {
   const router = useRouter();
   const { slug } = router.query;
   const [post, setPost] = useState(undefined);
+  const [neighbors, setNeighbors] = useState({ previous: null, next: null, related: [] });
 
   useEffect(() => {
     if (!slug || typeof slug !== "string") return;
@@ -34,6 +35,31 @@ export default function Post() {
         if (snap.exists()) track("blogView");
       })
       .catch(() => !cancelled && setPost(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  useEffect(() => {
+    if (!slug || typeof slug !== "string") return undefined;
+    let cancelled = false;
+    fetchPublishedPosts()
+      .then((rows) => {
+        if (cancelled) return;
+        const list = rows
+          .map(toListItem)
+          .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+        const index = list.findIndex((item) => item.url === `/blog/${slug}`);
+        const current = index >= 0 ? list[index] : null;
+        setNeighbors({
+          previous: index > 0 ? list[index - 1] : null,
+          next: index >= 0 && index < list.length - 1 ? list[index + 1] : null,
+          related: current
+            ? list.filter((item) => item.url !== current.url && (item.tags || []).some((t) => (current.tags || []).includes(t))).slice(0, 3)
+            : [],
+        });
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -118,4 +144,5 @@ export default function Post() {
   }
 
   return <PostView post={post} />;
+  return <PostView post={post} {...neighbors} />;
 }

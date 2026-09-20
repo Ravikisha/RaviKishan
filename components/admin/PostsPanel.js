@@ -5,11 +5,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDoc, writeBatch } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
 import { logAdminAction } from "../../lib/auditLog";
-import { marked } from "marked";
 import PostBodyStyles from "../blog/PostBodyStyles";
 import EditorStyles from "./EditorStyles";
 import MarkdownToolbar, { countWords } from "./MarkdownToolbar";
 import { slugify, SLUG_RE, readingMinutes, excerptFrom } from "../../lib/posts";
+import { renderMarkdown } from "../../lib/markdown";
 
 const nowISO = () => new Date().toISOString();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
@@ -481,7 +481,7 @@ export default function PostsPanel({ user }) {
                   className="po-preview post-body"
                   dangerouslySetInnerHTML={{
                     __html: form.body.trim()
-                      ? marked.parse(form.body, { mangle: false, headerIds: false })
+                      ? renderMarkdown(form.body, { mangle: false, headerIds: false })
                       : '<p class="po-preview-empty">Nothing to preview yet.</p>',
                   }}
                 />
@@ -526,7 +526,7 @@ export default function PostsPanel({ user }) {
             {devto.map((p) => {
               const here = (rows || []).some((r) => r.id === p.slug);
               return (
-                <div key={p.slug} className="ops-row">
+                <div key={p.slug} className="ops-row post-list-row">
                   <span className="vt-name">{p.title}</span>
                   <span className={`jb-stage ${here ? "live" : "dim"}`}>
                     {here ? "Imported" : "Not here yet"}
@@ -576,7 +576,7 @@ export default function PostsPanel({ user }) {
         ) : (
           <div className="ops-list">
             {mine.map((r) => (
-              <div key={r.id} className="ops-row">
+              <div key={r.id} className="ops-row post-list-row">
                 <span className="vt-name">{r.title}</span>
                 <span className={`jb-stage ${r.published ? "live" : "dim"}`}>
                   {r.published ? "Live" : "Draft"}
@@ -639,7 +639,7 @@ export default function PostsPanel({ user }) {
           </div>
           <div className="ops-list">
             {imported.map((r) => (
-              <div key={r.id} className="ops-row">
+              <div key={r.id} className="ops-row post-list-row">
                 <span className="vt-name">{r.title}</span>
                 <span className={`jb-stage ${r.published ? "live" : "dim"}`}>
                   {r.published ? "Live" : "Draft"}
@@ -721,6 +721,70 @@ export default function PostsPanel({ user }) {
         .po-head-btns {
           display: flex;
           gap: 8px;
+        }
+        .post-list-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 8px 16px;
+          padding: 14px 16px;
+          border: 1px solid #1e222c;
+          background: #12151d;
+        }
+        .post-list-row .vt-name {
+          min-width: 0;
+          color: #f0f1f5;
+          font-size: 13.5px;
+          font-weight: 600;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+        .post-list-row .jb-stage {
+          grid-column: 2;
+          grid-row: 1;
+          white-space: nowrap;
+        }
+        .post-list-row > .admin-sub {
+          grid-column: 1;
+          grid-row: 2;
+          min-width: 0;
+          overflow-wrap: anywhere;
+          line-height: 1.45;
+        }
+        .post-list-row .ops-btns {
+          grid-column: 2;
+          grid-row: 2;
+          margin-left: 0;
+          justify-content: flex-end;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .post-list-row .admin-ghost.sm {
+          padding: 6px 10px;
+          border-radius: 7px;
+          font-size: 12px;
+        }
+        .post-list-row .admin-del {
+          width: 29px;
+          height: 29px;
+        }
+        @media (max-width: 620px) {
+          .post-list-row {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 8px;
+          }
+          .post-list-row .jb-stage,
+          .post-list-row > .admin-sub,
+          .post-list-row .ops-btns {
+            grid-column: 1;
+            grid-row: auto;
+          }
+          .post-list-row .jb-stage {
+            justify-self: start;
+          }
+          .post-list-row .ops-btns {
+            justify-content: flex-start;
+          }
         }
 
       `}</style>

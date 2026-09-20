@@ -39,6 +39,7 @@ export default function Seo({
   path,
   image,
   canonical,
+  article,
   type = "website",
   noindex = false,
   jsonLd = true,
@@ -83,6 +84,13 @@ export default function Seo({
         key="robots"
       />
       <link rel="canonical" href={canonicalUrl} key="canonical" />
+      <link
+        rel="alternate"
+        type="application/rss+xml"
+        title="Ravi Kishan — Writing"
+        href={`${SITE}/feed.xml`}
+        key="rss"
+      />
 
       {/* Open Graph */}
       <meta property="og:type" content={type} key="og:type" />
@@ -111,6 +119,26 @@ export default function Seo({
           type="application/ld+json"
           key="ld-person"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(person) }}
+        />
+      )}
+      {article && !noindex && (
+        <script
+          type="application/ld+json"
+          key="ld-article"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Article",
+              headline: article.title,
+              description: article.description,
+              url: article.canonical || SITE + article.url,
+              image: article.image ? [img] : undefined,
+              datePublished: article.datePublished,
+              dateModified: article.dateModified,
+              author: { "@type": "Person", name: identity.name, url: SITE },
+              publisher: { "@type": "Person", name: identity.name, url: SITE },
+            }),
+          }}
         />
       )}
     </Head>

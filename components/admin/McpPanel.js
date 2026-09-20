@@ -163,6 +163,51 @@ export default function McpPanel({ user }) {
         service account and no bypass. It is shown once.
       </div>
 
+      <section className="ops-card mcp-connect">
+        <div className="ops-head">
+          <h3>Connect an AI client</h3>
+          <button className="admin-ghost sm" type="button" onClick={copy(url)}>
+            Copy server URL
+          </button>
+        </div>
+        <p className="admin-sub mcp-connect-copy">
+          First mint a token with <b>Read</b> and <b>Write</b> enabled. Then give
+          the client this MCP server URL and the token as a bearer header. Never
+          paste the token into a public prompt or commit it to a repository.
+        </p>
+        <code className="mcp-endpoint">{url}</code>
+        <div className="mcp-client-grid">
+          <div>
+            <strong>Claude Code</strong>
+            <p>Run this in a terminal after copying the token:</p>
+            <pre>{`claude mcp add --transport http ravikishan ${url} \\\n+  --header "Authorization: Bearer YOUR_TOKEN"`}</pre>
+          </div>
+          <div>
+            <strong>Codex</strong>
+            <p>Add this server to your MCP configuration:</p>
+            <pre>{JSON.stringify({
+              mcpServers: {
+                ravikishan: {
+                  type: "http",
+                  url,
+                  headers: { Authorization: "Bearer YOUR_TOKEN" },
+                },
+              },
+            }, null, 2)}</pre>
+          </div>
+          <div>
+            <strong>Other AI clients</strong>
+            <p>Choose a remote HTTP MCP server and use:</p>
+            <pre>{`URL: ${url}\nAuthorization: Bearer YOUR_TOKEN`}</pre>
+          </div>
+        </div>
+        <p className="admin-sub mcp-connect-note">
+          The server supports Streamable HTTP MCP. The token must include the
+          scopes required by the tools you call. Revoke it here if it is ever
+          exposed.
+        </p>
+      </section>
+
       <section className="ops-card">
         <h3>New token</h3>
         <div className="mcp-form">
@@ -265,6 +310,61 @@ export default function McpPanel({ user }) {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 10px;
+        }
+        .mcp-connect-copy {
+          max-width: 760px;
+          line-height: 1.55;
+          margin: 10px 0;
+        }
+        .mcp-endpoint {
+          display: block;
+          overflow-x: auto;
+          padding: 10px 12px;
+          border: 1px solid #2b3040;
+          border-radius: 8px;
+          background: #0a0b0f;
+          color: #ffb020;
+          font: 12px "JetBrains Mono", monospace;
+          white-space: nowrap;
+        }
+        .mcp-client-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .mcp-client-grid > div {
+          min-width: 0;
+          padding: 12px;
+          border: 1px solid #262a35;
+          border-radius: 9px;
+          background: #101219;
+        }
+        .mcp-client-grid strong {
+          color: #e7e8ee;
+          font-size: 13px;
+        }
+        .mcp-client-grid p {
+          margin: 6px 0;
+          color: #8b90a0;
+          font-size: 11.5px;
+          line-height: 1.45;
+        }
+        .mcp-client-grid pre {
+          margin: 0;
+          overflow-x: auto;
+          color: #cfd3dd;
+          font: 10.5px/1.55 "JetBrains Mono", monospace;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+        .mcp-connect-note {
+          margin: 12px 0 0;
+        }
+        @media (max-width: 860px) {
+          .mcp-client-grid {
+            grid-template-columns: 1fr;
+          }
         }
         @media (max-width: 860px) {
           .mcp-scopes {

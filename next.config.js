@@ -87,6 +87,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: "/feed.xml",
+        destination: "/api/blog/feed",
+      },
+      {
         // A pages/ directory cannot begin with a dot, so the RFC 9728
         // discovery document is served from pages/api/well-known/ and mapped
         // to the well-known path MCP clients actually probe.

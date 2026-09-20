@@ -4,7 +4,6 @@
 //
 // 404s in production: it is a design tool, not a page.
 import React, { useState } from "react";
-import { marked } from "marked";
 import AdminShell from "../components/admin/AdminShell";
 import PostBodyStyles from "../components/blog/PostBodyStyles";
 import EditorStyles from "../components/admin/EditorStyles";
@@ -13,6 +12,7 @@ import ImageField from "../components/admin/ImageField";
 import ContentSection from "../components/admin/ContentEditor";
 import ContentEditorStyles from "../components/admin/ContentEditorStyles";
 import { projectImage, orgLogo, BUNDLED_LOGOS } from "../lib/assetUrl";
+import { renderMarkdown } from "../lib/markdown";
 
 const TABS = [
   ["search", "Search"],
@@ -131,7 +131,7 @@ export default function AdminPreview() {
                 <div
                   className="po-preview post-body"
                   dangerouslySetInnerHTML={{
-                    __html: marked.parse(body, { mangle: false, headerIds: false }),
+                    __html: renderMarkdown(body, { mangle: false, headerIds: false }),
                   }}
                 />
               </div>

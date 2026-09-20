@@ -254,34 +254,33 @@ export default function Blog() {
           background: var(--c-accent);
           border-color: var(--c-accent);
           font-weight: 600;
-                }
-                .wr-search {
-                  display: flex;
-                  align-items: center;
-                  gap: 12px;
-                  max-width: 440px;
-                  margin-top: 24px;
-                  color: var(--c-muted);
-                  font-size: 12px;
-                }
-                .wr-search span {
-                  white-space: nowrap;
-                }
-                .wr-search input {
-                  width: 100%;
-                  min-width: 0;
-                  border: 1px solid var(--c-edge);
-                  border-radius: 8px;
-                  background: var(--c-surface);
-                  color: var(--c-fg);
-                  padding: 9px 11px;
-                  font: inherit;
-                  outline: none;
-                }
-                .wr-search input:focus {
-                  border-color: var(--c-accent);
-                  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 18%, transparent);
-                }
+        }
+        .wr-search {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          max-width: 440px;
+          margin-top: 24px;
+          color: var(--c-muted);
+          font-size: 12px;
+        }
+        .wr-search span {
+          white-space: nowrap;
+        }
+        .wr-search input {
+          width: 100%;
+          min-width: 0;
+          border: 1px solid var(--c-edge);
+          border-radius: 8px;
+          background: var(--c-surface);
+          color: var(--c-fg);
+          padding: 9px 11px;
+          font: inherit;
+          outline: none;
+        }
+        .wr-search input:focus {
+          border-color: var(--c-accent);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 18%, transparent);
         }
 
         .wr-body {
@@ -411,21 +410,20 @@ export default function Blog() {
         }
 
         .wr-empty {
-                  }
-                  .wr-error p {
-                    margin: 0 0 10px;
-                  }
-                  @media (max-width: 520px) {
-                    .wr-search {
-                      align-items: stretch;
-                      flex-direction: column;
-                      gap: 6px;
-                    }
-                  }
           max-width: 1060px;
           margin: 0 auto;
           padding: 40px 24px 80px;
           color: var(--c-muted);
+        }
+        .wr-error p {
+          margin: 0 0 10px;
+        }
+        @media (max-width: 520px) {
+          .wr-search {
+            align-items: stretch;
+            flex-direction: column;
+            gap: 6px;
+          }
         }
         .wr-link {
           background: none;

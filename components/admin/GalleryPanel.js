@@ -20,6 +20,7 @@ export default function GalleryPanel({ user }) {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
   const [category, setCategory] = useState("Desk");
+  const [dragActive, setDragActive] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -48,9 +49,7 @@ export default function GalleryPanel({ user }) {
     return json;
   }, []);
 
-  const upload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = "";
+  const uploadFiles = async (files) => {
     if (!files.length) return;
 
     setErr("");
@@ -77,8 +76,6 @@ export default function GalleryPanel({ user }) {
         await setDoc(doc(db, "gallery", id), {
           key,
           url: publicUrlFor(key),
-          // A filename is a lousy caption, but it beats an empty one and it is
-          // editable right below.
           title: file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 80),
           category,
           note: "",
@@ -98,6 +95,19 @@ export default function GalleryPanel({ user }) {
       await logAdminAction({ action: "gallery.upload", detail: `${done} image(s)`, user });
       setMsg(`✓ Added ${done} image${done === 1 ? "" : "s"} to the gallery.`);
     }
+  };
+
+  const upload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    await uploadFiles(files);
+  };
+
+  const onDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    await uploadFiles(Array.from(e.dataTransfer?.files || []));
   };
 
   const patch = (r, fields) => async () => {
@@ -163,12 +173,17 @@ export default function GalleryPanel({ user }) {
       </div>
 
       <section className="ops-card">
-        <div className="ops-head">
-          <h3>
-            Add photos{" "}
-            <span className="admin-sub">{rows ? `${rows.length} in the wall` : ""}</span>
-          </h3>
-          <span className="gp-add">
+        <div className="ops-head gp-head">
+          <div>
+            <h3>
+              Add photos{" "}
+              <span className="admin-sub">{rows ? `${rows.length} in the wall` : ""}</span>
+            </h3>
+            <p className="admin-sub gp-sub">
+              Several at once is fine. Up to 8 MB each. They all land in the selected category and can be reordered later.
+            </p>
+          </div>
+          <div className="gp-add">
             <select
               className="admin-input gp-cat"
               value={category}
@@ -189,12 +204,21 @@ export default function GalleryPanel({ user }) {
                 onChange={upload}
               />
             </label>
-          </span>
+          </div>
         </div>
-        <p className="admin-sub" style={{ marginTop: 8 }}>
-          Several at once is fine. Up to 8 MB each. They all land in the
-          category selected here; you can change any of them below.
-        </p>
+
+        <div
+          className={`gp-dropzone ${dragActive ? "active" : ""}`}
+          onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+          onDrop={onDrop}
+        >
+          <div className="gp-drop-inner">
+            <strong>Drop images here</strong>
+            <span>or click “Choose images” above</span>
+          </div>
+        </div>
       </section>
 
       {err && <div className="admin-err">{err}</div>}
@@ -251,10 +275,19 @@ export default function GalleryPanel({ user }) {
       )}
 
       <style jsx global>{`
+        .gp-head {
+          align-items: flex-start;
+        }
         .gp-add {
           display: flex;
           gap: 8px;
           align-items: center;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        .gp-sub {
+          margin: 8px 0 0;
+          max-width: 52ch;
         }
         .gp-cat {
           width: 130px;
@@ -267,6 +300,33 @@ export default function GalleryPanel({ user }) {
         }
         .gp-pick input[type="file"] {
           display: none;
+        }
+        .gp-dropzone {
+          margin-top: 16px;
+          border: 1.5px dashed var(--a-line, #2a2f3d);
+          border-radius: 14px;
+          padding: 18px;
+          background: rgba(255,255,255,0.01);
+          transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+        }
+        .gp-dropzone.active {
+          border-color: var(--a-accent, #ffb020);
+          background: rgba(255,176,32,0.04);
+          transform: translateY(-1px);
+        }
+        .gp-drop-inner {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          min-height: 62px;
+          color: var(--a-muted, #8d93a3);
+          text-align: center;
+        }
+        .gp-drop-inner strong {
+          color: var(--a-fg, #f6f7fb);
+          font-size: 14px;
         }
         .gp-grid {
           display: grid;

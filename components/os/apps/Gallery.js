@@ -1,31 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { fetchGallery } from "../../../lib/galleryStore";
 import { X, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 
 // Gallery — a photo wall. A masonry grid of shots, filterable by category,
 // with a quiet lightbox (arrow keys, counter).
 //
-// Shots come from the `gallery` collection, uploaded and ordered in the admin's
-// Gallery tab. The stock set below is the FALLBACK, shown only while nothing
-// has been uploaded yet — an empty wall looks broken, a placeholder wall looks
-// unfinished, and unfinished is the honest state.
-const px = (id, w) => `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=${w}`;
-
-const SHOTS = [
-  { id: "3861958", title: "Deploy window", category: "Desk", note: "The screen glow at 2am, when the pipeline finally goes green." },
-  { id: "1181671", title: "The classics", category: "Desk", note: "Re-reading the fundamentals between two hard bugs." },
-  { id: "3184465", title: "The handoff", category: "Builds", note: "Where a design doc becomes something that ships." },
-  { id: "3861969", title: "In the machine", category: "Builds", note: "Down among the bytes — profiling a hot path." },
-  { id: "2379004", title: "Between talks", category: "Talks", note: "Hallway track, the part of a conference that actually sticks." },
-  { id: "1704488", title: "Golden hour", category: "Field", note: "Chasing the light after a long build week." },
-  { id: "1391498", title: "Campus, late", category: "Field", note: "Empty steps, the quiet that good work needs." },
-  { id: "220453", title: "Field notes", category: "People", note: "A portrait between problems." },
-  { id: "415829", title: "Studio light", category: "People", note: "One frame, controlled light." },
-  { id: "733872", title: "Natural light", category: "People", note: "No setup, just the window." },
-];
-
-// The stock set carries an `id` for Pexels; uploaded shots carry a `url`.
-const srcOf = (s, w) => (s.url ? s.url : px(s.id, w));
+// The gallery is intentionally driven only by admin-uploaded assets in the
+// `gallery` collection. There are no built-in dummy images here.
+const srcOf = (s) => s.url || "";
 
 export default function Gallery() {
   const [cat, setCat] = useState("All");
@@ -42,7 +25,7 @@ export default function Gallery() {
     };
   }, []);
 
-  const all = own && own.length ? own : SHOTS;
+  const all = useMemo(() => (Array.isArray(own) ? own : []), [own]);
   const CATS = useMemo(
     () => ["All", ...Array.from(new Set(all.map((s) => s.category).filter(Boolean)))],
     [all]
@@ -88,17 +71,27 @@ export default function Gallery() {
         </nav>
       </header>
 
-      <div className="gl-wall">
-        {shots.map((s, i) => (
-          <button key={s.id} className="gl-item" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }} onClick={() => setOpen(i)}>
-            <img src={srcOf(s, 600)} alt={s.title} loading="lazy" />
-            <span className="gl-ov">
-              <span className="gl-cat">{s.category}</span>
-              <span className="gl-cap">{s.title}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+      {shots.length === 0 ? (
+        <div className="gl-empty">
+          <div className="gl-empty-card">
+            <div className="gl-empty-icon"><Camera className="h-5 w-5" /></div>
+            <p>No gallery images yet.</p>
+            <span>Upload images from the admin panel and they will appear here automatically.</span>
+          </div>
+        </div>
+      ) : (
+        <div className="gl-wall">
+          {shots.map((s, i) => (
+            <button key={s.id} className="gl-item" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }} onClick={() => setOpen(i)}>
+              <Image src={srcOf(s)} alt={s.title || "Gallery image"} width={900} height={700} unoptimized priority={false} style={{ objectFit: "cover" }} />
+              <span className="gl-ov">
+                <span className="gl-cat">{s.category}</span>
+                <span className="gl-cap">{s.title}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {item && (
         <div className="gl-box" onClick={() => setOpen(null)}>
@@ -106,7 +99,7 @@ export default function Gallery() {
           <button className="gl-arw l" onClick={(e) => { e.stopPropagation(); nav(-1); }} aria-label="Previous"><ChevronLeft className="h-6 w-6" /></button>
           <button className="gl-arw r" onClick={(e) => { e.stopPropagation(); nav(1); }} aria-label="Next"><ChevronRight className="h-6 w-6" /></button>
           <figure className="gl-fig" onClick={(e) => e.stopPropagation()}>
-            <img src={srcOf(item, 1200)} alt={item.title} />
+            <Image src={srcOf(item)} alt={item.title || "Gallery image"} width={1400} height={1000} unoptimized style={{ objectFit: "contain" }} />
             <figcaption>
               <div className="gl-fc-top">
                 <span className="gl-fc-cat">{item.category}</span>
@@ -131,6 +124,46 @@ export default function Gallery() {
         .gl-chip.on { border-color: var(--c-accent); background: var(--c-accent); color: var(--c-accentFg, #0a0b0f); font-weight: 600; }
 
         /* masonry wall — varied heights read like a gallery, not a feed */
+        .gl-empty {
+          display: grid;
+          place-items: center;
+          min-height: 240px;
+          padding: 24px 18px 32px;
+          text-align: center;
+          color: var(--c-muted);
+        }
+        .gl-empty-card {
+          max-width: 520px;
+          width: min(100%, 520px);
+          padding: 28px 20px;
+          border: 1px solid var(--c-edge);
+          border-radius: 18px;
+          background: linear-gradient(180deg, color-mix(in srgb, var(--c-surface) 92%, transparent), var(--c-surface));
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+        }
+        .gl-empty-icon {
+          width: 42px;
+          height: 42px;
+          margin: 0 auto 12px;
+          border-radius: 12px;
+          display: grid;
+          place-items: center;
+          background: color-mix(in srgb, var(--c-accent) 16%, transparent);
+          color: var(--c-accent);
+        }
+        .gl-empty p {
+          margin: 0 0 8px;
+          font-family: "Space Grotesk", sans-serif;
+          font-size: 24px;
+          font-weight: 700;
+          color: var(--c-fg);
+        }
+        .gl-empty span {
+          max-width: 42ch;
+          line-height: 1.6;
+          margin: 0 auto;
+          display: block;
+        }
         .gl-wall { column-count: 4; column-gap: 12px; padding: 16px 18px 22px; }
         .gl-item { break-inside: avoid; margin: 0 0 12px; width: 100%; display: block; position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--c-edge); background: var(--c-surface); cursor: pointer; padding: 0; animation: gl-in .5s both cubic-bezier(.16,1,.3,1); }
         .gl-item img { width: 100%; height: auto; display: block; transition: transform .5s cubic-bezier(.16,1,.3,1); }

@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-09-19",
+  "github": {
+    "stars": 191,
+    "repos": 59,
+    "reposIncludingForks": 72,
+    "forks": 13,
+    "followers": 50,
+    "since": 2019,
+    "topLanguages": [
+      {
+        "lang": "JavaScript",
+        "count": 16
+      },
+      {
+        "lang": "TypeScript",
+        "count": 7
+      },
+      {
+        "lang": "Python",
+        "count": 5
+      },
+      {
+        "lang": "Go",
+        "count": 5
+      },
+      {
+        "lang": "C",
+        "count": 4
+      },
+      {
+        "lang": "HTML",
+        "count": 4
+      },
+      {
+        "lang": "Rust",
+        "count": 3
+      },
+      {
+        "lang": "Java",
+        "count": 2
+      }
+    ]
+  },
+  "npm": {
+    "packages": 9,
+    "total": 3671,
+    "perPackage": {
+      "commitmap": 315,
+      "expresscraft": 1248,
+      "gitaverse": 240,
+      "livelywatch": 328,
+      "relaxcore": 337,
+      "relaxcss": 104,
+      "relaxicons": 771,
+      "snowuuid": 121,
+      "stylesnap": 207
+    },
+    "claim": 3500
+  }
+}

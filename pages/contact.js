@@ -5,6 +5,7 @@ import { collection, addDoc } from "firebase/firestore";
 import { Mail, Github, Linkedin, MapPin, Send, Check } from "lucide-react";
 import Database from "../components/utils/database";
 import { useSiteContent } from "../lib/useSiteContent";
+import { track } from "../lib/analytics";
 import PageHeader from "../components/home2/PageHeader";
 
 const Field = ({ label, ...props }) => (
@@ -44,6 +45,9 @@ const Contact = () => {
         message: form.message,
         date: new Date().toLocaleString(),
       });
+      // Counted here, on the form people actually use. The tracking first went
+      // into components/contactForm.js, which turned out to be dead code.
+      track("contactSubmit", { once: false });
       setStatus("sent");
       setForm({ fName: "", lName: "", email: "", phone: "", message: "" });
     } catch (err) {

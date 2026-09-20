@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Github, ArrowUpRight, ExternalLink, Package, BookOpen } from "lucide-react";
 import { useSiteContent } from "../../lib/useSiteContent";
 import { openAppOrRoute } from "../../lib/openResume";
+import { projectImage } from "../../lib/assetUrl";
 
 const isNpm = (p) => (p.link || "").includes("npmjs.com");
 
@@ -19,7 +20,7 @@ const FeaturedCard = ({ p, i }) => (
     <div className="relative aspect-[16/10] overflow-hidden border-b border-edge bg-bg">
       {p.image ? (
         <img
-          src={"/projects/" + p.image}
+          src={projectImage(p.image)}
           alt={p.name}
           loading="lazy"
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"

@@ -5,6 +5,7 @@ import { Github, ExternalLink, Package, BookOpen, Search, X, Box, LayoutGrid } f
 import { useSiteContent } from "../lib/useSiteContent";
 import PageHeader from "../components/home2/PageHeader";
 import ClosingCTA from "../components/home2/ClosingCTA";
+import { projectImage } from "../lib/assetUrl";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -58,7 +59,7 @@ const ProjectCard = ({ p, i, sim, onOpen }) => (
     <div className="relative aspect-[16/10] overflow-hidden border-b border-edge bg-bg">
       {p.image ? (
         <img
-          src={"/projects/" + p.image}
+          src={projectImage(p.image)}
           alt={p.name}
           loading="lazy"
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -253,7 +254,7 @@ const ThinkingModal = ({ project: p, onClose }) => {
           >
             {p.image && (
               <img
-                src={"/projects/" + p.image}
+                src={projectImage(p.image)}
                 alt={p.name}
                 className="h-40 w-full object-cover"
               />

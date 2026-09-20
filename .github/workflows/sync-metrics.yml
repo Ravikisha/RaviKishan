@@ -1,0 +1,49 @@
+name: Sync live metrics
+
+# Keeps the GitHub star / repo / follower counts and npm download totals quoted
+# across the site from going stale. Writes lib/metrics.json and commits it when
+# anything changed; Vercel redeploys on the push.
+#
+# No stored secret: GITHUB_TOKEN is injected by Actions (only for the higher
+# API rate limit) and the npm registry download API is public.
+
+on:
+  schedule:
+    # 02:20 UTC daily — off the hour, so it isn't queued behind the crowd of
+    # jobs everyone schedules at :00.
+    - cron: "20 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-metrics
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Refresh metrics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/sync-metrics.mjs
+
+      - name: Commit if changed
+        run: |
+          if [ -z "$(git status --porcelain lib/metrics.json)" ]; then
+            echo "No metric changes — nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/metrics.json
+          git commit -m "chore(metrics): refresh live GitHub and npm numbers"
+          git push

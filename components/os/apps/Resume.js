@@ -9,6 +9,7 @@ import {
   Award,
 } from "lucide-react";
 import { useSiteContent } from "../../../lib/useSiteContent";
+import { useResumeUrl, FALLBACK_NAME } from "../../../lib/resumeStore";
 
 // Résumé, rendered as a desktop app (window body). Same document the old
 // /resume page showed — sourced from lib/facts via useSiteContent — but framed
@@ -33,8 +34,8 @@ const Eyebrow = ({ children }) => (
 export default function Resume() {
   const { resume, identity, experience, education, systems, credentials, patents } =
     useSiteContent();
-  const url = resume?.url || "/Ravi_Kishan_Resume.pdf";
-  const filename = resume?.filename || "Ravi_Kishan_Resume.pdf";
+  const url = useResumeUrl(resume);
+  const filename = resume?.filename || FALLBACK_NAME;
   const pub = (patents && patents[0]) || null;
 
   const contacts = [

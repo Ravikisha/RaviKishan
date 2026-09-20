@@ -1,0 +1,42 @@
+name: Nightly backup
+
+# Exports Firestore into the private Backblaze bucket. The work happens in the
+# app (/api/backup/run) so this workflow holds exactly one secret and no
+# database credentials.
+#
+# Setup: admin → MCP tab → mint a token with the `read` and `vault` scopes,
+# then add it as the repository secret MCP_TOKEN.
+
+on:
+  schedule:
+    - cron: "15 3 * * *" # 03:15 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the export
+        env:
+          MCP_TOKEN: ${{ secrets.MCP_TOKEN }}
+        run: |
+          if [ -z "$MCP_TOKEN" ]; then
+            echo "::error::MCP_TOKEN is not set. Mint one in the admin MCP tab (read + vault scopes)."
+            exit 1
+          fi
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w "%{http_code}" -X POST \
+            https://www.ravikishan.me/api/backup/run \
+            -H "Authorization: Bearer $MCP_TOKEN")
+          echo "HTTP $code"
+          cat "$body"
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Backup failed with HTTP $code"
+            exit 1
+          fi
+          # A 200 that silently skipped collections is still a bad backup.
+          if grep -q '"failures"' "$body"; then
+            echo "::error::Backup completed but some collections failed to export"
+            exit 1
+          fi

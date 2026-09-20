@@ -1,0 +1,40 @@
+rules_version = '2';
+
+// Cloud Storage security rules for the portfolio.
+// Deploy in Firebase console → Storage → Rules → Publish
+// (or `firebase deploy --only storage`).
+//
+// Only one writable area exists: resumes/. It is world-READABLE because the
+// public /resume page links straight at the download URL; it is writable ONLY
+// by the allow-listed admin account, and only for PDFs under 15 MB.
+// Keep the email list in sync with lib/adminAllowlist.js and firestore.rules.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in ['ravikishan63392@gmail.com'];
+    }
+
+    // Résumé PDFs uploaded from /admin. `write` covers create, update AND
+    // delete, so removing an old version is admin-only too.
+    match /resumes/{file} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && (
+          // delete: no incoming resource to validate
+          request.resource == null
+          || (
+            request.resource.size < 15 * 1024 * 1024
+            && request.resource.contentType == 'application/pdf'
+          )
+        );
+    }
+
+    // Deny everything else by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Github, ExternalLink, Package, BookOpen, Search, X, Box, LayoutGrid } from "lucide-react";
 import { useSiteContent } from "../../../lib/useSiteContent";
+import { projectImage } from "../../../lib/assetUrl";
 
 // Projects, rendered as a desktop-OS app. Same content, search and views the
 // /projects page uses (semantic-search theatre, grid + Docker-container views,
@@ -54,7 +55,7 @@ const ProjectCard = ({ p, i, sim, onOpen }) => (
     <div className="relative aspect-[16/10] overflow-hidden border-b border-edge bg-bg">
       {p.image ? (
         <img
-          src={"/projects/" + p.image}
+          src={projectImage(p.image)}
           alt={p.name}
           loading="lazy"
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -224,7 +225,7 @@ const ThinkingModal = ({ project: p, onClose }) => {
             className="border-t border-edge"
           >
             {p.image && (
-              <img src={"/projects/" + p.image} alt={p.name} className="h-40 w-full object-cover" />
+              <img src={projectImage(p.image)} alt={p.name} className="h-40 w-full object-cover" />
             )}
             <div className="p-5">
               <h3 className="font-display text-xl font-bold text-fg">{p.name}</h3>

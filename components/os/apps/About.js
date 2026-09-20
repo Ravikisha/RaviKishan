@@ -1,6 +1,7 @@
 import React from "react";
 import { Cpu, Boxes, BrainCircuit, MapPin } from "lucide-react";
 import { useSiteContent } from "../../../lib/useSiteContent";
+import { github, npmDownloads } from "../../../lib/facts";
 
 // About as a windowed app — bio, portrait and focus areas from the About page,
 // laid out to fit an OS window. Theme-aware.
@@ -53,8 +54,9 @@ export default function About() {
             </p>
             <p>
               Named inventor on a <span className="text-fg">published Indian patent</span>, open-source author
-              with 1,000+ npm downloads and 167 GitHub stars. I care about correctness, performance and clean
-              architecture — always happy to talk developer tools and building from first principles.
+              with {npmDownloads.claim.toLocaleString("en-US")}+ npm downloads and {github.stars} GitHub stars.
+              I care about correctness, performance and clean architecture — always happy to talk developer
+              tools and building from first principles.
             </p>
           </div>
         </div>

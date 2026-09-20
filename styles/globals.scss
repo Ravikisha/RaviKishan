@@ -5,27 +5,16 @@
 @import "./components_styles/home";
 @import "./components_styles/map";
 // @import './components_styles/parallex';
-@import "./components_styles/headingabout";
-@import "./components_styles/character";
-@import "./components_styles/strength";
 @import "./components_styles/hobbies";
-@import "./components_styles/qualification";
-@import "./components_styles/workas";
 @import "./components_styles/year5";
 @import "./components_styles/light";
 @import "./components_styles/footer";
 @import "./components_styles/resume_02";
-@import "./components_styles/awsome";
-@import "./components_styles/earth";
-@import "./components_styles/water";
-@import "./components_styles/workerSection";
 @import "./components_styles/contactForm";
-@import "./components_styles/pureParallax";
 @import "./components_styles/projects";
 @import "./components_styles/articles";
 @import "./components_styles/languages";
-// @import './components_styles/projectRef';
-
+// 
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap");
@@ -116,6 +105,20 @@ html.dark {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+}
+
+/* ── text stays copyable ──────────────────────────────────────────
+   Selection and right-click → Copy are never blocked on the public site.
+   `user-select` inherits, so setting it on <html>/<body> covers every page.
+   Chrome that genuinely must not be selectable (drag handles, canvas
+   overlays, terminal prompts) opts out with Tailwind's `.select-none`, a
+   class selector — higher specificity, so it still wins over this. */
+html,
+body {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 // *{

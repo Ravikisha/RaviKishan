@@ -91,7 +91,7 @@ const Footer = () => {
                 </li>
 
                 <li className="c-nav-tool_item">
-                  <Link href="/about#qualification" className="c-link">Qualification</Link>
+                  <Link href="/about" className="c-link">Qualification</Link>
                 </li>
 
                 <li className="c-nav-tool_item">

@@ -22,12 +22,30 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Résumé PDFs held as base64 in their own documents — the fallback used
+    // when the project has no Cloud Storage bucket (Spark plan). World-readable
+    // because the public /resume page fetches the live one; admin-only writes,
+    // and capped so a document can't be used as free bulk storage.
+    match /resumeFiles/{fileId} {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.contentType == 'application/pdf'
+        && request.resource.data.size is int
+        && request.resource.data.size <= 700 * 1024
+        && request.resource.data.data is string;
+      allow delete: if isAdmin();
+    }
+
     // Public contact-form submissions (components/contactForm.js -> addDoc).
     // Anyone may submit; only the admin may read or delete (admin Inbox).
     match /myportifilio/{docId} {
       allow create: if true;
       allow read, delete: if isAdmin();
-      allow update: if false;
+      // The admin may mark a message answered; the message body itself stays
+      // immutable so the record of what was actually sent cannot be edited.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['repliedAt', 'replyNote']);
     }
 
     // Direct messages from the Mail app (components/os/apps/Mail.js).
@@ -46,7 +64,9 @@ service cloud.firestore {
         && request.resource.data.message.size() >= 1
         && request.resource.data.message.size() <= 5000;
       allow read, delete: if isAdmin();
-      allow update: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['repliedAt', 'replyNote']);
     }
 
     // Public chat room / lobby (components/os/apps/Chat.js).
@@ -62,6 +82,139 @@ service cloud.firestore {
         && request.resource.data.name.size() <= 24;
       allow delete: if isAdmin();
       allow update: if false;
+    }
+
+    // Short links (ravikishan.me/l/<slug>). World-readable because the
+    // redirect page resolves them in the browser. Only the admin may create,
+    // retarget or delete one; an anonymous visitor may bump the click counter
+    // by EXACTLY one and touch nothing else — so the counter cannot be used to
+    // rewrite a link's destination or inflate it in bulk.
+    match /links/{slug} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['clicks', 'lastClickAt'])
+          && request.resource.data.clicks == resource.data.clicks + 1
+          && request.resource.data.url == resource.data.url
+        );
+    }
+
+    // First-party counters, one document per day (id = YYYY-MM-DD).
+    //
+    // Publicly writable by necessity — the browser is what counts a page view.
+    // The rule is therefore the control: a write may only create or bump ONE
+    // allow-listed counter, by exactly one, on a correctly-shaped day id. It
+    // cannot rewrite a counter to an arbitrary value, cannot touch two at
+    // once, and cannot add a key of its own. No identifying data is stored.
+    //
+    // Written out key by key rather than computed: rules have no way to index
+    // an affectedKeys() set, and an explicit list is checkable by eye.
+    match /stats/{day} {
+      allow read: if isAdmin();
+
+      function validDay() {
+        return day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+      }
+      // first write of the day for this counter
+      function init(k) {
+        return request.resource.data.keys().hasOnly([k, 'updatedAt'])
+          && request.resource.data[k] == 1;
+      }
+      // subsequent writes: exactly +1 on that one counter
+      function bump(k) {
+        return request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly([k, 'updatedAt'])
+          && request.resource.data[k] == resource.data.get(k, 0) + 1;
+      }
+
+      allow create: if validDay() && (
+        init('pageView') || init('resumeView') || init('resumeDownload') ||
+        init('resumeCopyLink') || init('projectsView') || init('contactSubmit') ||
+        init('blogView')
+      );
+
+      allow update: if validDay() && (
+        bump('pageView') || bump('resumeView') || bump('resumeDownload') ||
+        bump('resumeCopyLink') || bump('projectsView') || bump('contactSubmit') ||
+        bump('blogView')
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // The photo wall. World-readable because the Gallery app on the public
+    // site renders it; only the admin may add, reorder or remove.
+    match /gallery/{photoId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // PRIVATE document vault. Metadata only — the bytes live in a private
+    // Backblaze bucket. This is the one collection with NO public read: it
+    // indexes payslips, letters, marksheets and identity documents.
+    match /vault/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Natively-authored blog posts. A post is world-readable only once it is
+    // published; a draft is visible to the admin alone. Because reads are
+    // per-document, a PUBLIC LIST must be constrained with
+    // where("published", "==", true) — an unconstrained list is rejected
+    // rather than quietly returning drafts (see lib/posts.js).
+    match /posts/{slug} {
+      allow read: if resource.data.published == true || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // PRIVATE contact book, imported from the LinkedIn data export. Names,
+    // employers and any e-mail addresses LinkedIn chose to include — other
+    // people's personal data, so admin-only in both directions.
+    match /contacts/{contactId} {
+      allow read, write: if isAdmin();
+    }
+
+    // PRIVATE job application tracker — company, role, pasted JD text,
+    // compensation and interview notes. Admin-only in both directions.
+    match /jobs/{jobId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Issued MCP tokens — LABELS ONLY, for the admin list. The token itself is
+    // never stored anywhere: it is self-contained and shown once at mint time.
+    match /mcpTokens/{jti} {
+      allow read, write: if isAdmin();
+    }
+
+    // Revoked MCP token ids. World-READABLE on purpose: the MCP server has to
+    // check it before any credential is established, and it contains nothing
+    // but opaque random ids. Admin-only writes.
+    match /site/mcpRevocations {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Redeemed OAuth authorization codes. Written once at redemption to make
+    // a stateless code single-use — a second redemption finds the claim here
+    // and is refused. Never updated.
+    match /oauthCodes/{jti} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Append-only audit log. The admin may add and read entries but never
+    // change or remove one, so the history cannot be quietly rewritten.
+    match /auditLog/{entryId} {
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Unpublished draft of site content + its version snapshots. Admin-only:
+    // a draft is by definition not live yet.
+    match /siteDrafts/{docId} {
+      allow read, write: if isAdmin();
     }
 
     // Deny everything else by default.

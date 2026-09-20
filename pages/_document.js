@@ -23,11 +23,10 @@ export default function Document() {
           rel="stylesheet"
           type="text/css"
         />
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#0a0b0f" media="(prefers-color-scheme: dark)" />
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/favicon.ico" />
+        {/* The manifest, theme-color and touch icon are NOT set here: the site
+            and /admin install as two separate PWAs with different manifests and
+            icons, and _document renders on every route. pages/_app.js picks the
+            right set per route. */}
       </Head>
       
       <Script

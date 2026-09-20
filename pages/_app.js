@@ -14,6 +14,7 @@ import AOS from "aos";
 import "aos/dist/aos.css";
 import { ThemeProvider } from "../components/utils/ThemeProvider";
 import { SiteContentProvider } from "../lib/useSiteContent";
+import { track } from "../lib/analytics";
 import Easter from "../components/eggs/Easter";
 import DesktopOS from "../components/os/DesktopOS";
 import RecruiterMode from "../components/RecruiterMode";
@@ -58,16 +59,53 @@ function MyApp({ Component, pageProps }) {
     AOS.init();
   }, []);
 
+  // First-party counters (lib/analytics.js). Once per session per counter, so
+  // these read as "visits that saw this page" rather than raw hits. The admin
+  // is excluded — counting your own edits would make the numbers useless.
+  useEffect(() => {
+    if (router.pathname === "/admin") return;
+    track("pageView");
+    const perPage = {
+      "/resume": "resumeView",
+      "/projects": "projectsView",
+      "/blog": "blogView",
+    }[router.pathname];
+    if (perPage) track(perPage);
+  }, [router.pathname]);
+
   // Hidden admin CMS: render bare — no nav, footer, loader, analytics or the
   // public SEO/meta. It manages its own Firebase state and must stay unindexed.
   // (Placed after all hooks so hook order stays constant across renders.)
-  if (router.pathname === "/admin") {
+  // The admin design preview renders the same shell, so it needs the same bare
+  // treatment — no nav, no footer, no loader over the top of it.
+  if (router.pathname === "/admin" || router.pathname === "/__adminpreview") {
     return (
       <ThemeProvider>
         <Head>
           <meta name="robots" content="noindex, nofollow" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Admin</title>
+          {/* viewport-fit=cover so the dark chrome reaches under the notch when
+              this is running as an installed app. */}
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, viewport-fit=cover"
+          />
+          <title>RK Admin</title>
+
+          {/* The admin installs as its own PWA, separate from the portfolio:
+              own manifest, own scope (/admin), own icon, so the two apps are
+              distinguishable on a home screen. */}
+          <link rel="manifest" href="/admin.webmanifest" />
+          <meta name="theme-color" content="#0d0e13" />
+          <meta name="color-scheme" content="dark" />
+          <link rel="icon" href="/admin-icon-192.png" />
+          <link rel="apple-touch-icon" href="/admin-apple-touch.png" />
+
+          {/* iOS ignores the manifest entirely — these are what make
+              "Add to Home Screen" open standalone instead of in Safari. */}
+          <meta name="apple-mobile-web-app-capable" content="yes" />
+          <meta name="mobile-web-app-capable" content="yes" />
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+          <meta name="apple-mobile-web-app-title" content="RK Admin" />
         </Head>
         <Component {...pageProps} />
       </ThemeProvider>
@@ -83,6 +121,13 @@ function MyApp({ Component, pageProps }) {
         <Head>
           <meta charSet="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" key="viewport" />
+
+          {/* Public-site PWA. /admin swaps in its own manifest above. */}
+          <link rel="manifest" href="/manifest.json" key="manifest" />
+          <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+          <meta name="theme-color" content="#0a0b0f" media="(prefers-color-scheme: dark)" />
+          <link rel="icon" href="/favicon.ico" key="icon" />
+          <link rel="apple-touch-icon" href="/favicon.ico" key="apple-touch-icon" />
           <title key="title">Ravi Kishan — Software Engineer · Distributed Systems &amp; Applied AI</title>
           <meta
             name="description"

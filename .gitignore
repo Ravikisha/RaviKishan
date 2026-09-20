@@ -34,3 +34,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# puppeteer profile used by scripts/e2e-check.js (keeps the admin sign-in)
+.e2e-chrome-profile/
+vault-manifest.json
+# manifest maps the private vault; keep it out of the repo

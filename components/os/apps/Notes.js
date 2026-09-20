@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useSiteContent } from "../../../lib/useSiteContent";
+import { github, npmDownloads } from "../../../lib/facts";
 
 // Notes — short essays in Ravi's voice. The narrative the résumé can't hold:
 // why he builds infrastructure from first principles. Copy traces to real facts
@@ -43,7 +44,7 @@ const NOTES = (identity, patents) => [
     date: "",
     body: [
       identity?.now ? `Currently: ${identity.now}.` : "Currently shipping agentic-AI in production.",
-      "1,200+ DSA problems kept the fundamentals sharp. 167★ across 69 repos and 1,000+ npm downloads keep me honest about shipping, not just prototyping.",
+      `1,200+ DSA problems kept the fundamentals sharp. ${github.stars}★ across ${github.repos} repos and ${npmDownloads.claim.toLocaleString("en-US")}+ npm downloads keep me honest about shipping, not just prototyping.`,
       "Gold medalist. But the medal I care about is a green CI on something hard.",
     ],
   },

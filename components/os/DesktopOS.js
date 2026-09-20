@@ -722,12 +722,27 @@ export default function DesktopOS() {
     });
   }, []);
 
-  // right-click the empty desktop → context menu (native menu stays on windows,
-  // dock, menu bar, links, inputs and buttons)
+  // Right-click the empty desktop → context menu.
+  //
+  // This is an ALLOW-list, deliberately: an earlier block-list version swallowed
+  // the native menu on every <p>/<h1>/<div> on every page, which killed
+  // right-click → Copy across the whole site. The custom menu now only appears
+  // when all three hold:
+  //   1. dev mode  — recruiter mode is the clean portfolio, native menu only
+  //   2. nothing is selected — a selection means the user wants Copy
+  //   3. the target really is desktop backdrop — <body>, <html> or the
+  //      (pointer-events:none) wallpaper, never page content
   useEffect(() => {
     const onCtx = (e) => {
+      if (document.documentElement.dataset.mode === "recruiter") return;
+      const sel = window.getSelection && window.getSelection();
+      if (sel && !sel.isCollapsed && String(sel).trim()) return;
       const t = e.target;
-      if (t.closest && t.closest(".os-win, .os-dock, .os-menubar, .os-lp, .os-ctx, a, button, input, textarea, [contenteditable]")) return;
+      const isBackdrop =
+        t === document.body ||
+        t === document.documentElement ||
+        (t.closest && !!t.closest(".os-wall"));
+      if (!isBackdrop) return;
       e.preventDefault();
       setCtx({ x: e.clientX, y: e.clientY, view: "main" });
     };

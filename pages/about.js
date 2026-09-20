@@ -3,6 +3,7 @@ import Seo from "../components/Seo";
 import { motion } from "framer-motion";
 import { Cpu, Boxes, BrainCircuit, Layers } from "lucide-react";
 import { useSiteContent } from "../lib/useSiteContent";
+import { github, npmDownloads } from "../lib/facts";
 import PageHeader from "../components/home2/PageHeader";
 import ExperienceTimeline from "../components/home2/ExperienceTimeline";
 import ClosingCTA from "../components/home2/ClosingCTA";
@@ -93,8 +94,9 @@ const About = () => {
                 I&apos;m a named inventor on a{" "}
                 <span className="text-fg">published Indian patent</span> for a
                 multilingual RAG system over the Bhagavad Gita, and an
-                open-source author with 1,000+ npm downloads and 167 GitHub
-                stars. I care about correctness, performance and clean
+                open-source author with{" "}
+                {npmDownloads.claim.toLocaleString("en-US")}+ npm downloads and{" "}
+                {github.stars} GitHub stars. I care about correctness, performance and clean
                 architecture — and I&apos;m always happy to talk developer
                 tools, infrastructure and building from first principles.
               </p>

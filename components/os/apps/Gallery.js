@@ -1,9 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { fetchGallery } from "../../../lib/galleryStore";
 import { X, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 
-// Gallery — a photo wall. A masonry grid of shots, filterable by category, with
-// a quiet lightbox (arrow keys, counter). Placeholder images are stock photos
-// from Pexels for now; swap `SHOTS` for real ones (or wire a source) later.
+// Gallery — a photo wall. A masonry grid of shots, filterable by category,
+// with a quiet lightbox (arrow keys, counter).
+//
+// Shots come from the `gallery` collection, uploaded and ordered in the admin's
+// Gallery tab. The stock set below is the FALLBACK, shown only while nothing
+// has been uploaded yet — an empty wall looks broken, a placeholder wall looks
+// unfinished, and unfinished is the honest state.
 const px = (id, w) => `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=${w}`;
 
 const SHOTS = [
@@ -19,13 +24,38 @@ const SHOTS = [
   { id: "733872", title: "Natural light", category: "People", note: "No setup, just the window." },
 ];
 
-const CATS = ["All", ...Array.from(new Set(SHOTS.map((s) => s.category)))];
+// The stock set carries an `id` for Pexels; uploaded shots carry a `url`.
+const srcOf = (s, w) => (s.url ? s.url : px(s.id, w));
 
 export default function Gallery() {
   const [cat, setCat] = useState("All");
   const [open, setOpen] = useState(null);
+  const [own, setOwn] = useState(null); // null = still loading
 
-  const shots = useMemo(() => (cat === "All" ? SHOTS : SHOTS.filter((s) => s.category === cat)), [cat]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchGallery()
+      .then((rows) => !cancelled && setOwn(rows))
+      .catch(() => !cancelled && setOwn([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const all = own && own.length ? own : SHOTS;
+  const CATS = useMemo(
+    () => ["All", ...Array.from(new Set(all.map((s) => s.category).filter(Boolean)))],
+    [all]
+  );
+
+  const shots = useMemo(
+    () => (cat === "All" ? all : all.filter((s) => s.category === cat)),
+    [cat, all]
+  );
+  useEffect(() => {
+    if (cat !== "All" && !CATS.includes(cat)) setCat("All");
+  }, [CATS, cat]);
+
   const item = open != null ? shots[open] : null;
   const nav = (d) => setOpen((i) => (i == null ? 0 : (i + d + shots.length) % shots.length));
 
@@ -61,7 +91,7 @@ export default function Gallery() {
       <div className="gl-wall">
         {shots.map((s, i) => (
           <button key={s.id} className="gl-item" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }} onClick={() => setOpen(i)}>
-            <img src={px(s.id, 600)} alt={s.title} loading="lazy" />
+            <img src={srcOf(s, 600)} alt={s.title} loading="lazy" />
             <span className="gl-ov">
               <span className="gl-cat">{s.category}</span>
               <span className="gl-cap">{s.title}</span>
@@ -76,7 +106,7 @@ export default function Gallery() {
           <button className="gl-arw l" onClick={(e) => { e.stopPropagation(); nav(-1); }} aria-label="Previous"><ChevronLeft className="h-6 w-6" /></button>
           <button className="gl-arw r" onClick={(e) => { e.stopPropagation(); nav(1); }} aria-label="Next"><ChevronRight className="h-6 w-6" /></button>
           <figure className="gl-fig" onClick={(e) => e.stopPropagation()}>
-            <img src={px(item.id, 1200)} alt={item.title} />
+            <img src={srcOf(item, 1200)} alt={item.title} />
             <figcaption>
               <div className="gl-fc-top">
                 <span className="gl-fc-cat">{item.category}</span>

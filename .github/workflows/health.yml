@@ -1,0 +1,23 @@
+name: Health check
+
+# Is ravikishan.me actually working? A failure here fails the workflow, which
+# is what sends the notification — there is no separate alerting to maintain.
+# Checks public surfaces only, so it needs no secrets.
+
+on:
+  schedule:
+    - cron: "40 */6 * * *" # every 6 hours, off the hour
+  workflow_dispatch: {}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Probe the live site
+        run: node scripts/health-check.mjs
+        env:
+          BASE_URL: https://www.ravikishan.me

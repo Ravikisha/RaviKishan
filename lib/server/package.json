@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "//": "Scopes ESM to lib/server/ so scripts/ can import these modules directly with node. Next/webpack transpiles them regardless."
+}

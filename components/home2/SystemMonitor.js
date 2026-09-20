@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useSiteContent } from "../../lib/useSiteContent";
+import { npmDownloads } from "../../lib/facts";
 
 // A `btop`-style terminal system monitor where the "system" is Ravi.
 // Skills = CPU cores · metrics = memory meters · projects = process list ·
@@ -133,7 +134,12 @@ const SystemMonitor = () => {
   const memRows = [
     { k: "Patent", v: "published", pct: 100, c: "#4ED0C0" },
     { k: "GitHub ★", v: String(stars), pct: 84, c: "#FFB020" },
-    { k: "npm ↓", v: "1,000+", pct: 72, c: "#FFB020" },
+    {
+      k: "npm ↓",
+      v: `${npmDownloads.claim.toLocaleString("en-US")}+`,
+      pct: 72,
+      c: "#FFB020",
+    },
     { k: "DSA", v: "1,200+", pct: 96, c: "#FF7A6B" },
     { k: "GPA", v: "9.5/10", pct: 95, c: "#4ED0C0" },
     { k: "LLM cost", v: "−70%", pct: 70, c: "#FFB020" },

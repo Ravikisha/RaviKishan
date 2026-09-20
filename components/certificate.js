@@ -9,6 +9,7 @@ import LinkedInLogo from "../public/company/linkedin.png";
 import CertificateLogo from "../public/assets/certificate.jpg";
 import { DownloadIcon } from "lucide-react";
 import { badgeColorGenerator } from "./utils/utils";
+import { certificateImage, orgLogo } from "../lib/assetUrl";
 
 const Certificate = () => {
   const { certificates: data } = useSiteContent();
@@ -164,7 +165,7 @@ export const Card = (props) => {
         <div className="relative flex max-w-[24rem] flex-col overflow-hidden rounded-xl bg-white bg-clip-border text-gray-700 shadow-md">
           <div className="relative m-0 overflow-hidden text-gray-700 bg-transparent rounded-none shadow-none bg-clip-border">
             <Image
-              src={"/certificates/" + image}
+              src={certificateImage(image)}
               alt={name + " certificate Ravi Kishan"}
               width={600}
               height={400}
@@ -176,7 +177,7 @@ export const Card = (props) => {
               {name}
             </h4>
             <Image
-              src={"/company/" + organization + ".png"}
+              src={orgLogo(organization)}
               alt={organization}
               height={50}
               width={80}
@@ -249,7 +250,7 @@ export const Card = (props) => {
             <div className="bg-gray-100 flex rounded-2xl shadow-lg w-full p-5 items-center absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex-col md:flex-row gap-4">
               <div className="w-full md:w-1/2 hidden md:block">
                 <Image
-                  src={"/certificates/" + image}
+                  src={certificateImage(image)}
                   alt={name + " certificate Ravi Kishan"}
                   objectFit="contain"
                   width="100%"
@@ -260,7 +261,7 @@ export const Card = (props) => {
               </div>
               <div className="w-full md:w-1/2 px-2 md:px-16">
                 <Image
-                  src={"/company/" + organization + ".png"}
+                  src={orgLogo(organization)}
                   alt={organization}
                   height={50}
                   width={80}

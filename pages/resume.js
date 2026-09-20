@@ -11,8 +11,18 @@ import {
   Award,
 } from "lucide-react";
 import { useSiteContent } from "../lib/useSiteContent";
+import {
+  useResumeUrl,
+  pickResume,
+  variantLabel,
+  DEFAULT_VARIANT,
+  FALLBACK_NAME,
+} from "../lib/resumeStore";
+import { useRouter } from "next/router";
 import PageHeader from "../components/home2/PageHeader";
 import ClosingCTA from "../components/home2/ClosingCTA";
+import CopyLinkButton from "../components/home2/CopyLinkButton";
+import { track } from "../lib/analytics";
 
 // Routed résumé page. Primarily surfaced in *recruiter mode* — the clean,
 // distraction-free view — where the desktop-OS chrome (and the Résumé app) is
@@ -47,11 +57,21 @@ const Section = ({ children, delay = 0 }) => (
 );
 
 const Resume = () => {
-  const { resume, identity, experience, education, systems, credentials, patents } =
-    useSiteContent();
-  const url = resume?.url || "/Ravi_Kishan_Resume.pdf";
-  const filename = resume?.filename || "Ravi_Kishan_Resume.pdf";
+  const content = useSiteContent();
+  const { identity, experience, education, systems, credentials, patents } = content;
+
+  // /resume?v=ai serves the AI cut of the CV, ?v=backend the backend one, and
+  // so on. An unknown variant quietly falls back to the default résumé rather
+  // than breaking the download.
+  const router = useRouter();
+  const { entry: resume, variant, exact } = pickResume(content, router.query?.v);
+  // Resolves to the stored URL, or to a blob: URL when the PDF lives in a
+  // Firestore document (the no-Cloud-Storage fallback). Same-origin either way
+  // for the blob case, which is what keeps <a download> working.
+  const url = useResumeUrl(resume);
+  const filename = resume?.filename || FALLBACK_NAME;
   const pub = (patents && patents[0]) || null;
+  const showVariant = exact && variant !== DEFAULT_VARIANT;
 
   const contacts = [
     { icon: Mail, label: identity.email, href: `mailto:${identity.email}` },
@@ -74,13 +94,14 @@ const Resume = () => {
           title="The one-page"
           accent="version."
           subtitle={`Read it here, or take the PDF.${
-            resume?.updated ? ` Updated ${resume.updated}.` : ""
-          }`}
+            showVariant ? ` ${variantLabel(variant)} edition.` : ""
+          }${resume?.updated ? ` Updated ${resume.updated}.` : ""}`}
         >
           <div className="flex flex-wrap gap-3">
             <a
               href={url}
               download={filename}
+              onClick={() => track("resumeDownload", { once: false })}
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-3 text-sm font-semibold text-accentFg transition-transform hover:-translate-y-0.5"
             >
               <Download className="h-4 w-4" />
@@ -95,6 +116,11 @@ const Resume = () => {
               <ExternalLink className="h-4 w-4 text-muted" />
               Open PDF
             </a>
+            {/* Recruiters want something pasteable. Carries the variant so the
+                link shares the same cut of the CV being viewed. */}
+            <CopyLinkButton
+              path={showVariant ? `/resume?v=${variant}` : "/resume"}
+            />
           </div>
         </PageHeader>
 

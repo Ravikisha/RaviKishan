@@ -61,6 +61,38 @@ async function launch({ headful = false, userDataDir } = {}) {
 
 // Force the site mode before any script runs, so _app.js / RecruiterMode pick
 // it up on first paint rather than after a flash.
+// Wait for the page to actually have readable text, rather than sleeping and
+// hoping. Every route here paints its content from Firestore through
+// useSiteContent, and non-blog routes run a Loader overlay first, so "how long
+// until there is something to select" is not a constant. A fixed 900ms budget
+// was measured being blown by 8.7x — 7877ms on one throttled run of /projects,
+// while two sibling runs finished in 91ms and 166ms. That is the shape of a
+// flake: the suite failed with "no visible text block found" on a page that
+// was perfectly fine, just late.
+//
+// A page that genuinely never renders text still fails, because the wait has
+// its own timeout and the caller reports it.
+async function waitForText(page, minChars = 25, timeout = 20000) {
+  try {
+    await page.waitForFunction(
+      (min) => {
+        const vis = (el) => el.offsetParent !== null && el.getClientRects().length > 0;
+        return Array.from(document.querySelectorAll("p,h1,h2,h3,li,span,td,a")).some(
+          (el) => vis(el) && (el.innerText || "").trim().length > min
+        );
+      },
+      { timeout, polling: 100 },
+      minChars
+    );
+    // A short settle beat AFTER the condition, for reveal animations that are
+    // mid-flight. This one is allowed to be arbitrary: nothing depends on it.
+    await new Promise((r) => setTimeout(r, 250));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function withMode(page, mode) {
   await page.evaluateOnNewDocument((m) => {
     try {
@@ -131,10 +163,12 @@ async function copySuite(browser) {
       await withMode(page, mode);
       try {
         await page.goto(BASE + route, { waitUntil: "networkidle2", timeout: 45000 });
-        // give framer-motion / AOS reveals a beat so text is actually painted
-        await new Promise((r) => setTimeout(r, 900));
-        const r = await page.evaluate(probe);
         const tag = `${mode}${route}`;
+        if (!(await waitForText(page))) {
+          bad(`${tag} probe`, "no visible text block appeared within 20s");
+          continue; // the finally below still closes the page
+        }
+        const r = await page.evaluate(probe);
 
         if (r.error) {
           bad(`${tag} probe`, r.error);
@@ -166,7 +200,10 @@ async function clipboardSuite(browser) {
   await withMode(page, "recruiter");
   try {
     await page.goto(BASE + "/resume", { waitUntil: "networkidle2", timeout: 45000 });
-    await new Promise((r) => setTimeout(r, 900));
+    if (!(await waitForText(page))) {
+      bad("clipboard", "no visible text block appeared within 20s");
+      return;
+    }
 
     const expected = await page.evaluate(() => {
       const el = Array.from(document.querySelectorAll("p, h1, h2, li")).find(
@@ -419,6 +456,86 @@ async function blogSuite(browser) {
     );
   } catch (e) {
     bad("blog locality", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------------- desktop Blog app suite ---------------- */
+
+// DesktopOS is rendered from _app.js on EVERY route, so in dev mode it is a
+// full-screen overlay that survives a client-side navigation. A routed <Link>
+// inside a desktop window therefore "works" — the URL changes and the article
+// renders — while the reader sees nothing happen, because the desktop is still
+// painted on top of it. Every other desktop app keeps its detail view inside
+// its own window; the Blog app must too.
+async function desktopBlogSuite(browser) {
+  console.log("\ndesktop Blog app opens a post in its window");
+  const page = await browser.newPage();
+  await withMode(page, "dev");
+  try {
+    await page.goto(BASE, { waitUntil: "networkidle2", timeout: 45000 });
+    await new Promise((r) => setTimeout(r, 3500));
+
+    const launched = await page.evaluate(() => {
+      document.querySelector('[aria-label*="All apps"]')?.click();
+      return true;
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+    const opened = await page.evaluate(() => {
+      const app = Array.from(document.querySelectorAll(".os-lp-app")).find((a) =>
+        /blog/i.test(a.textContent)
+      );
+      if (app) app.click();
+      return !!app;
+    });
+    check(launched && opened, "the Blog app launches from the launchpad");
+    await new Promise((r) => setTimeout(r, 4000));
+
+    const list = await page.evaluate(() => ({
+      windows: document.querySelectorAll(".os-win").length,
+      cards: document.querySelectorAll(".blga-card").length,
+    }));
+    check(list.windows === 1, "a window opens", String(list.windows));
+    check(list.cards > 0, "the library renders in it", String(list.cards));
+
+    if (!list.cards) return;
+
+    // A card must not be a routed link out of the desktop.
+    const card = await page.evaluate(() => {
+      const el = document.querySelector(".blga-card");
+      return { tag: el.tagName, href: el.getAttribute("href") };
+    });
+    check(!card.href, "a card is not an <a href> that navigates away", String(card.href));
+
+    await page.evaluate(() => document.querySelector(".blga-card").click());
+    await new Promise((r) => setTimeout(r, 2500));
+
+    const after = await page.evaluate(() => ({
+      path: location.pathname,
+      reader: !!document.querySelector(".blga-reader"),
+      readerTitle: document.querySelector(".blga-reader h1")?.innerText || "",
+      renderedBody: (document.querySelector(".blga-reader .post-body")?.innerText || "").length,
+      stillInWindow: !!document.querySelector(".os-win .blga-reader"),
+    }));
+    check(after.path === "/", "the desktop is not navigated away from", after.path);
+    check(after.reader, "the post opens in a reader view");
+    check(after.stillInWindow, "and that reader is inside the Blog window");
+    check(!!after.readerTitle, "the reader shows the post title", after.readerTitle.slice(0, 50));
+    check(after.renderedBody > 400, "and the rendered body", `${after.renderedBody} chars`);
+
+    // Back must return to the library, not to the browser's previous page.
+    await page.evaluate(() => document.querySelector(".blga-back")?.click());
+    await new Promise((r) => setTimeout(r, 1200));
+    const back = await page.evaluate(() => ({
+      path: location.pathname,
+      cards: document.querySelectorAll(".blga-card").length,
+      reader: !!document.querySelector(".blga-reader"),
+    }));
+    check(back.cards > 0 && !back.reader, "back returns to the library", JSON.stringify(back));
+    check(back.path === "/", "and still has not left the desktop", back.path);
+  } catch (e) {
+    bad("desktop Blog app", e.message);
   } finally {
     await page.close();
   }
@@ -679,6 +796,7 @@ async function resumeSuite() {
       await linksSuite(browser);
       await variantSuite(browser);
       await blogSuite(browser);
+      await desktopBlogSuite(browser);
     } finally {
       await browser.close();
     }
@@ -687,6 +805,7 @@ async function resumeSuite() {
     const browser = await launch({ headful: !!process.env.HEADFUL });
     try {
       await blogSuite(browser);
+      await desktopBlogSuite(browser);
     } finally {
       await browser.close();
     }

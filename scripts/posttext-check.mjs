@@ -13,6 +13,7 @@ import {
   excerptFrom,
   outlineOf,
   findSection,
+  stripLeadingCover,
 } from "../lib/server/postText.js";
 
 let pass = 0;
@@ -142,6 +143,28 @@ console.log("\nfinding a section to edit");
     /appears 2 times/
   );
   throws(() => findSection(body, ""), "an empty heading is refused", /Give the heading/);
+}
+
+console.log("\nthe cover, duplicated into the body");
+{
+  const url = "https://ravikishan.me/api/media/blog/1-x.png";
+
+  const r = stripLeadingCover(`![a diagram](${url})\n\nProse follows.`, url);
+  check(r.removed, "a leading image matching the cover is removed");
+  check(r.body === "Prose follows.", "and the prose survives intact", JSON.stringify(r.body));
+
+  check(stripLeadingCover(`![](${url} "A title")\n\nProse.`, url).removed,
+    "including the form carrying a title attribute");
+  check(stripLeadingCover(`  \n![](${url})\n\nProse.`, url).removed,
+    "leading whitespace does not hide it");
+
+  check(!stripLeadingCover(`![](https://elsewhere/x.png)\n\nProse.`, url).removed,
+    "a DIFFERENT leading image is left alone");
+  // Reusing the cover further down is a choice, not a mistake.
+  check(!stripLeadingCover(`Intro.\n\n![](${url})`, url).removed,
+    "the same image further down is left alone");
+  check(!stripLeadingCover(`![](${url})`, "").removed, "no cover set, nothing removed");
+  check(!stripLeadingCover("", url).removed, "an empty body is handled");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

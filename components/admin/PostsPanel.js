@@ -220,7 +220,9 @@ export default function PostsPanel({ user }) {
     e.target.value = "";
     if (!file) return;
     if (!/^image\//.test(file.type)) return setErr("That is not an image.");
-    if (file.size > 8 * 1024 * 1024) return setErr("Images must be under 8 MB.");
+    // Straight to object storage via a presigned PUT and stored verbatim, so a
+    // full-resolution cover keeps its resolution.
+    if (file.size > 20 * 1024 * 1024) return setErr("Images must be under 20 MB.");
 
     setErr("");
     setBusy(true);

@@ -15,7 +15,8 @@
 import React, { useRef, useState } from "react";
 import { auth } from "../../lib/firebase";
 
-const MAX_BYTES = 8 * 1024 * 1024;
+// Direct to object storage, never through Vercel, never re-encoded.
+const MAX_BYTES = 20 * 1024 * 1024;
 
 export default function ImageField({
   value,
@@ -40,7 +41,7 @@ export default function ImageField({
     setErr("");
 
     if (!/^image\//.test(file.type)) return setErr("That is not an image.");
-    if (file.size > MAX_BYTES) return setErr("Images must be under 8 MB.");
+    if (file.size > MAX_BYTES) return setErr("Images must be under 20 MB.");
 
     setBusy(true);
     try {

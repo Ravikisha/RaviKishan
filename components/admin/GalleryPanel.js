@@ -12,7 +12,10 @@ import { auth, db } from "../../lib/firebase";
 import { logAdminAction } from "../../lib/auditLog";
 import { CATEGORIES, galleryKey, publicUrlFor } from "../../lib/galleryStore";
 
-const MAX_BYTES = 8 * 1024 * 1024;
+// Uploads go browser -> Backblaze directly through a presigned PUT, so the
+// bytes never pass through Vercel and nothing here resizes or re-encodes
+// them. 8 MB was a self-imposed cap that cost resolution for no reason.
+const MAX_BYTES = 20 * 1024 * 1024;
 
 export default function GalleryPanel({ user }) {
   const [rows, setRows] = useState(null);
@@ -61,7 +64,7 @@ export default function GalleryPanel({ user }) {
       setBusy(`Uploading ${done + 1} of ${files.length}…`);
       try {
         if (!/^image\//.test(file.type)) throw new Error(`${file.name} is not an image.`);
-        if (file.size > MAX_BYTES) throw new Error(`${file.name} is over 8 MB.`);
+        if (file.size > MAX_BYTES) throw new Error(`${file.name} is over 20 MB.`);
 
         const key = galleryKey(file.name);
         const { url } = await authed("/api/media/sign", { key });
@@ -180,7 +183,7 @@ export default function GalleryPanel({ user }) {
               <span className="admin-sub">{rows ? `${rows.length} in the wall` : ""}</span>
             </h3>
             <p className="admin-sub gp-sub">
-              Several at once is fine. Up to 8 MB each. They all land in the selected category and can be reordered later.
+              Several at once is fine. Up to 20 MB each, stored at full resolution. They all land in the selected category and can be reordered later.
             </p>
           </div>
           <div className="gp-add">

@@ -183,4 +183,10 @@ export default async function handler(req, res) {
   return res.status(200).json(Array.isArray(body) ? responses : responses[0]);
 }
 
-export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
+// 1mb silently capped every image tool: upload_blog_image advertised 8 MB
+// while the body parser rejected anything over roughly 750 KB of image
+// (base64 inflates by a third), so the tool's own size check was
+// unreachable. 4mb is the working ceiling for inline bytes; the tools
+// advertise 3 MB and point anything larger at their sourceUrl path,
+// which is fetched server-side and never touches this body.
+export const config = { api: { bodyParser: { sizeLimit: "4mb" } } };

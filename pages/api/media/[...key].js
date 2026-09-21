@@ -8,6 +8,8 @@
 //
 // Keys are timestamped and never rewritten, so the response is immutable and
 // Vercel's edge cache serves almost every hit without touching this function.
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { presign, assertMediaKey, isVaultConfigured } from "../../../lib/server/b2";
 
 const TYPES = {
@@ -47,13 +49,23 @@ export default async function handler(req, res) {
     if (!upstream.ok)
       return res.status(upstream.status === 404 || upstream.status === 403 ? 404 : 502).end();
 
-    const buf = Buffer.from(await upstream.arrayBuffer());
     res.setHeader("Content-Type", TYPES[ext]);
-    res.setHeader("Content-Length", String(buf.length));
+    const len = upstream.headers.get("content-length");
+    if (len) res.setHeader("Content-Length", len);
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (req.method === "HEAD") return res.status(200).end();
-    return res.status(200).send(buf);
+    if (req.method === "HEAD") {
+      upstream.body?.cancel?.();
+      return res.status(200).end();
+    }
+
+    // Streamed, not buffered. This used to read the whole object into memory
+    // before sending a byte, which is fine for a 100 KB screenshot and wasteful
+    // for a full-resolution photograph. Piping keeps memory flat whatever the
+    // file size.
+    res.status(200);
+    await pipeline(Readable.fromWeb(upstream.body), res);
+    return undefined;
   } catch (_) {
     return res.status(502).end();
   }

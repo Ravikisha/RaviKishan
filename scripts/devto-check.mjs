@@ -87,6 +87,41 @@ const totalKB = Math.round(
 );
 const biggest = posts.slice().sort((a, b) => b.body.length - a.body.length)[0];
 
+console.log("\ncovers keep their resolution");
+{
+  const { originalImageUrl } = await import("../lib/server/devto.js");
+
+  const wrapped =
+    "https://media2.dev.to/dynamic/image/width=1000,height=420,fit=cover,gravity=auto,format=auto/" +
+    "https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2Fabc.png";
+  check(
+    originalImageUrl(wrapped) === "https://dev-to-uploads.s3.amazonaws.com/uploads/articles/abc.png",
+    "the CDN wrapper is unwrapped to the original"
+  );
+  check(
+    originalImageUrl("https://example.com/a.png") === "https://example.com/a.png",
+    "a plain URL is untouched"
+  );
+  check(originalImageUrl("") === "", "empty is untouched");
+  check(
+    originalImageUrl("https://media2.dev.to/dynamic/image/width=100/not-a-url") ===
+      "https://media2.dev.to/dynamic/image/width=100/not-a-url",
+    "a wrapper with no absolute URL inside is left alone"
+  );
+
+  // dev.to hands back cover_image as a re-encoded WebP, cropped to 2.4:1 and
+  // capped at 1000px wide, while this site renders a cover up to 1180 CSS px
+  // (2360 device px on a 2x display). Importing that thumbnail is how a
+  // 1024x1024, 1.95 MB PNG arrived as 339 KB of soft letterbox.
+  const withCovers = posts.filter((p) => p.cover);
+  const thumbs = withCovers.filter((p) => /dev\.to\/dynamic\/image/.test(p.cover));
+  check(
+    thumbs.length === 0,
+    `no imported cover is a resized CDN thumbnail (${withCovers.length} covers)`,
+    thumbs.map((p) => p.slug).join(", ")
+  );
+}
+
 console.log(
   `\n     ${posts.length} articles → ${totalKB} KB total\n` +
     `     longest: "${biggest.title.slice(0, 52)}" (${Math.round(biggest.body.length / 1024)} KB)\n` +

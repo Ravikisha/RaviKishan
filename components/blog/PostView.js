@@ -113,6 +113,9 @@ export default function PostView({ post, previous = null, next = null, related =
         path={`/blog/${post.slug}`}
         image={post.cover || undefined}
         type="article"
+        // An unpublished post is still reachable by its URL for the admin who
+        // is previewing it. It must not be indexable while it is a draft.
+        noindex={post.published === false}
         canonical={post.source === "devto" ? post.canonicalUrl || post.devtoUrl : undefined}
         article={{
           title: post.title,
@@ -134,14 +137,10 @@ export default function PostView({ post, previous = null, next = null, related =
             <time dateTime={post.publishedAt}>{fmtDate(post.publishedAt)}</time>
             <span className="post-rule" aria-hidden="true" />
             <span>{mins} min read</span>
-            {post.devtoUrl && (
-              <>
-                <span className="post-rule" aria-hidden="true" />
-                <a href={post.devtoUrl} target="_blank" rel="noreferrer">
-                  See on dev.to
-                </a>
-              </>
-            )}
+            {/* No outbound "see it on dev.to" link. A reader who opened a piece
+                of writing here should finish it here; the fact that dev.to
+                published an imported article first is a machine-readable
+                statement (<link rel="canonical"> above), not navigation. */}
           </div>
 
           {post.tags?.length > 0 && (
@@ -429,6 +428,14 @@ export default function PostView({ post, previous = null, next = null, related =
           .post-grid {
             grid-template-columns: 210px minmax(0, 1fr);
             gap: 48px;
+          }
+          /* Pinned, not inferred from source order. The rail renders nothing
+             for a piece with fewer than two headings, and an auto-placed prose
+             column then fell into the 210px rail track — a whole article set
+             in a 210px ribbon. The wide column is where the words go whether
+             or not there is a rail beside them. */
+          .post-body {
+            grid-column: 2;
           }
         }
 

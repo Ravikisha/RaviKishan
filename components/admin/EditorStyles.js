@@ -1,5 +1,6 @@
-// Chrome for the Markdown editor: the Write / Preview / Side-by-side tabs,
-// the pane grid, and the cover-image row.
+// Chrome for the writing desk: the headline field, the front-matter
+// disclosure, the Write / Preview / Side-by-side tabs, the pane grid and
+// the cover-image row.
 //
 // Shared between PostsPanel and the design preview for the same reason
 // PostBodyStyles is shared — a preview that does not look like the real thing
@@ -131,6 +132,147 @@ export default function EditorStyles() {
       .po-preview pre {
         width: 100% !important;
       }
+        /* ---------- the desk ---------- */
+      .po-desk-head {
+        align-items: flex-start;
+      }
+      .po-desk-sub {
+        margin: 6px 0 0;
+        max-width: 62ch;
+      }
+
+      /* The headline, typed at headline size. Same face as the article page,
+         so the line breaks you see here are the ones readers will get. */
+      .po-title {
+        display: block;
+        width: 100%;
+        margin: 18px 0 0;
+        padding: 6px 2px 14px;
+        background: none;
+        border: none;
+        border-bottom: 1px solid var(--a-line, #262a35);
+        border-radius: 0;
+        color: var(--a-text, #e9ebf2);
+        font-family: "Space Grotesk", system-ui, sans-serif;
+        font-size: clamp(1.55rem, 3.2vw, 2.4rem);
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.12;
+        outline: none;
+        transition: border-color 0.15s ease;
+      }
+      .po-title::placeholder {
+        color: #4a5062;
+      }
+      .po-title:focus {
+        border-bottom-color: var(--a-amber, #ffb020);
+      }
+
+      /* ---------- front matter ---------- */
+      .po-front {
+        margin-top: 2px;
+        border-bottom: 1px solid var(--a-line, #262a35);
+      }
+      .po-front > summary {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 11px 2px;
+        cursor: pointer;
+        list-style: none;
+        font-size: 12.5px;
+        color: var(--a-dim, #7d8496);
+      }
+      .po-front > summary::-webkit-details-marker {
+        display: none;
+      }
+      .po-front-label {
+        position: relative;
+        padding-left: 15px;
+        color: var(--a-text, #e9ebf2);
+        font-weight: 600;
+      }
+      .po-front-label::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.42em;
+        border: 4px solid transparent;
+        border-left-color: var(--a-dim, #7d8496);
+        transition: transform 0.16s ease;
+        transform-origin: 2px 50%;
+      }
+      .po-front[open] .po-front-label::before {
+        transform: rotate(90deg);
+      }
+      .po-front-summary {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11.5px;
+      }
+      .po-front-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 4px 0 18px;
+      }
+      .po-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .po-field > span {
+        font-size: 11.5px;
+        color: var(--a-dim, #7d8496);
+      }
+      .po-wide {
+        grid-column: 1 / -1;
+      }
+      .po-slug {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .po-slug .admin-input {
+        flex: 1;
+        min-width: 0;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 12.5px;
+      }
+
+      /* ---------- editor ---------- */
+      .po-editor {
+        margin-top: 16px;
+      }
+      .po-body {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 12.5px;
+        line-height: 1.65;
+      }
+      .mdt-count {
+        margin-left: auto;
+        font-size: 11.5px;
+        color: var(--a-dim, #7d8496);
+        padding-right: 4px;
+      }
+      .po-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .po-btns,
+      .po-head-btns {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
       .po-preview-empty {
         color: var(--a-dim, #8b90a0);
         font-style: italic;

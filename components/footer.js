@@ -102,7 +102,7 @@ const Footer = () => {
                   <Link href="/projects#projects" className="c-link">Projects</Link>
                 </li>
                 <li className="c-nav-tool_item">
-                  <Link href="/projects#articles" className="c-link">Articles</Link>
+                  <Link href="/blog" className="c-link">Writing</Link>
                 </li>
               </ul>
             </nav>

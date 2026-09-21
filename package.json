@@ -11,6 +11,8 @@
     "e2e:copy": "node scripts/e2e-check.js copy",
     "e2e:resume": "node scripts/e2e-check.js resume",
     "e2e:vault": "node scripts/e2e-check.js vault",
+    "test:posttext": "node scripts/posttext-check.mjs",
+    "e2e:blog": "node scripts/e2e-check.js blog",
     "e2e:metrics": "node scripts/e2e-check.js metrics",
     "metrics": "node scripts/sync-metrics.mjs",
     "b2:check": "node scripts/b2-check.mjs",

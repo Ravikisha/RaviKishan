@@ -3,7 +3,9 @@
  *   node scripts/mcp-check.mjs
  *   MCP_TOKEN=rkmcp_… node scripts/mcp-check.mjs   # also exercises real tools
  *
- * Without a token this covers the protocol surface and every way of reaching
+ * Without a token this covers the protocol surface, the shape of the tool
+ * registry, the capabilities that must stay absent from it, the guards that
+ * refuse before touching anything, and every way of reaching
  * the endpoint WITHOUT valid credentials — which is the part that matters,
  * because a token here can read a private document vault and rewrite a public
  * website. With MCP_TOKEN set it additionally runs a live handshake and a
@@ -161,6 +163,148 @@ console.log("\ntoken crypto (round trip, in-process)");
     threw = true;
   }
   check(threw, "a single flipped byte invalidates the token");
+}
+
+console.log("\ntool registry contract");
+{
+  const { TOOLS, toolByName, listToolsFor } = await import("../lib/server/mcpTools.js");
+  const names = TOOLS.map((t) => t.name);
+
+  check(TOOLS.length > 0, `registry loads (${TOOLS.length} tools)`);
+  check(
+    names.filter((n, i) => names.indexOf(n) !== i).length === 0,
+    "every tool name is unique",
+    String(names.filter((n, i) => names.indexOf(n) !== i))
+  );
+  check(
+    names.every((n) => /^[a-z][a-z0-9_]*$/.test(n)),
+    "names are snake_case",
+    String(names.filter((n) => !/^[a-z][a-z0-9_]*$/.test(n)))
+  );
+
+  const SCOPES = ["read", "write", "vault"];
+  check(
+    TOOLS.every((t) => SCOPES.includes(t.scope)),
+    "every tool declares a known scope",
+    String(TOOLS.filter((t) => !SCOPES.includes(t.scope)).map((t) => t.name))
+  );
+  check(
+    TOOLS.every((t) => typeof t.handler === "function"),
+    "every tool has a handler",
+    String(TOOLS.filter((t) => typeof t.handler !== "function").map((t) => t.name))
+  );
+  // The description is what the model reads to decide whether to call a tool;
+  // a one-word one is how you get the wrong tool called.
+  check(
+    TOOLS.every((t) => typeof t.description === "string" && t.description.length > 30),
+    "every tool describes itself in a sentence",
+    String(TOOLS.filter((t) => (t.description || "").length <= 30).map((t) => t.name))
+  );
+  check(
+    TOOLS.every((t) => t.inputSchema?.type === "object" && t.inputSchema.properties),
+    "every inputSchema is an object schema",
+    String(TOOLS.filter((t) => t.inputSchema?.type !== "object" || !t.inputSchema.properties).map((t) => t.name))
+  );
+  // A required field that is not declared is a schema a client cannot satisfy.
+  const orphanRequired = TOOLS.filter((t) =>
+    (t.inputSchema?.required || []).some((r) => !(r in (t.inputSchema.properties || {})))
+  );
+  check(orphanRequired.length === 0, "every required field is declared", String(orphanRequired.map((t) => t.name)));
+
+  check(typeof toolByName(names[0]) === "object", "toolByName resolves a real tool");
+  check(toolByName("no_such_tool") === undefined, "toolByName rejects an unknown name");
+
+  // tools/list must not even mention what the token cannot do.
+  const readOnly = listToolsFor(["read"]);
+  check(
+    readOnly.length > 0 && readOnly.every((t) => toolByName(t.name).scope === "read"),
+    "a read-only token is offered read tools only",
+    String(readOnly.filter((t) => toolByName(t.name).scope !== "read").map((t) => t.name))
+  );
+  check(
+    !readOnly.some((t) => /^(create|update|delete|set|add|upload|restore|publish|import|crosspost|mark)_/.test(t.name)),
+    "a read-only token is offered nothing that mutates",
+    String(readOnly.filter((t) => /^(create|update|delete|set|add|upload|restore|publish|import|crosspost|mark)_/.test(t.name)).map((t) => t.name))
+  );
+  check(
+    listToolsFor(["read", "write", "vault"]).length === TOOLS.length,
+    "all three scopes together offer everything"
+  );
+  check(listToolsFor([]).length === 0, "a token with no scopes is offered nothing");
+}
+
+console.log("\ncapabilities that must stay absent");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const names = TOOLS.map((t) => t.name);
+  const has = (re) => names.filter((n) => re.test(n));
+
+  // A token that can mint tokens is a privilege-escalation ladder.
+  check(has(/mcp_?token|mint|revoke/).length === 0, "no tool mints or revokes an MCP token", String(has(/mcp_?token|mint|revoke/)));
+  // Encryption happens in the browser under a passphrase that never leaves it.
+  check(
+    has(/^(upload|create|delete)_vault/).length === 0,
+    "no tool uploads to or deletes from the vault",
+    String(has(/^(upload|create|delete)_vault/))
+  );
+  // Serving Google Tasks from here would mean storing a Google refresh token.
+  check(has(/task/).length === 0, "no Google Tasks tool", String(has(/task/)));
+  // Vault tools never hand back bytes.
+  const vaultTools = TOOLS.filter((t) => /vault/.test(t.name));
+  check(
+    vaultTools.length > 0 && vaultTools.every((t) => t.scope === "vault"),
+    "every vault tool sits behind the vault scope",
+    String(vaultTools.filter((t) => t.scope !== "vault").map((t) => t.name))
+  );
+}
+
+console.log("\nguards refuse before they touch anything");
+{
+  const { toolByName } = await import("../lib/server/mcpTools.js");
+  const refuses = async (tool, args, name, expect) => {
+    let message = "";
+    try {
+      await toolByName(tool).handler(args, { idToken: "not-a-token" });
+    } catch (e) {
+      message = e?.message || "";
+    }
+    check(expect.test(message), name, message || "did NOT throw");
+  };
+
+  // Deleting a résumé or a vault object from a chat client is not recoverable.
+  await refuses("delete_asset", { key: "vault/aadhaar.pdf.enc" }, "delete_asset refuses a vault key", /media\/|not configured/i);
+  await refuses("delete_asset", { key: "resumes/cv.pdf" }, "delete_asset refuses a résumé key", /media\/|not configured/i);
+  await refuses("delete_asset", { key: "../../etc/passwd" }, "delete_asset refuses a traversal key", /owns|not configured/i);
+  await refuses("list_assets", { prefix: "secrets/" }, "list_assets refuses an unknown prefix", /prefix|not configured/i);
+
+  // The résumé store owns its own document keys — they hold uploaded files and
+  // version history, so they are not editable field-by-field from here.
+  for (const section of ["resume", "resumeVersions", "resumeByVariant"]) {
+    await refuses(
+      "set_content_section",
+      { section, value: {} },
+      `set_content_section refuses "${section}"`,
+      /résumé store|resume store/i
+    );
+  }
+  await refuses("get_content_section", { section: "resume" }, "get_content_section refuses the résumé store", /résumé store|resume store/i);
+  await refuses("add_content_item", { section: "a b", item: {} }, "add_content_item refuses a malformed section name", /identifier/i);
+  await refuses("delete_content_item", { section: "../other", match: "x" }, "delete_content_item refuses a path-shaped section", /identifier/i);
+
+  await refuses("mark_message_replied", { box: "nope", id: "1" }, "mark_message_replied refuses an unknown box", /mail, contact or chat/i);
+  await refuses("list_messages", { box: "nope" }, "list_messages refuses an unknown box", /mail, contact or chat/i);
+
+  await refuses("search_posts", { q: "a" }, "search_posts refuses a one-character query", /at least two/i);
+  await refuses("replace_in_post", { slug: "x", find: "", replace: "y" }, "replace_in_post refuses an empty search", /text to find/i);
+  await refuses(
+    "edit_post_section",
+    { slug: "x", heading: "h", body: "b", mode: "sideways" },
+    "edit_post_section refuses an unknown mode",
+    /mode must be/i
+  );
+
+  await refuses("update_contact", { id: "someone" }, "update_contact refuses an empty change", /nothing to change|no such contact/i);
+  await refuses("update_vault_document", { id: "x" }, "update_vault_document refuses an empty change", /nothing to change|no such vault/i);
 }
 
 if (process.env.MCP_TOKEN) {

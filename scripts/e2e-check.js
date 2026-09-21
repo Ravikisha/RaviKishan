@@ -2,6 +2,7 @@
  * bundled Chromium download).
  *
  *   node scripts/e2e-check.js copy     # fully automated, headless
+ *   node scripts/e2e-check.js blog     # blog surfaces link nowhere off-site
  *   node scripts/e2e-check.js resume   # headful; needs a one-time admin sign-in
  *   node scripts/e2e-check.js all
  *
@@ -310,6 +311,119 @@ async function linksSuite(browser) {
   }
 }
 
+/* ---------------- blog locality suite ---------------- */
+
+// The writing on this site is the site's own copy and it opens here. dev.to
+// and Medium were once read at request time and every card was a target=_blank
+// link straight off the domain — a reader who clicked a piece of writing left.
+// This suite is the guard: no blog surface may render an outbound link, and
+// the RSS feed may only advertise URLs this site actually serves.
+const OFFSITE = /dev\.to|medium\.com|hashnode|substack/i;
+
+async function blogSuite(browser) {
+  console.log("\nblog stays on the site");
+  const page = await browser.newPage();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/blog`, { waitUntil: "networkidle2", timeout: 45000 });
+    // the library is read client-side from Firestore
+    await new Promise((r) => setTimeout(r, 2500));
+
+    const index = await page.evaluate(() => {
+      const links = Array.from(document.querySelectorAll("main a, article a"));
+      // Only the writing list itself. The footer's GitHub and LinkedIn links
+      // are supposed to leave — an article is not.
+      const entries = links.filter((a) => a.matches(".wr-lead, .wr-row"));
+      return {
+        hrefs: links.map((a) => a.getAttribute("href") || ""),
+        entries: entries.length,
+        blank: entries.filter((a) => a.target === "_blank").map((a) => a.href),
+        external: entries
+          .map((a) => a.href)
+          .filter((h) => h && new URL(h).origin !== location.origin),
+        posts: links
+          .map((a) => a.getAttribute("href") || "")
+          .filter((h) => /^\/blog\/[^/]+$/.test(h)),
+        text: document.body.innerText.replace(/\s+/g, " "),
+      };
+    });
+
+    const offsite = index.hrefs.filter((h) => OFFSITE.test(h));
+    check(offsite.length === 0, "/blog renders no dev.to or Medium link", offsite.join(", "));
+    check(
+      index.blank.length === 0,
+      "no writing entry opens in a new tab",
+      index.blank.join(", ")
+    );
+    check(
+      index.external.length === 0,
+      "every writing entry is same-origin",
+      index.external.join(", ")
+    );
+    check(
+      index.posts.length > 0 || /Nothing published yet/i.test(index.text),
+      "/blog lists local posts, or says plainly that there are none",
+      index.text.slice(0, 120)
+    );
+
+    // Follow the first piece and make sure reading it keeps you here.
+    if (index.posts.length) {
+      const slug = index.posts[0];
+      await page.goto(`${BASE}${slug}`, { waitUntil: "networkidle2", timeout: 45000 });
+      await new Promise((r) => setTimeout(r, 1800));
+      const post = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll("main a, header a"));
+        return {
+          url: location.pathname,
+          h1: document.querySelector("h1")?.innerText || "",
+          offsite: links
+            .map((a) => a.getAttribute("href") || "")
+            .filter((h) => /dev\.to|medium\.com/i.test(h)),
+          canonical:
+            document.querySelector('link[rel="canonical"]')?.getAttribute("href") || "",
+        };
+      });
+      check(post.url === slug, `${slug} does not redirect`, post.url);
+      check(!!post.h1, `${slug} renders its title`);
+      check(
+        post.offsite.length === 0,
+        `${slug} has no outbound dev.to link in the chrome`,
+        post.offsite.join(", ")
+      );
+      // The canonical tag MAY point at dev.to for an imported article — that
+      // is metadata telling a crawler who published first, not navigation.
+      check(
+        post.canonical === "" || /^https?:/.test(post.canonical),
+        "canonical, if set, is an absolute URL",
+        post.canonical
+      );
+    }
+
+    // The feed is the one blog surface a reader never sees, which is exactly
+    // why a dead link in it goes unnoticed.
+    const feed = await page.evaluate(async (base) => {
+      const r = await fetch(`${base}/feed.xml`);
+      return { status: r.status, xml: await r.text() };
+    }, BASE);
+    check(feed.status === 200, "/feed.xml responds", String(feed.status));
+    const feedLinks = Array.from(feed.xml.matchAll(/<link>([^<]+)<\/link>/g)).map((m) => m[1]);
+    check(
+      feedLinks.every((u) => !OFFSITE.test(u)),
+      "/feed.xml advertises no off-site article",
+      feedLinks.filter((u) => OFFSITE.test(u)).join(", ")
+    );
+    check(
+      feedLinks.every((u) => /\/blog(\/|$)/.test(u)),
+      "every feed link is a /blog URL on this site",
+      feedLinks.filter((u) => !/\/blog(\/|$)/.test(u)).join(", ")
+    );
+  } catch (e) {
+    bad("blog locality", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 /* ---------------- resume variants suite ---------------- */
 
 // /resume?v=<id> serves a different cut of the CV. An unknown variant must
@@ -564,6 +678,15 @@ async function resumeSuite() {
       await metricsSuite(browser);
       await linksSuite(browser);
       await variantSuite(browser);
+      await blogSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "blog") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await blogSuite(browser);
     } finally {
       await browser.close();
     }

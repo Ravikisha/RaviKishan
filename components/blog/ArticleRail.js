@@ -22,7 +22,11 @@ export default function ArticleRail({ containerRef }) {
     const root = containerRef?.current;
     if (!root) return undefined;
 
-    const heads = Array.from(root.querySelectorAll("h2, h3")).filter((h) => h.textContent.trim());
+    // h1 is included because a body can still contain one through raw HTML;
+    // it reads as a top-level section, so it is listed at the same level as h2.
+    const heads = Array.from(root.querySelectorAll("h1, h2, h3")).filter((h) =>
+      h.textContent.trim()
+    );
     heads.forEach((h, i) => {
       if (!h.id) h.id = `s-${i}-${h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`;
     });

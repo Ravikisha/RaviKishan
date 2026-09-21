@@ -168,6 +168,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Snapshots of a post, taken automatically before every edit or delete —
+    // the same safety net site content has in siteDrafts. These hold the FULL
+    // body of drafts as well as published posts, so unlike /posts they are
+    // never publicly readable.
+    match /postVersions/{versionId} {
+      allow read, write: if isAdmin();
+    }
+
     // PRIVATE contact book, imported from the LinkedIn data export. Names,
     // employers and any e-mail addresses LinkedIn chose to include — other
     // people's personal data, so admin-only in both directions.

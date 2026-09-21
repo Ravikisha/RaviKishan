@@ -9,60 +9,11 @@
 // crafted key cannot reach anything else in the bucket.
 import { presign, isVaultConfigured, b2Config } from "../../../lib/server/b2";
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
+// Listing lives in lib/server/objects so the MCP tools answer "what is in
+// the bucket" with the same code this route does.
+import { PREFIXES, inOwnedPrefix, listPrefix } from "../../../lib/server/objects";
 
-// Every prefix the app writes to. Listing is scoped to these, so a stray
-// object elsewhere in the bucket is simply invisible rather than deletable.
-export const PREFIXES = ["media/", "vault/", "resumes/"];
-
-const inOwnedPrefix = (key) =>
-  typeof key === "string" &&
-  !key.includes("..") &&
-  PREFIXES.some((p) => key.startsWith(p)) &&
-  !key.endsWith("/");
-
-// Minimal XML pluck — S3 ListObjectsV2 is a fixed, flat shape, and a parser
-// dependency for four tag names is not worth the install.
-function parseList(xml) {
-  const out = [];
-  for (const m of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
-    const chunk = m[1];
-    const pick = (tag) => (chunk.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`)) || [])[1] || "";
-    const key = pick("Key")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-    if (!key || key.endsWith("/")) continue;
-    out.push({
-      key,
-      size: Number(pick("Size") || 0),
-      lastModified: pick("LastModified"),
-      etag: pick("ETag").replace(/&quot;|"/g, ""),
-    });
-  }
-  const truncated = /<IsTruncated>true<\/IsTruncated>/.test(xml);
-  const next = (xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/) || [])[1] || null;
-  return { objects: out, truncated, next };
-}
-
-async function listPrefix(prefix) {
-  const all = [];
-  let token = null;
-  // Bounded: 10 pages × 1000 keys is far more than this bucket will ever hold,
-  // and an unbounded loop against a paid API is how you get a surprise bill.
-  for (let page = 0; page < 10; page++) {
-    const query = { "list-type": "2", prefix, "max-keys": "1000" };
-    if (token) query["continuation-token"] = token;
-    const res = await fetch(presign({ method: "GET", key: "", expiresIn: 120, query }));
-    if (!res.ok) throw new Error(`Storage list failed (HTTP ${res.status}) for ${prefix}`);
-    const { objects, truncated, next } = parseList(await res.text());
-    all.push(...objects);
-    if (!truncated || !next) break;
-    token = next;
-  }
-  return all;
-}
+export { PREFIXES };
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");

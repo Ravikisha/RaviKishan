@@ -22,14 +22,22 @@ export default function PostBodyStyles() {
         .post-body > * + * {
           margin-top: 1.15em;
         }
+        /* globals.scss pins h1-h4 to a fixed light-theme colour, which beats
+           inheritance — every level a body can produce has to name the token
+           itself or it vanishes on a dark page. */
+        .post-body h1,
         .post-body h2,
-        .post-body h3 {
+        .post-body h3,
+        .post-body h4 {
           color: var(--c-fg);
           font-family: "Space Grotesk", sans-serif;
           letter-spacing: -0.022em;
           line-height: 1.22;
           scroll-margin-top: 90px;
         }
+        /* A body h1 is shifted to h2 when rendered (lib/markdown.js), but raw
+           HTML can still deliver one — it must not outshout the page title. */
+        .post-body h1,
         .post-body h2 {
           font-size: 1.85rem;
           font-weight: 700;
@@ -39,6 +47,11 @@ export default function PostBodyStyles() {
           font-size: 1.24rem;
           font-weight: 600;
           margin-top: 1.9em;
+        }
+        .post-body h4 {
+          font-size: 1.06rem;
+          font-weight: 600;
+          margin-top: 1.7em;
         }
         .post-body p a {
           color: var(--c-fg);
@@ -77,11 +90,26 @@ export default function PostBodyStyles() {
           line-height: 1.62;
           width: 100%;
         }
+        /* "Narrow words, wide artefacts" is done by holding the TEXT to a
+           readable measure and letting code, images and tables have the whole
+           column — not by pushing artefacts past it. The old rule widened them
+           to calc(100% + 120px), which overflowed the 1180px container on any
+           window between 1080px and ~1400px: measured 1196px of scrollWidth in
+           a 1100px viewport, i.e. the article scrolled sideways on a laptop. */
         @media (min-width: 1080px) {
+          .post-body > p,
+          .post-body > ul,
+          .post-body > ol,
+          .post-body > h2,
+          .post-body > h3,
+          .post-body > h4,
+          .post-body > blockquote {
+            max-width: 68ch;
+          }
           .post-body pre,
           .post-body img,
           .post-body table {
-            width: calc(100% + 120px);
+            width: 100%;
             max-width: none;
           }
         }

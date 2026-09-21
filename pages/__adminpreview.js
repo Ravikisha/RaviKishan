@@ -92,50 +92,83 @@ export default function AdminPreview() {
       }
     >
       <main className="admin-main">
-        <section className="ops-card">
-          <div className="ops-head">
-            <h3>New post</h3>
-            <span className="admin-sub">3 published · 1 draft</span>
+        <section className="ops-card po-desk">
+          <div className="ops-head po-desk-head">
+            <div>
+              <h3>New post</h3>
+              <p className="admin-sub po-desk-sub">
+                Markdown in, article out. Nothing is public until you publish it.
+              </p>
+            </div>
+            <span className="po-head-btns">
+              <button className="admin-ghost" type="button">Show dev.to articles</button>
+            </span>
           </div>
 
-          <div className="po-form">
-            <input
-              className="admin-input"
-              placeholder="Title"
-              defaultValue="Building a container runtime from scratch"
-            />
-            <div className="po-slug">
-              <span className="lk-prefix">/blog/</span>
-              <input className="admin-input" defaultValue="container-runtime-from-scratch" />
-            </div>
-            <input className="admin-input" placeholder="Tags" defaultValue="go, linux, systems" />
-            <div className="po-cover">
-              <input className="admin-input" placeholder="Cover image — paste a URL or upload" />
-              <label className="admin-ghost po-img">Upload</label>
-            </div>
+          <input
+            className="po-title"
+            placeholder="Title"
+            defaultValue="Building a container runtime from scratch"
+          />
 
-            <div className="po-wide po-editor">
-              <div className="po-tabs">
-                <button type="button">Write</button>
-                <button type="button">Preview</button>
-                <button type="button" className="on">Side by side</button>
-                <label className="admin-ghost po-img po-tabs-img">Insert image</label>
-              </div>
-              <div className="po-panes split">
-                <textarea
-                  className="admin-input po-body"
-                  rows={16}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                />
-                <div
-                  className="po-preview post-body"
-                  dangerouslySetInnerHTML={{
-                    __html: renderMarkdown(body, { mangle: false, headerIds: false }),
-                  }}
-                />
-              </div>
+          <details className="po-front">
+            <summary>
+              <span className="po-front-label">Front matter</span>
+              <span className="po-front-summary">
+                /blog/container-runtime-from-scratch · 3 tags · no cover
+              </span>
+            </summary>
+            <div className="po-front-body">
+              <label className="po-field">
+                <span>Address</span>
+                <div className="po-slug">
+                  <span className="lk-prefix">/blog/</span>
+                  <input className="admin-input" defaultValue="container-runtime-from-scratch" />
+                </div>
+              </label>
+              <label className="po-field">
+                <span>Tags</span>
+                <input className="admin-input" defaultValue="go, linux, systems" />
+              </label>
+              <label className="po-field po-wide">
+                <span>Cover image</span>
+                <div className="po-cover">
+                  <input className="admin-input" placeholder="Paste a URL, or upload one" />
+                  <label className="admin-ghost po-img">Upload</label>
+                </div>
+              </label>
             </div>
+          </details>
+
+          <div className="po-editor">
+            <div className="po-tabs">
+              <button type="button">Write</button>
+              <button type="button">Preview</button>
+              <button type="button" className="on">Side by side</button>
+              <label className="admin-ghost po-img po-tabs-img">Insert image</label>
+            </div>
+            <div className="po-panes split">
+              <textarea
+                className="admin-input po-body"
+                rows={16}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+              />
+              <div
+                className="po-preview post-body"
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(body, { mangle: false, headerIds: false }),
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="po-actions">
+            <span className="admin-sub">412 words · 3 min read · /blog/container-runtime-from-scratch</span>
+            <span className="po-btns">
+              <button className="admin-ghost" type="button">Save draft</button>
+              <button className="admin-primary" type="button">Publish</button>
+            </span>
           </div>
         </section>
 

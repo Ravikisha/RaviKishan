@@ -1007,6 +1007,69 @@ export function Styles() {
         font-weight: 700;
         margin: 0;
       }
+      /* Cards, lists and rows. Shared because a dozen panels render an
+         .ops-card and only one of them — OpsPanel — used to carry the
+         stylesheet; on every other tab the card's <h3> fell through to the
+         colour globals.scss pins on headings, i.e. dark ink on a dark panel. */
+      .ops-card {
+        border: 1px solid #262a35;
+        border-radius: 10px;
+        background: #0f1117;
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+      .ops-card h3 {
+        font-size: 14px;
+        margin: 0 0 6px;
+        color: #e7e8ee;
+      }
+      .ops-card h4 {
+        color: #e7e8ee;
+      }
+      .ops-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .ops-list {
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 420px;
+        overflow: auto;
+      }
+      .ops-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 7px 10px;
+        border-radius: 8px;
+        background: #101219;
+        font-size: 12.5px;
+      }
+      .ops-when {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: #8b90a0;
+        min-width: 168px;
+      }
+      .ops-action {
+        font-weight: 600;
+        color: #e7e8ee;
+      }
+      .ops-detail {
+        word-break: break-all;
+      }
+      .ops-btns {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+      }
+
       .admin-sub {
         color: #8b90a0;
         font-size: 13px;

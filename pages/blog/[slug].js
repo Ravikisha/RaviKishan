@@ -143,6 +143,33 @@ export default function Post() {
     );
   }
 
-  return <PostView post={post} />;
-  return <PostView post={post} {...neighbors} />;
+  return (
+    <>
+      {/* A draft is readable here only because firestore.rules lets the admin
+          read one; a signed-out visitor gets the not-found page above. Say so
+          plainly, so a preview is never mistaken for the published article. */}
+      {!post.published && (
+        <div className="post-draft">
+          <strong>Draft.</strong> Only you can see this — it is not on /blog and
+          search engines are told to skip it.
+          <style jsx global>{`
+            .post-draft {
+              position: sticky;
+              top: 0;
+              z-index: 40;
+              padding: 10px 24px;
+              background: var(--c-accent);
+              color: #1a1300;
+              font: 500 13.5px Inter, sans-serif;
+              text-align: center;
+            }
+            .post-draft strong {
+              font-weight: 700;
+            }
+          `}</style>
+        </div>
+      )}
+      <PostView post={post} {...neighbors} />
+    </>
+  );
 }

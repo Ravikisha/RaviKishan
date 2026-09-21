@@ -1,4 +1,8 @@
-import { blogPosts } from "../../../lib/blogPosts";
+// The feed is a mirror of the site's own library and nothing else. It used
+// to fall back to a hardcoded dev.to snapshot whenever Firestore hiccuped,
+// which published <link>s of the form ravikishan.me/blog/<dev.to slug> —
+// URLs this site has never served. An empty channel is still valid RSS and
+// a reader keeps the items it already has; dead links it would keep.
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://ravikishan.me";
 const PROJECT = "myportifilio-3ab5f";
@@ -50,16 +54,12 @@ async function publishedPosts() {
 }
 
 export default async function handler(req, res) {
-  let posts;
+  let posts = [];
+  let degraded = false;
   try {
     posts = await publishedPosts();
   } catch (_) {
-    posts = blogPosts.map((post) => ({
-      title: post.title,
-      slug: post.url.split("/").pop(),
-      description: post.excerpt,
-      publishedAt: post.date,
-    }));
+    degraded = true;
   }
 
   const items = posts
@@ -87,6 +87,12 @@ export default async function handler(req, res) {
 </rss>`;
 
   res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
-  res.setHeader("Cache-Control", "public, s-maxage=900, stale-while-revalidate=3600");
+  // Don't let a momentarily empty feed sit in the edge cache for 15 minutes.
+  res.setHeader(
+    "Cache-Control",
+    degraded
+      ? "public, s-maxage=30, stale-while-revalidate=300"
+      : "public, s-maxage=900, stale-while-revalidate=3600"
+  );
   res.status(200).send(xml);
 }

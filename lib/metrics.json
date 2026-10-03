@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-02",
+  "generatedAt": "2026-10-03",
   "github": {
     "stars": 193,
     "repos": 59,
@@ -44,17 +44,17 @@
   },
   "npm": {
     "packages": 9,
-    "total": 3874,
+    "total": 3711,
     "perPackage": {
       "commitmap": 324,
-      "expresscraft": 1329,
-      "gitaverse": 255,
-      "livelywatch": 338,
+      "expresscraft": 1338,
+      "gitaverse": 262,
+      "livelywatch": 155,
       "relaxcore": 360,
-      "relaxcss": 118,
+      "relaxcss": 119,
       "relaxicons": 790,
-      "snowuuid": 126,
-      "stylesnap": 234
+      "snowuuid": 127,
+      "stylesnap": 236
     },
     "claim": 3500
   }

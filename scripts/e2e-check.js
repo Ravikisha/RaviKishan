@@ -461,6 +461,607 @@ async function blogSuite(browser) {
   }
 }
 
+/* ---------------- blog deep links and scroll ---------------- */
+
+// Two things a reader notices immediately and neither of which anything
+// asserted before:
+//
+//   1. Opening a shared /blog/<slug> link while the desktop is on used to show
+//      a bare desktop with ZERO windows, the article rendered invisibly
+//      underneath. The link looked broken.
+//   2. Clicking "Previous" at the foot of a long article landed 3,199px into
+//      the next one, because the page height changes twice after the route
+//      does and the browser restores the old scroll.
+async function blogNavigationSuite(browser) {
+  console.log("\nblog links land where they should");
+
+  // --- a post URL in desktop mode opens the app, on that post ---
+  {
+    const page = await browser.newPage();
+    await withMode(page, "dev");
+    try {
+      const feed = await fetch(`${BASE}/feed.xml`).then((r) => r.text());
+      const link = (/<item>[\s\S]*?<link>([^<]+)<\/link>/.exec(feed) || [])[1] || "";
+      const slug = link.split("/blog/")[1];
+      check(!!slug, "found a published post to open", slug);
+
+      await page.goto(`${BASE}/blog/${slug}`, { waitUntil: "networkidle2", timeout: 45000 });
+      let opened = true;
+      try {
+        await page.waitForFunction(
+          () => document.querySelectorAll(".os-win .blga").length > 0,
+          { timeout: 30000, polling: 200 }
+        );
+      } catch (_) {
+        opened = false;
+      }
+      check(opened, "a post link opens the Blog app in a window");
+
+      const state = await page.evaluate(() => ({
+        windows: document.querySelectorAll(".os-win").length,
+        reader: !!document.querySelector(".os-win .blga-reader"),
+        title: document.querySelector(".os-win .blga-reader h1")?.innerText || "",
+        path: location.pathname,
+      }));
+      check(state.reader, "and lands on the article, not the library");
+      check(!!state.title, "with the post's title", state.title.slice(0, 50));
+      // The URL still works for everyone without the desktop, and for crawlers.
+      check(state.path === `/blog/${slug}`, "while the URL stays shareable", state.path);
+
+      // The Blog window is a singleton, so a second link must re-point it
+      // rather than pile up windows.
+      const other = (feed.match(/<link>[^<]*\/blog\/([^<]+)<\/link>/g) || [])
+        .map((m) => m.replace(/.*\/blog\//, "").replace("</link>", ""))
+        .find((x) => x !== slug);
+      if (other) {
+        await page.goto(`${BASE}/blog/${other}`, { waitUntil: "networkidle2", timeout: 45000 });
+        await new Promise((r) => setTimeout(r, 3500));
+        const after = await page.evaluate(() => ({
+          windows: document.querySelectorAll(".os-win").length,
+          title: document.querySelector(".os-win .blga-reader h1")?.innerText || "",
+        }));
+        check(after.windows === 1, "a second post link reuses the one window", String(after.windows));
+        check(!!after.title, "and shows the second post", after.title.slice(0, 50));
+      }
+
+      // /blog itself opens the library rather than a reader.
+      await page.goto(`${BASE}/blog`, { waitUntil: "networkidle2", timeout: 45000 });
+      await new Promise((r) => setTimeout(r, 3500));
+      const lib = await page.evaluate(() => ({
+        app: !!document.querySelector(".os-win .blga"),
+        cards: document.querySelectorAll(".os-win .blga-card").length,
+      }));
+      check(lib.app, "/blog in desktop mode opens the Blog app");
+      check(lib.cards > 0, "showing the library", String(lib.cards));
+    } catch (e) {
+      bad("desktop blog deep link", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
+  // --- post to post, on the routed site, starts at the top ---
+  {
+    const page = await browser.newPage();
+    await withMode(page, "recruiter");
+    try {
+      const feed = await fetch(`${BASE}/feed.xml`).then((r) => r.text());
+      const slug = ((/<item>[\s\S]*?<link>([^<]+)<\/link>/.exec(feed) || [])[1] || "").split("/blog/")[1];
+      await page.goto(`${BASE}/blog/${slug}`, { waitUntil: "networkidle2", timeout: 45000 });
+      await page.waitForSelector(".post-nav-link", { timeout: 30000 });
+      await new Promise((r) => setTimeout(r, 2500));
+
+      await page.evaluate(() => window.scrollTo(0, 12000));
+      await new Promise((r) => setTimeout(r, 900));
+      const from = await page.evaluate(() => window.scrollY);
+      check(from > 2000, "the reader is deep into the article", String(from));
+
+      const href = await page.evaluate(() => {
+        const a = document.querySelector(".post-nav-link");
+        const h = a.getAttribute("href");
+        a.click();
+        return h;
+      });
+      let moved = true;
+      try {
+        await page.waitForFunction((w) => location.pathname === w, { timeout: 25000, polling: 100 }, href);
+      } catch (_) {
+        moved = false;
+      }
+      check(moved, "the next article opens", href);
+      if (moved) {
+        // The regression is the page SETTLING back, so give it time to.
+        await new Promise((r) => setTimeout(r, 4000));
+        const landed = await page.evaluate(() => window.scrollY);
+        check(landed < 80, "and starts at the top of it", `scrollY ${landed}, came from ${from}`);
+      }
+    } catch (e) {
+      bad("post to post scroll", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+}
+
+/* ---------------- rich article content suite ---------------- */
+
+// Maths, diagrams and sketches, rendered through the real PostView on
+// /__blogpreview. These fail silently by nature — a diagram that does not draw
+// leaves a quiet block of source, and nothing reaches the console — so they
+// need asserting rather than eyeballing.
+async function richContentSuite(browser) {
+  console.log("\nmaths, diagrams and sketches");
+  const page = await browser.newPage();
+  // Rendering measurements need the foreground.
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__blogpreview`, { waitUntil: "networkidle2", timeout: 60000 });
+    // mermaid and KaTeX arrive by dynamic import, so wait for the result
+    // rather than for a fixed number of seconds.
+    let ready = true;
+    try {
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll(".pb-math.is-rendered").length > 0 &&
+          document.querySelectorAll(".pb-mermaid svg").length > 0 &&
+          document.querySelectorAll("iframe.pb-frame").length > 0,
+        { timeout: 30000, polling: 200 }
+      );
+    } catch (_) {
+      ready = false;
+    }
+    check(ready, "maths, a diagram and the sketch frames all appear within 30s");
+
+    const r = await page.evaluate(() => {
+      const frames = Array.from(document.querySelectorAll("iframe.pb-frame"));
+      return {
+        math: document.querySelectorAll(".pb-math").length,
+        mathRendered: document.querySelectorAll(".pb-math.is-rendered").length,
+        katex: document.querySelectorAll(".katex").length,
+        mathml: document.querySelectorAll(".katex-mathml").length,
+        mermaidSvg: document.querySelectorAll(".pb-mermaid svg").length,
+        mermaidError: document.querySelectorAll(".pb-mermaid.is-error").length,
+        frames: frames.length,
+        sandboxes: frames.map((f) => f.getAttribute("sandbox")),
+        sources: document.querySelectorAll(".pb-src-toggle").length,
+        leftoverSrc: document.querySelectorAll(".pb-mermaid .pb-src").length,
+        scrollW: document.documentElement.scrollWidth,
+        clientW: document.documentElement.clientWidth,
+      };
+    });
+
+    check(r.mathRendered === r.math && r.math > 0, "every expression is typeset", `${r.mathRendered}/${r.math}`);
+    // KaTeX renders a visual copy AND a MathML copy; the MathML is what a
+    // screen reader actually reads, and forcing output:"html" removes it.
+    check(r.mathml > 0, "maths keeps its MathML layer for screen readers", String(r.mathml));
+    check(r.mermaidSvg > 0, "the mermaid diagram draws an SVG", String(r.mermaidSvg));
+    check(r.mermaidError === 0, "and reports no parse error", String(r.mermaidError));
+    check(r.leftoverSrc === 0, "the diagram's source is replaced, not left beside it");
+
+    check(r.frames === 2, "both sketches get a frame", String(r.frames));
+    // No allow-same-origin: the frame must not be able to reach this page's
+    // DOM, cookies or Firebase session.
+    check(
+      r.sandboxes.every((v) => v === "allow-scripts"),
+      "every sketch frame is sandboxed without same-origin access",
+      JSON.stringify(r.sandboxes)
+    );
+    check(r.sources === 2, "and each keeps its source available to read");
+    check(r.scrollW === r.clientW, "nothing overflows the page sideways", `${r.scrollW} vs ${r.clientW}`);
+
+    // The sketches must actually RUN, not merely be framed.
+    const drawn = [];
+    for (const frame of page.frames()) {
+      if (frame === page.mainFrame()) continue;
+      try {
+        drawn.push(
+          await frame.evaluate(() => ({
+            canvas: document.querySelectorAll("canvas").length,
+            svg: document.querySelectorAll("svg").length,
+            err: document.querySelector(".pb-frame-err")?.textContent || null,
+          }))
+        );
+      } catch (_) {
+        /* a frame that refuses evaluation is reported by the counts below */
+      }
+    }
+    check(
+      drawn.some((d) => d.canvas > 0),
+      "the p5 sketch draws a canvas",
+      JSON.stringify(drawn)
+    );
+    check(
+      drawn.some((d) => d.svg > 0),
+      "the d3 sketch draws an svg",
+      JSON.stringify(drawn)
+    );
+    check(
+      drawn.every((d) => !d.err),
+      "and neither frame reports an error",
+      JSON.stringify(drawn.map((d) => d.err).filter(Boolean))
+    );
+
+    // mermaid writes its colours into the SVG, so a theme change after render
+    // would otherwise leave an unreadable diagram.
+    const before = await page.evaluate(
+      () => getComputedStyle(document.querySelector(".pb-mermaid svg rect")).fill
+    );
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    let redrew = true;
+    try {
+      await page.waitForFunction(
+        (was) => {
+          const n = document.querySelector(".pb-mermaid svg rect");
+          return n && getComputedStyle(n).fill !== was;
+        },
+        { timeout: 15000, polling: 200 },
+        before
+      );
+    } catch (_) {
+      redrew = false;
+    }
+    check(redrew, "the diagram redraws when the theme changes", `was ${before}`);
+  } catch (e) {
+    bad("rich content", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------------- tasks board suite ---------------- */
+
+// The real panel needs a Google Tasks session, so the board could never be
+// looked at — or asserted on — without signing in. /__taskspreview renders the
+// SAME GroupColumn components against fixed data, which is what makes drag and
+// drop testable at all.
+async function tasksSuite(browser) {
+  console.log("\ntasks board");
+  const page = await browser.newPage();
+  // Dragging needs real input and real layout, so it needs the foreground.
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    // ?noload skips the word-cloud loader, which otherwise covers the page.
+    await page.goto(`${BASE}/__taskspreview?noload`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".tk-col", { timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const shape = await page.evaluate(() => ({
+      columns: document.querySelectorAll(".tk-col").length,
+      rows: document.querySelectorAll(".tk-row").length,
+      subtasks: document.querySelectorAll(".tk-row.child").length,
+      overdue: document.querySelectorAll(".tk-due.overdue").length,
+      today: document.querySelectorAll(".tk-due.today").length,
+      addInputs: document.querySelectorAll(".tk-add-title").length,
+      newGroup: !!document.querySelector(".tk-newgroup"),
+      selects: document.querySelectorAll(".tk-board select").length,
+      scrollW: document.documentElement.scrollWidth,
+      clientW: document.documentElement.clientWidth,
+    }));
+
+    // Every group visible at once was the point: the old panel showed one at a
+    // time behind a <select>.
+    check(shape.columns > 1, "every group is a column", String(shape.columns));
+    check(shape.selects === 0, "and no group is hidden behind a dropdown");
+    check(shape.addInputs === shape.columns, "each group can be added to directly", `${shape.addInputs}/${shape.columns}`);
+    check(shape.newGroup, "a group can be created from the board");
+    check(shape.subtasks > 0, "subtasks render nested under their parent");
+    check(shape.overdue > 0 && shape.today > 0, "due dates are graded, not just printed",
+      `overdue ${shape.overdue}, today ${shape.today}`);
+    check(shape.scrollW === shape.clientW, "the board does not overflow the page", `${shape.scrollW} vs ${shape.clientW}`);
+
+    // --- drag a task into another group ---
+    const before = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".tk-col")).map((c) => c.querySelectorAll(".tk-row").length)
+    );
+    const pts = await page.evaluate(() => {
+      const row = document.querySelector(".tk-col .tk-row");
+      const target = document.querySelectorAll(".tk-col")[2] || document.querySelectorAll(".tk-col")[1];
+      const a = row.getBoundingClientRect();
+      const t = target.getBoundingClientRect();
+      return {
+        from: { x: a.left + 40, y: a.top + 14 },
+        to: { x: t.left + t.width / 2, y: t.top + 120 },
+      };
+    });
+    await page.mouse.move(pts.from.x, pts.from.y);
+    await page.mouse.down();
+    await page.mouse.move(pts.to.x, pts.to.y, { steps: 18 });
+    await new Promise((r) => setTimeout(r, 400));
+    const lit = await page.evaluate(() => document.querySelectorAll(".tk-col.drop").length);
+    check(lit === 1, "exactly one group lights up as the drop target", String(lit));
+    await page.mouse.up();
+    await new Promise((r) => setTimeout(r, 900));
+
+    const after = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".tk-col")).map((c) => c.querySelectorAll(".tk-row").length)
+    );
+    check(after[0] === before[0] - 1, "the task leaves the group it was dragged from", `${before[0]} → ${after[0]}`);
+    check(
+      after.reduce((n, x) => n + x, 0) === before.reduce((n, x) => n + x, 0),
+      "and nothing is lost on the way",
+      `${JSON.stringify(before)} → ${JSON.stringify(after)}`
+    );
+    check(
+      after.some((n, i) => i !== 0 && n > before[i]),
+      "it arrives in the group it was dropped on",
+      JSON.stringify(after)
+    );
+
+    // --- add a task without leaving the board ---
+    await page.evaluate(() => {
+      document.querySelectorAll(".tk-col")[1].querySelector(".tk-add-title").focus();
+    });
+    await page.keyboard.type("Written from the board");
+    await new Promise((r) => setTimeout(r, 250));
+    const expanded = await page.evaluate(
+      () => !!document.querySelectorAll(".tk-col")[1].querySelector(".tk-add-notes")
+    );
+    check(expanded, "the add form opens its details field on focus");
+    await page.evaluate(() =>
+      document.querySelectorAll(".tk-col")[1].querySelector(".admin-primary.sm").click()
+    );
+    await new Promise((r) => setTimeout(r, 700));
+    const added = await page.evaluate(() =>
+      document.querySelectorAll(".tk-col")[1].innerText.includes("Written from the board")
+    );
+    check(added, "and the task appears in that group");
+
+    // --- completing a task ---
+    const check0 = await page.evaluate(() => {
+      const row = document.querySelector(".tk-row:not(.done)");
+      row.querySelector(".tk-check").click();
+      return row.querySelector(".tk-title").innerText;
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    const done = await page.evaluate(
+      (t) =>
+        Array.from(document.querySelectorAll(".tk-row.done")).some((r) =>
+          r.innerText.includes(t)
+        ),
+      check0
+    );
+    check(done, "ticking a task marks it complete", check0.slice(0, 40));
+  } catch (e) {
+    bad("tasks board", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------------- SEO suite ---------------- */
+
+// Deliberately NO browser. Googlebot renders JavaScript eventually; LinkedIn,
+// Slack, WhatsApp and X never do. What matters is the HTML that comes off the
+// wire, so this suite reads it with plain fetch and asserts on the bytes.
+//
+// It exists because all of this failed silently: every post URL used to serve
+// the HOMEPAGE's title, description and og:url, the sitemap listed eight
+// static routes and not one of 29 posts, and /feed.xml had been emitting an
+// empty channel because its Firestore query needed an index it never had.
+async function seoSuite() {
+  console.log("\nwhat a crawler and an unfurler actually receive");
+
+  const get = async (path) => {
+    const r = await fetch(BASE + path);
+    return { status: r.status, html: await r.text() };
+  };
+  const meta = (html, prop) => {
+    const re = new RegExp(
+      `<meta[^>]+(?:property|name)="${prop}"[^>]*content="([^"]*)"`,
+      "i"
+    );
+    const alt = new RegExp(
+      `<meta[^>]+content="([^"]*)"[^>]*(?:property|name)="${prop}"`,
+      "i"
+    );
+    return (re.exec(html) || alt.exec(html) || [])[1] || "";
+  };
+
+  try {
+    // Pick a real published post from the feed rather than hardcoding a slug.
+    const feed = await get("/feed.xml");
+    check(feed.status === 200, "/feed.xml responds", String(feed.status));
+    const items = (feed.html.match(/<item>/g) || []).length;
+    check(items > 0, "the feed is not empty", `${items} items`);
+
+    const firstLink = (/<item>[\s\S]*?<link>([^<]+)<\/link>/.exec(feed.html) || [])[1] || "";
+    const slug = firstLink.split("/blog/")[1];
+    check(!!slug, "the feed links to a post", firstLink);
+    if (!slug) return;
+
+    const post = await get(`/blog/${slug}`);
+    check(post.status === 200, "the post responds", String(post.status));
+
+    const title = (/<title>([^<]*)<\/title>/.exec(post.html) || [])[1] || "";
+    const ogTitle = meta(post.html, "og:title");
+    const ogUrl = meta(post.html, "og:url");
+    const ogType = meta(post.html, "og:type");
+    const desc = meta(post.html, "description");
+
+    // The symptom that started this: the homepage's metadata on every article.
+    check(
+      !/^Ravi Kishan — Software Engineer/.test(title),
+      "the post does not serve the homepage title",
+      title.slice(0, 70)
+    );
+    check(title.length > 20, "it has a title of its own", title.slice(0, 70));
+    check(ogUrl.includes(`/blog/${slug}`), "og:url points at the post, not the homepage", ogUrl);
+    check(ogType === "article", "og:type is article", ogType);
+    check(ogTitle.length > 20 && !/^Ravi Kishan — Software/.test(ogTitle), "og:title is the post's", ogTitle.slice(0, 60));
+    check(desc.length > 40, "it carries a real description", `${desc.length} chars`);
+
+    // Article text in the HTML, not just in a JavaScript bundle.
+    const textish = post.html.replace(/<script[\s\S]*?<\/script>/g, "");
+    check(textish.length > 8000, "the article body is in the served HTML", `${textish.length} chars`);
+
+    check(/"@type":"Article"/.test(post.html), "Article structured data is present");
+    check(/"@type":"BreadcrumbList"/.test(post.html), "with breadcrumbs");
+    check(/article:published_time/.test(post.html), "and a published time");
+
+    const canonical = (/<link rel="canonical" href="([^"]*)"/.exec(post.html) || [])[1] || "";
+    check(!!canonical, "a canonical is declared", canonical.slice(0, 70));
+
+    // The archive must be crawlable as links, not as an empty shell.
+    const index = await get("/blog");
+    const links = new Set((index.html.match(/href="\/blog\/[a-z0-9-]+"/g) || []));
+    check(links.size > 1, "the archive lists posts as real links in the HTML", `${links.size} links`);
+
+    // A sitemap is an invitation to crawl; the admin must not be in it.
+    const sm = await get("/sitemap-0.xml");
+    if (sm.status === 200) {
+      const posts = (sm.html.match(/<loc>[^<]*\/blog\/[^<]*<\/loc>/g) || []).length;
+      check(posts > 1, "the sitemap lists the posts", `${posts} post URLs`);
+      check(
+        !/<loc>[^<]*\/(admin|oauth)/.test(sm.html),
+        "and does not advertise the admin or the OAuth consent page"
+      );
+    } else {
+      console.log("  · sitemap not generated in this environment, skipped");
+    }
+
+    const robots = await get("/robots.txt");
+    if (robots.status === 200) {
+      check(/Disallow: \/admin/.test(robots.html), "robots.txt keeps crawlers out of the admin");
+      check(/Sitemap:/.test(robots.html), "and points at the sitemap");
+    }
+  } catch (e) {
+    bad("seo", e.message);
+  }
+}
+
+/* ---------------- cross-post export suite ---------------- */
+
+// dev.to renders none of this site's diagrams or sketches, so each one is
+// rendered to a file at cross-post time. Every failure mode here is silent:
+// a tainted canvas throws where nobody is looking, an off-screen frame records
+// a 0-byte video, and a canvas captured too early encodes a perfectly valid
+// image of nothing at all. /__exportcheck renders without uploading or
+// publishing, and reports the weight and the ink of what it produced.
+async function exportSuite(browser) {
+  console.log("\nrendering blocks for cross-posting");
+  const page = await browser.newPage();
+  // Recording a canvas needs real animation frames, which a background tab
+  // does not get: this recorded 110 bytes of video until the page was
+  // brought forward.
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__exportcheck`, { waitUntil: "networkidle2", timeout: 60000 });
+
+    let finished = true;
+    try {
+      await page.waitForFunction(
+        () => document.querySelector("#export-done")?.dataset.done === "1",
+        { timeout: 120000, polling: 400 }
+      );
+    } catch (_) {
+      finished = false;
+    }
+    check(finished, "every block finishes rendering");
+
+    const rows = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("#export-rows li")).map((li) => ({
+        kind: li.dataset.kind,
+        ok: li.dataset.ok === "1",
+        bytes: Number(li.dataset.bytes),
+        ink: Number(li.dataset.ink),
+        video: Number(li.dataset.videoBytes),
+      }))
+    );
+    check(rows.length === 3, "all three kinds are attempted", String(rows.length));
+
+    for (const kind of ["mermaid", "d3", "p5"]) {
+      const r = rows.find((x) => x.kind === kind);
+      if (!r) {
+        bad(`${kind} export`, "no row");
+        continue;
+      }
+      check(r.bytes > 500, `${kind} produces a real file`, `${r.bytes} bytes`);
+      // The one that catches a blank canvas: a valid WebP of nothing.
+      check(r.ink > 0.002, `${kind} actually drew something`, `${(r.ink * 100).toFixed(2)}% ink`);
+    }
+
+    // p5 animates, so it also records. An off-screen frame gets no
+    // requestAnimationFrame ticks and silently records nothing.
+    const p5row = rows.find((x) => x.kind === "p5");
+    check(p5row && p5row.video > 2000, "the p5 sketch also records a video", `${p5row?.video} bytes`);
+
+    const md = await page.evaluate(
+      () => document.querySelector("#export-markdown")?.textContent || ""
+    );
+    check(md.includes("{% katex inline %}"), "maths travels as dev.to's own katex tag");
+    check(md.includes("{% katex %}"), "including display maths");
+    check(!/```(mermaid|p5|d3)/.test(md), "no un-renderable fence is shipped to dev.to");
+    check((md.match(/!\[/g) || []).length === 3, "each block travels as an image", String((md.match(/!\[/g) || []).length));
+    check(!/\]\([^)]*\.webm\)/.test(md.replace(/\[watch it run\]\([^)]*\)/g, "")), "a video is never embedded as an image");
+    check(md.includes("[watch it run]"), "the recording is offered as a link beside the still");
+    check(!/localhost|127\.0\.0\.1/.test(md), "and every URL is the canonical host, not localhost");
+  } catch (e) {
+    bad("cross-post export", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------------- archive search suite ---------------- */
+
+// Full-text search over every published post. The point of the index is that
+// it reaches words that appear ONLY in a body — a title-and-excerpt filter
+// would return nothing for these.
+async function searchSuite(browser) {
+  console.log("\nsearching the archive");
+  const page = await browser.newPage();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/blog`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForFunction(() => document.querySelectorAll(".wr-row, .wr-lead").length > 0, {
+      timeout: 30000,
+      polling: 200,
+    });
+    const all = await page.evaluate(() => document.querySelectorAll(".wr-row, .wr-lead").length);
+    check(all > 0, "the archive lists posts", String(all));
+
+    const search = async (q) => {
+      await page.evaluate(() => {
+        const i = document.querySelector(".wr-search input");
+        i.value = "";
+        i.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await page.type(".wr-search input", q, { delay: 5 });
+      await page.waitForFunction(
+        (term) => {
+          const el = document.querySelector(".wr-count");
+          return el && el.textContent.includes(term) && !el.textContent.includes("Searching");
+        },
+        { timeout: 20000, polling: 150 },
+        q
+      );
+      return page.evaluate(() => ({
+        rows: document.querySelectorAll(".wr-row, .wr-lead").length,
+        count: document.querySelector(".wr-count")?.textContent || "",
+      }));
+    };
+
+    // "cgroups" lives in a post body, not in any title, excerpt or tag.
+    const body = await search("cgroups");
+    check(body.rows > 0, "a word that appears only in a body is found", JSON.stringify(body));
+    check(body.rows < all, "and the archive is actually narrowed", `${body.rows} of ${all}`);
+
+    const none = await search("zzzznothinghere");
+    check(none.rows === 0, "a term in nothing matches nothing", JSON.stringify(none));
+    const empty = await page.evaluate(
+      () => document.querySelector(".wr-empty")?.textContent || ""
+    );
+    check(/Nothing in the archive mentions/.test(empty), "and says so in the archive's own words", empty.slice(0, 60));
+  } catch (e) {
+    bad("archive search", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 /* ---------------- desktop Blog app suite ---------------- */
 
 // DesktopOS is rendered from _app.js on EVERY route, so in dev mode it is a
@@ -472,6 +1073,11 @@ async function blogSuite(browser) {
 async function desktopBlogSuite(browser) {
   console.log("\ndesktop Blog app opens a post in its window");
   const page = await browser.newPage();
+  // A puppeteer page is a BACKGROUND tab unless brought forward, and a
+  // background tab gets throttled rAF and deprioritised rendering — which is
+  // why this reported an empty library alongside the other suites but passed
+  // alone.
+  await page.bringToFront();
   await withMode(page, "dev");
   try {
     await page.goto(BASE, { waitUntil: "networkidle2", timeout: 45000 });
@@ -490,14 +1096,29 @@ async function desktopBlogSuite(browser) {
       return !!app;
     });
     check(launched && opened, "the Blog app launches from the launchpad");
-    await new Promise((r) => setTimeout(r, 4000));
+    // The library is fetched from Firestore, so wait for the result rather
+    // than for a fixed four seconds — under load that sleep expired first and
+    // reported an empty library on a window that was simply still loading.
+    try {
+      await page.waitForFunction(
+        () => document.querySelectorAll(".os-win .blga-card").length > 0,
+        { timeout: 30000, polling: 200 }
+      );
+    } catch (_) {
+      /* reported by the assertions below */
+    }
 
     const list = await page.evaluate(() => ({
       windows: document.querySelectorAll(".os-win").length,
       cards: document.querySelectorAll(".blga-card").length,
+      apps: Array.from(document.querySelectorAll(".os-win")).map((w) =>
+        (w.getAttribute("aria-label") || "").slice(0, 30)
+      ),
+      text: (document.querySelector(".os-win")?.innerText || "").replace(/\s+/g, " ").slice(0, 120),
+      reader: !!document.querySelector(".blga-reader"),
     }));
-    check(list.windows === 1, "a window opens", String(list.windows));
-    check(list.cards > 0, "the library renders in it", String(list.cards));
+    check(list.windows === 1, "a window opens", JSON.stringify(list.apps));
+    check(list.cards > 0, "the library renders in it", JSON.stringify(list));
 
     if (!list.cards) return;
 
@@ -797,6 +1418,23 @@ async function resumeSuite() {
       await variantSuite(browser);
       await blogSuite(browser);
       await desktopBlogSuite(browser);
+      await blogNavigationSuite(browser);
+      await richContentSuite(browser);
+      await searchSuite(browser);
+      await exportSuite(browser);
+      await tasksSuite(browser);
+      await seoSuite();
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "seo") {
+    await seoSuite();
+  }
+  if (which === "tasks") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await tasksSuite(browser);
     } finally {
       await browser.close();
     }
@@ -806,6 +1444,11 @@ async function resumeSuite() {
     try {
       await blogSuite(browser);
       await desktopBlogSuite(browser);
+      await blogNavigationSuite(browser);
+      await richContentSuite(browser);
+      await searchSuite(browser);
+      await exportSuite(browser);
+      await seoSuite();
     } finally {
       await browser.close();
     }

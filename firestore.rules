@@ -151,6 +151,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // The Google Tasks access token the admin panel parks for the MCP tools.
+    // A CREDENTIAL, not content: admin-only in both directions, and
+    // deliberately short-lived — Google expires it in about an hour, so a leak
+    // of this document is not permanent access to the account. The refresh
+    // token, which WOULD be permanent access, is never stored anywhere.
+    match /integrations/{integrationId} {
+      allow read, write: if isAdmin();
+    }
+
     // PRIVATE document vault. Metadata only — the bytes live in a private
     // Backblaze bucket. This is the one collection with NO public read: it
     // indexes payslips, letters, marksheets and identity documents.

@@ -16,6 +16,10 @@ import { ThemeProvider } from "../components/utils/ThemeProvider";
 import { SiteContentProvider } from "../lib/useSiteContent";
 import { track } from "../lib/analytics";
 import Easter from "../components/eggs/Easter";
+// KaTeX ships its own font metrics as CSS; Next only allows a global
+// stylesheet to be imported from _app, and this is the only place that can
+// own it. ~23 KB, and maths is common enough in this writing to be worth it.
+import "katex/dist/katex.min.css";
 import DesktopOS from "../components/os/DesktopOS";
 import RecruiterMode from "../components/RecruiterMode";
 import dynamic from "next/dynamic";

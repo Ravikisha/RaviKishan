@@ -5,6 +5,7 @@
 // canonical, absolute URL — including the variant query when one is active, so
 // the link they paste serves the same cut of the CV they are looking at.
 import React, { useState } from "react";
+import { absoluteUrl } from "../../lib/canonicalUrl";
 import { Check, Link2 } from "lucide-react";
 import { track } from "../../lib/analytics";
 
@@ -16,14 +17,9 @@ export default function CopyLinkButton({
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const absolute = () => {
-    if (typeof window === "undefined") return `https://ravikishan.me${path}`;
-    // Always hand out the canonical host, never localhost or a preview domain.
-    const host = /ravikishan\.me$/.test(window.location.hostname)
-      ? window.location.origin
-      : "https://ravikishan.me";
-    return host + path;
-  };
+  // Shared with the cross-poster, which embeds absolute image URLs in the
+  // dev.to copy and must never ship a localhost link.
+  const absolute = () => absoluteUrl(path);
 
   const copy = async () => {
     const text = absolute();

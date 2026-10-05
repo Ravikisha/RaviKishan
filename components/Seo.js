@@ -121,6 +121,51 @@ export default function Seo({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(person) }}
         />
       )}
+      {/* Open Graph's article namespace. A search result and a LinkedIn card
+          both show a date when they are given one, and an article with no
+          published time reads as undated — which is the worst thing a
+          technical post can look like. */}
+      {article && !noindex && article.datePublished && (
+        <meta property="article:published_time" content={article.datePublished} key="a-pub" />
+      )}
+      {article && !noindex && (article.dateModified || article.datePublished) && (
+        <meta
+          property="article:modified_time"
+          content={article.dateModified || article.datePublished}
+          key="a-mod"
+        />
+      )}
+      {article && !noindex && (
+        <meta property="article:author" content={identity.name} key="a-author" />
+      )}
+      {article && !noindex &&
+        (article.tags || []).slice(0, 6).map((t) => (
+          <meta property="article:tag" content={t} key={`a-tag-${t}`} />
+        ))}
+
+      {/* Breadcrumbs give the result a readable path instead of a bare URL. */}
+      {article && !noindex && (
+        <script
+          type="application/ld+json"
+          key="ld-breadcrumb"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "BreadcrumbList",
+              itemListElement: [
+                { "@type": "ListItem", position: 1, name: "Home", item: SITE },
+                { "@type": "ListItem", position: 2, name: "Writing", item: `${SITE}/blog` },
+                {
+                  "@type": "ListItem",
+                  position: 3,
+                  name: article.title,
+                  item: SITE + article.url,
+                },
+              ],
+            }),
+          }}
+        />
+      )}
       {article && !noindex && (
         <script
           type="application/ld+json"
@@ -134,7 +179,15 @@ export default function Seo({
               url: article.canonical || SITE + article.url,
               image: article.image ? [img] : undefined,
               datePublished: article.datePublished,
-              dateModified: article.dateModified,
+              dateModified: article.dateModified || article.datePublished,
+              keywords: (article.tags || []).join(", ") || undefined,
+              wordCount: article.wordCount || undefined,
+              timeRequired: article.readingTime ? `PT${article.readingTime}M` : undefined,
+              inLanguage: "en",
+              // mainEntityOfPage is how a page states "this URL is the article
+              // itself", which is what lets a result show as an article rather
+              // than a generic page.
+              mainEntityOfPage: { "@type": "WebPage", "@id": SITE + article.url },
               author: { "@type": "Person", name: identity.name, url: SITE },
               publisher: { "@type": "Person", name: identity.name, url: SITE },
             }),

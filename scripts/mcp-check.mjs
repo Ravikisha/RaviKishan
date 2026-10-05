@@ -247,8 +247,16 @@ console.log("\ncapabilities that must stay absent");
     "no tool uploads to or deletes from the vault",
     String(has(/^(upload|create|delete)_vault/))
   );
-  // Serving Google Tasks from here would mean storing a Google refresh token.
-  check(has(/task/).length === 0, "no Google Tasks tool", String(has(/task/)));
+  // Google Tasks IS served now — by borrowing the admin's short-lived access
+  // token from an admin-only document. What must stay absent is any tool that
+  // mints or stores a Google credential: the refresh token would be permanent
+  // access to the account, held server-side.
+  check(has(/task/).length > 0, "Google Tasks tools exist", String(has(/task/).length));
+  check(
+    has(/refresh|oauth_google|google_credential|connect_google/).length === 0,
+    "but nothing mints or stores a Google credential",
+    String(has(/refresh|oauth_google|google_credential|connect_google/))
+  );
   // Vault tools never hand back bytes.
   const vaultTools = TOOLS.filter((t) => /vault/.test(t.name));
   check(
@@ -301,6 +309,16 @@ console.log("\nguards refuse before they touch anything");
     { slug: "x", heading: "h", body: "b", mode: "sideways" },
     "edit_post_section refuses an unknown mode",
     /mode must be/i
+  );
+
+  // Both validate before reaching for the Google token, so a malformed call
+  // fails on its own terms instead of "reconnect in the admin".
+  await refuses("update_task", { groupId: "g", taskId: "t" }, "update_task refuses an empty change", /nothing to change/i);
+  await refuses(
+    "move_task",
+    { groupId: "g", taskId: "t" },
+    "move_task refuses a move with no destination",
+    /toGroupId, parent, or both/i
   );
 
   await refuses("update_contact", { id: "someone" }, "update_contact refuses an empty change", /nothing to change|no such contact/i);

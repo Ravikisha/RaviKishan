@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import { Search, LayoutGrid, Sun, Moon, FolderGit2 } from "lucide-react";
 import { APPS, getApp } from "./apps";
 import { useTheme } from "../utils/ThemeProvider";
@@ -208,7 +209,7 @@ function Win({ win, app, onClose, onMin, onFull, onFocus, onMove, onResize, onSn
         </span>
       </div>
       <div className="os-body">
-        <Body />
+        <Body {...(win.props || {})} />
       </div>
       {!win.full &&
         DIRS.map((d) => (
@@ -634,14 +635,21 @@ export default function DesktopOS() {
 
   // spawns a NEW window (multiple instances) — unless the app is a singleton,
   // in which case an existing window is focused/restored instead.
-  const openApp = useCallback((appId) => {
+  // `props` reach the app component. Opening /blog/<slug> in desktop mode has
+  // to land on THAT post, not merely on the Blog app.
+  const openApp = useCallback((appId, props) => {
     const app = getApp(appId);
     if (!app) return;
     if (app.external) return app.external();
     setWins((ws) => {
       if (app.singleton) {
         const ex = ws.find((w) => w.appId === appId);
-        if (ex) return ws.map((w) => (w.id === ex.id ? { ...w, min: false, z: ++z.current } : w));
+        if (ex)
+          return ws.map((w) =>
+            w.id === ex.id
+              ? { ...w, min: false, z: ++z.current, props: { ...(w.props || {}), ...(props || {}) } }
+              : w
+          );
       }
       const i = ws.length;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -657,6 +665,7 @@ export default function DesktopOS() {
           x: clamp(baseX + (i % 6) * 30, 12, vw - w - 12),
           y: clamp(84 + (i % 6) * 30, 72, vh - h - 120),
           w, h, z: ++z.current, min: false, full: false,
+          props: props || undefined,
         },
       ];
     });
@@ -795,7 +804,13 @@ export default function DesktopOS() {
       const raw = localStorage.getItem(LS_WINS);
       if (raw) {
         const saved = JSON.parse(raw);
-        const valid = (saved.wins || []).filter((w) => getApp(w.appId));
+        // `props` are a one-shot intent from a URL, not durable window state.
+        // Restoring them reopened the Blog app on whatever post was last
+        // deep-linked, days later, instead of on the library — and no amount
+        // of closing the window cleared it, because the slug was in storage.
+        const valid = (saved.wins || [])
+          .filter((w) => getApp(w.appId))
+          .map(({ props, ...w }) => w);
         if (valid.length) {
           setWins(valid);
           z.current = Math.max(30, ...valid.map((w) => w.z || 30));
@@ -861,7 +876,10 @@ export default function DesktopOS() {
   }, [theme, toggleTheme, close, minimize, toggleFull, cascade, toggleWidgets, applySnap, centerWin]);
 
   useEffect(() => {
-    const onOpen = (e) => openApp(e.detail);
+    const onOpen = (e) =>
+      typeof e.detail === "string"
+        ? openApp(e.detail)
+        : openApp(e.detail?.id, e.detail?.props);
     const onLp = () => setLaunch(true);
     const onKey = (e) => {
       const el = document.activeElement;
@@ -921,6 +939,22 @@ export default function DesktopOS() {
       window.removeEventListener("keydown", onKey);
     };
   }, [openApp, minimize, toggleFull, close, cycle, applySnap, centerWin]);
+
+  // A blog URL opened in desktop mode becomes a window.
+  //
+  // The desktop is mounted from _app.js on EVERY route, so it paints over
+  // whatever page the router rendered. Landing on /blog/<slug> in this mode
+  // used to show the bare desktop with zero windows and the article rendered
+  // invisibly underneath — a shared link simply looked broken. The routed page
+  // stays mounted (it is what a crawler and a reader without the desktop get);
+  // the desktop just surfaces it as the app it belongs to.
+  const router = useRouter();
+  useEffect(() => {
+    const path = (router.asPath || "").split(/[?#]/)[0];
+    const m = /^\/blog(?:\/([a-z0-9][a-z0-9-]{1,59}))?\/?$/.exec(path);
+    if (!m) return;
+    openApp("blog", m[1] ? { initialSlug: m[1] } : { initialSlug: null });
+  }, [router.asPath, openApp]);
 
   const snapPreview = snapHint ? snapRect(snapHint, typeof window !== "undefined" ? window.innerWidth : 0, typeof window !== "undefined" ? window.innerHeight : 0) : null;
 

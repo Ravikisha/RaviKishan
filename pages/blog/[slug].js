@@ -18,12 +18,35 @@ import Seo from "../../components/Seo";
 import { excerptFrom, fetchPublishedPosts, toListItem } from "../../lib/posts";
 import PostView from "../../components/blog/PostView";
 import { track } from "../../lib/analytics";
+import {
+  fetchPublishedPostServer,
+  fetchPublishedPostsServer,
+} from "../../lib/server/publicPosts";
 
-export default function Post() {
+export default function Post({ initialPost = null }) {
   const router = useRouter();
   const { slug } = router.query;
-  const [post, setPost] = useState(undefined);
+  // Prerendered when the post is published, so the HTML a crawler or an
+  // unfurler receives already carries the real title, description, canonical
+  // and article text. A draft has no prerender — rules keep it private — so it
+  // falls back to the client fetch below, which runs as the signed-in admin.
+  const [post, setPost] = useState(initialPost || undefined);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null, related: [] });
+
+  // Start every article at the beginning.
+  //
+  // Next scrolls to the top on a route change, but this page's height changes
+  // twice afterwards — the client fetch swaps the body in, then the diagrams
+  // and maths render — and the browser restores the scroll it had before.
+  // Clicking "Previous" from the foot of a long post landed 3,199px into the
+  // next one, which reads as a broken link rather than a new article.
+  useEffect(() => {
+    if (!slug || typeof slug !== "string") return;
+    // An anchored link (/blog/x#section) is asking for a specific place.
+    if (typeof window !== "undefined" && !window.location.hash) {
+      window.scrollTo(0, 0);
+    }
+  }, [slug]);
 
   useEffect(() => {
     if (!slug || typeof slug !== "string") return;
@@ -34,7 +57,9 @@ export default function Post() {
         setPost(snap.exists() ? { id: snap.id, ...snap.data() } : null);
         if (snap.exists()) track("blogView");
       })
-      .catch(() => !cancelled && setPost(null));
+      // Keep whatever was prerendered rather than replacing a good article
+      // with a not-found page because one request failed.
+      .catch(() => !cancelled && setPost((cur) => cur ?? null));
     return () => {
       cancelled = true;
     };
@@ -172,4 +197,33 @@ export default function Post() {
       <PostView post={post} {...neighbors} />
     </>
   );
+}
+
+// Every published post is prerendered at build time, and anything published
+// afterwards is rendered on first request and then cached — so a new post is
+// shareable the moment it goes live without waiting for a deploy.
+export async function getStaticPaths() {
+  try {
+    const posts = await fetchPublishedPostsServer();
+    return {
+      paths: posts.map((p) => ({ params: { slug: p.slug } })),
+      fallback: "blocking",
+    };
+  } catch (_) {
+    // A build must not fail because Firestore was briefly unreachable; every
+    // path can still be rendered on demand.
+    return { paths: [], fallback: "blocking" };
+  }
+}
+
+export async function getStaticProps({ params }) {
+  let initialPost = null;
+  try {
+    initialPost = await fetchPublishedPostServer(params?.slug);
+  } catch (_) {
+    initialPost = null;
+  }
+  // Deliberately NOT notFound: an unpublished post is invisible to this
+  // credential-free read, and 404ing here would break previewing a draft.
+  return { props: { initialPost }, revalidate: 300 };
 }

@@ -19,6 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Clock, PenLine } from "lucide-react";
 import { fetchPublishedPosts, toListItem, readingMinutes } from "../../../lib/posts";
 import { renderMarkdown } from "../../../lib/markdown";
+import { enhancePostBody } from "../../../lib/postEnhance";
 import PostBodyStyles from "../../blog/PostBodyStyles";
 
 const fmtDate = (s) => {
@@ -27,12 +28,15 @@ const fmtDate = (s) => {
   return isNaN(d) ? "" : d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 };
 
-export default function Blog() {
+// `initialSlug` arrives when the window was opened from a /blog/<slug> URL —
+// DesktopOS reads the route and surfaces the post as the app it belongs to,
+// rather than leaving the reader on a bare desktop.
+export default function Blog({ initialSlug = null }) {
   // The raw documents, because the reader needs the body and toListItem drops
   // it. The list shapes are derived below.
   const [rows, setRows] = useState(null); // null = loading
   const [tag, setTag] = useState("all");
-  const [openSlug, setOpenSlug] = useState(null);
+  const [openSlug, setOpenSlug] = useState(initialSlug);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -60,9 +64,26 @@ export default function Blog() {
     [rows, openSlug]
   );
 
+  // The window is a singleton: opening a second blog link re-points the one
+  // that is already there, so the prop changes under a mounted component.
+  useEffect(() => {
+    if (initialSlug) setOpenSlug(initialSlug);
+  }, [initialSlug]);
+
   // A fresh article starts at the top, not wherever the library was scrolled.
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [openSlug]);
+
+  // Same enhancement as the routed page, so a diagram is a diagram here too.
+  const readerRef = useRef(null);
+  useEffect(() => {
+    const root = readerRef.current;
+    if (!root || !openSlug) return undefined;
+    const dark =
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark");
+    return enhancePostBody(root, { dark });
   }, [openSlug]);
 
   // Escape closes the article before it closes the window.
@@ -168,6 +189,7 @@ export default function Blog() {
                 <img className="blga-reader-cover" src={current.cover} alt="" />
               )}
               <div
+                ref={readerRef}
                 className="post-body"
                 // Authored by the single allow-listed admin through the CMS,
                 // exactly as on the routed article page.

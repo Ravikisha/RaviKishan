@@ -4,14 +4,9 @@
 // URLs this site has never served. An empty channel is still valid RSS and
 // a reader keeps the items it already has; dead links it would keep.
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://ravikishan.me";
-const PROJECT = "myportifilio-3ab5f";
-const API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDuDWdIMLs5CCRbPqMvwfxpbobsR4SO3w0";
+import { fetchPublishedPostsServer } from "../../../lib/server/publicPosts";
 
-const value = (field) => {
-  if (!field) return "";
-  return field.stringValue || field.timestampValue || String(field.integerValue || field.doubleValue || "");
-};
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://ravikishan.me";
 
 const escapeXml = (input) =>
   String(input || "")
@@ -21,43 +16,11 @@ const escapeXml = (input) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-async function publishedPosts() {
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents:runQuery?key=${API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        structuredQuery: {
-          from: [{ collectionId: "posts" }],
-          where: { fieldFilter: { field: { fieldPath: "published" }, op: "EQUAL", value: { booleanValue: true } } },
-          orderBy: [{ field: { fieldPath: "publishedAt" }, direction: "DESCENDING" }],
-          limit: 100,
-        },
-      }),
-    }
-  );
-  if (!response.ok) throw new Error(`Firestore feed request failed (${response.status}).`);
-  const rows = await response.json();
-  return rows
-    .filter((row) => row.document)
-    .map((row) => {
-      const fields = row.document.fields || {};
-      const slug = value(fields.slug) || row.document.name.split("/").pop();
-      return {
-        title: value(fields.title),
-        slug,
-        description: value(fields.excerpt),
-        publishedAt: value(fields.publishedAt) || value(fields.updatedAt),
-      };
-    });
-}
-
 export default async function handler(req, res) {
   let posts = [];
   let degraded = false;
   try {
-    posts = await publishedPosts();
+    posts = await fetchPublishedPostsServer();
   } catch (_) {
     degraded = true;
   }
@@ -69,7 +32,7 @@ export default async function handler(req, res) {
         <title>${escapeXml(post.title)}</title>
         <link>${escapeXml(`${SITE}/blog/${post.slug}`)}</link>
         <guid isPermaLink="true">${escapeXml(`${SITE}/blog/${post.slug}`)}</guid>
-        <description>${escapeXml(post.description)}</description>
+        <description>${escapeXml(post.excerpt)}</description>
         ${post.publishedAt ? `<pubDate>${escapeXml(new Date(post.publishedAt).toUTCString())}</pubDate>` : ""}
       </item>`
     )

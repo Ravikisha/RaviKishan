@@ -1,6 +1,10 @@
 # *
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /oauth/
+Disallow: /l/
 
 # Host
 Host: https://ravikishan.me

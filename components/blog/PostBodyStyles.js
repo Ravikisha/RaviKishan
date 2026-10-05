@@ -113,6 +113,109 @@ export default function PostBodyStyles() {
             max-width: none;
           }
         }
+        /* ---- maths, diagrams, sketches (lib/postEnhance.js) ---- */
+
+        /* Before the enhancer runs — and if it never does — the source is
+           visible rather than a blank gap. These rules style that fallback as
+           deliberately as the rendered result. */
+        .pb-math {
+          font-family: "JetBrains Mono", ui-monospace, monospace;
+          font-size: 0.92em;
+          color: var(--c-muted);
+        }
+        .pb-math.is-rendered {
+          font-family: inherit;
+          font-size: inherit;
+          color: var(--c-fg);
+        }
+        .pb-math.is-display {
+          display: block;
+          margin: 1.6em 0;
+          overflow-x: auto;
+          overflow-y: hidden;
+          padding-bottom: 4px;
+        }
+        .pb-math.is-error {
+          color: #d23;
+          border-bottom: 1px dotted #d23;
+        }
+
+        .pb-mermaid,
+        .pb-sketch {
+          margin: 1.9em 0;
+        }
+        /* A diagram is an artefact, so it gets the full column like code. */
+        .pb-mermaid {
+          display: flex;
+          justify-content: center;
+          padding: 18px 16px;
+          border: 1px solid var(--c-edge);
+          border-radius: 14px;
+          background: var(--c-surface);
+          overflow-x: auto;
+        }
+        .pb-mermaid svg {
+          max-width: 100%;
+          height: auto;
+        }
+        .pb-mermaid.is-error {
+          display: block;
+          border-color: #d23;
+        }
+        .pb-err {
+          margin: 0 0 10px;
+          color: #d23;
+          font-size: 13px;
+          font-family: "JetBrains Mono", ui-monospace, monospace;
+        }
+
+        .pb-frame {
+          width: 100%;
+          border: 1px solid var(--c-edge);
+          border-radius: 14px;
+          background: var(--c-surface);
+          display: block;
+        }
+        /* The source of a sketch is half the reason it is in the article, but
+           it should not out-shout the thing it draws. */
+        .pb-src-toggle {
+          margin-top: 8px;
+        }
+        .pb-src-toggle > summary {
+          cursor: pointer;
+          list-style: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          font-size: 12px;
+          color: var(--c-muted);
+          font-family: "JetBrains Mono", ui-monospace, monospace;
+        }
+        .pb-src-toggle > summary::-webkit-details-marker {
+          display: none;
+        }
+        .pb-src-toggle > summary::before {
+          content: "";
+          border: 4px solid transparent;
+          border-left-color: currentColor;
+          transition: transform 0.16s ease;
+          transform-origin: 2px 50%;
+        }
+        .pb-src-toggle[open] > summary::before {
+          transform: rotate(90deg);
+        }
+        .pb-src-toggle > summary:hover {
+          color: var(--c-accent-text);
+        }
+        .pb-src-toggle .pb-src {
+          margin-top: 8px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pb-src-toggle > summary::before {
+            transition: none;
+          }
+        }
+
         .post-body pre code {
           background: none;
           border: none;

@@ -13,12 +13,13 @@
 // everything after it is a dense row list — the shape of a contents page
 // rather than a shop. Rows carry what a reader actually sorts on: title, one
 // line of what it is, and how long it takes.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import Seo from "../components/Seo";
 import ClosingCTA from "../components/home2/ClosingCTA";
 import { fetchPublishedPosts, toListItem } from "../lib/posts";
+import { fetchPublishedPostsServer } from "../lib/server/publicPosts";
 import { track } from "../lib/analytics";
 
 const fmtDate = (s) => {
@@ -27,13 +28,28 @@ const fmtDate = (s) => {
   return isNaN(d) ? "" : d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 };
 
-export default function Blog() {
+export default function Blog({ initialPosts = [] }) {
   const router = useRouter();
-  const [posts, setPosts] = useState([]);
-  const [status, setStatus] = useState("loading");
+  // Prerendered, so the archive is crawlable as a plain list of links rather
+  // than an empty page that only fills in once JavaScript has run.
+  const [posts, setPosts] = useState(initialPosts);
+  const [status, setStatus] = useState(initialPosts.length ? "ok" : "loading");
   const [error, setError] = useState("");
   const [tag, setTag] = useState("all");
   const [search, setSearch] = useState("");
+  // Full-text search over the whole archive, bodies included.
+  //
+  // Pagefind was the other candidate and cannot work here: it indexes static
+  // HTML at build time, and these posts are fetched from Firestore in the
+  // browser, so the built page contains a loading state and nothing else.
+  // FlexSearch indexes at runtime, which fits a runtime-rendered archive.
+  //
+  // Indexing the bodies is free: fetchPublishedPosts already pulls the full
+  // documents, and this page was simply throwing the body away.
+  const indexRef = useRef(null);
+  const bodiesRef = useRef([]);
+  const [hits, setHits] = useState(null); // null = not searching
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     const t = router.query?.tag;
@@ -47,6 +63,15 @@ export default function Blog() {
     fetchPublishedPosts()
       .then((rows) => {
         if (cancelled) return;
+        bodiesRef.current = rows.map((r) => ({
+          id: r.slug || r.id,
+          title: r.title || "",
+          excerpt: r.excerpt || "",
+          tags: (r.tags || []).join(" "),
+          body: r.body || "",
+        }));
+        // A new archive invalidates whatever was indexed.
+        indexRef.current = null;
         setPosts(
           rows
             .map(toListItem)
@@ -74,12 +99,56 @@ export default function Blog() {
       .map(([t]) => t);
   }, [posts]);
 
-  const searchTerm = search.trim().toLowerCase();
+  const searchTerm = search.trim();
+
+  // The index is built on the first keystroke, not on page load: a reader who
+  // never searches should not download a search engine.
+  useEffect(() => {
+    if (!searchTerm) {
+      setHits(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setSearching(true);
+    (async () => {
+      if (!indexRef.current) {
+        const { Document } = await import("flexsearch");
+        const idx = new Document({
+          tokenize: "forward",
+          document: { id: "id", index: ["title", "excerpt", "tags", "body"] },
+        });
+        for (const doc of bodiesRef.current) idx.add(doc);
+        if (cancelled) return;
+        indexRef.current = idx;
+      }
+      const res = await indexRef.current.searchAsync(searchTerm, { limit: 100 });
+      if (cancelled) return;
+      setHits(new Set(res.flatMap((r) => r.result)));
+      setSearching(false);
+    })().catch(() => {
+      if (!cancelled) {
+        // Never leave the reader staring at an archive that refuses to filter.
+        setHits(null);
+        setSearching(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm]);
+
+  const lowered = searchTerm.toLowerCase();
   const shown = posts.filter((p) => {
     const matchesTag = tag === "all" || (p.tags || []).includes(tag);
-    if (!searchTerm) return matchesTag;
-    const haystack = [p.title, p.description, ...(p.tags || [])].join(" ").toLowerCase();
-    return matchesTag && haystack.includes(searchTerm);
+    if (!matchesTag) return false;
+    if (!searchTerm) return true;
+    if (hits) return hits.has(p.url.replace("/blog/", ""));
+    // Until the index is ready, fall back to the obvious substring match so
+    // typing feels immediate rather than dead.
+    return [p.title, p.description, ...(p.tags || [])]
+      .join(" ")
+      .toLowerCase()
+      .includes(lowered);
   });
   const [lead, ...rest] = shown;
 
@@ -157,9 +226,16 @@ export default function Blog() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search titles, topics, tags"
+              placeholder="Search every word of every piece"
             />
           </label>
+          {searchTerm && status === "ok" && (
+            <p className="wr-count" role="status" aria-live="polite">
+              {searching
+                ? "Searching…"
+                : `${shown.length} ${shown.length === 1 ? "piece" : "pieces"} matching “${searchTerm}”`}
+            </p>
+          )}
         </header>
 
         {status === "loading" ? (
@@ -177,7 +253,9 @@ export default function Blog() {
           </p>
         ) : shown.length === 0 ? (
           <p className="wr-empty">
-            No writing matches {search ? `“${search}”` : `the “${tag}” filter`}.{" "}
+            {search
+              ? `Nothing in the archive mentions “${search}”.`
+              : `No writing carries the “${tag}” tag.`}{" "}
             <button type="button" className="wr-link" onClick={() => { setSearch(""); setFilter("all")(); }}>
               Clear filters
             </button>
@@ -254,6 +332,12 @@ export default function Blog() {
           background: var(--c-accent);
           border-color: var(--c-accent);
           font-weight: 600;
+        }
+        .wr-count {
+          margin: 10px 0 0;
+          font-size: 12.5px;
+          color: var(--c-muted);
+          font-variant-numeric: tabular-nums;
         }
         .wr-search {
           display: flex;
@@ -437,4 +521,13 @@ export default function Blog() {
       `}</style>
     </>
   );
+}
+
+export async function getStaticProps() {
+  try {
+    const rows = await fetchPublishedPostsServer();
+    return { props: { initialPosts: rows.map(toListItem) }, revalidate: 300 };
+  } catch (_) {
+    return { props: { initialPosts: [] }, revalidate: 60 };
+  }
 }

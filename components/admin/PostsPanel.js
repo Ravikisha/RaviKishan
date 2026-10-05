@@ -22,6 +22,10 @@ import EditorStyles from "./EditorStyles";
 import MarkdownToolbar, { countWords } from "./MarkdownToolbar";
 import { slugify, SLUG_RE, readingMinutes, excerptFrom } from "../../lib/posts";
 import { renderMarkdown } from "../../lib/markdown";
+import { enhancePostBody } from "../../lib/postEnhance";
+import { listPortableBlocks, toPortableMarkdown } from "../../lib/server/portableMarkdown";
+import { buildDevtoAssets } from "../../lib/devtoAssets";
+import { absoluteUrl } from "../../lib/canonicalUrl";
 
 const nowISO = () => new Date().toISOString();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
@@ -190,12 +194,53 @@ export default function PostsPanel({ user }) {
     setMsg("");
     setBusy(true);
     try {
-      const out = await authed("/api/devto/publish", { post: { ...r, slug: r.id } });
+      // dev.to renders none of our diagrams or sketches, so each one is
+      // rendered to a file HERE, now, and only because a cross-post was asked
+      // for. A post that never leaves this site never produces a single file.
+      // Maths needs no file at all — dev.to has a native KaTeX tag.
+      const canonicalUrl = absoluteUrl(`/blog/${r.id}`);
+      const blocks = listPortableBlocks(r.body || "");
+      let assets = r.devtoAssets || {};
+      let failed = [];
+
+      if (blocks.length) {
+        setBusy(true);
+        const built = await buildDevtoAssets(blocks, {
+          known: assets,
+          getToken: () => auth.currentUser.getIdToken(),
+          onProgress: (m) => setMsg(m),
+        });
+        assets = built.assets;
+        failed = built.failed;
+        if (built.made.length) {
+          const kb = Math.round(built.made.reduce((n, m) => n + m.bytes, 0) / 1024);
+          setMsg(`Rendered ${built.made.length} block(s), ${kb} KB uploaded. Publishing…`);
+        }
+      }
+
+      const portable = toPortableMarkdown(r.body || "", { assets, canonicalUrl });
+      const out = await authed("/api/devto/publish", {
+        post: { ...r, slug: r.id, body: portable.markdown },
+      });
       await setDoc(
         doc(db, "posts", r.id),
-        { devtoId: out.id, devtoUrl: out.url, crossPostedAt: new Date().toISOString() },
+        {
+          devtoId: out.id,
+          devtoUrl: out.url,
+          crossPostedAt: new Date().toISOString(),
+          // Cached so an unchanged post never re-renders or re-uploads. The id
+          // is a hash of the block's own source, so editing a diagram makes a
+          // new one and leaves the old file orphaned for the Assets tab.
+          ...(Object.keys(assets).length ? { devtoAssets: assets } : {}),
+        },
         { merge: true }
       );
+      if (failed.length) {
+        setErr(
+          `Published, but ${failed.length} block(s) could not be rendered and travelled as a link instead: ` +
+            failed.map((f) => `${f.kind} (${f.error})`).join(", ")
+        );
+      }
       await logAdminAction({
         action: "post.crosspost",
         target: `/blog/${r.id}`,
@@ -373,6 +418,17 @@ export default function PostsPanel({ user }) {
   }, [rows, query, status]);
 
   const filtering = !!query.trim() || status !== "all";
+
+  // The preview renders diagrams and maths too. A preview that shows the
+  // source of a diagram while the live page shows the diagram is not a
+  // preview — the admin is always dark, so mermaid gets its dark theme.
+  const previewRef = useRef(null);
+  useEffect(() => {
+    if (pane === "write") return undefined;
+    const root = previewRef.current;
+    if (!root) return undefined;
+    return enhancePostBody(root, { dark: true });
+  }, [form.body, pane]);
 
   const previewSlug = slugify(form.slug || form.title);
   const currentSource = editing ? (rows || []).find((r) => r.id === editing)?.source : null;
@@ -633,6 +689,7 @@ export default function PostsPanel({ user }) {
               // same .post-body styles as the live article, so what you see
               // here is what the page will actually look like.
               <div
+                ref={previewRef}
                 className="po-preview post-body"
                 dangerouslySetInnerHTML={{
                   __html: form.body.trim()

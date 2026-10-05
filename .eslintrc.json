@@ -11,10 +11,26 @@
               {
                 "name": "next/link",
                 "message": "A desktop app must not route. DesktopOS is mounted from _app.js on EVERY route, so it is a full-screen overlay that survives a client-side navigation: the new page renders UNDERNEATH it and the reader sees nothing happen. This shipped once, in the Blog app. Open detail views inside the window instead (see components/os/apps/Projects.js)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["components/os/apps/**/*.js"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "next/link",
+                "message": "A desktop app must not route. Open detail views inside the window instead (see components/os/apps/Projects.js)."
               },
               {
                 "name": "next/router",
-                "message": "A desktop app must not route. The desktop overlays every route, so the navigation is invisible to the reader. Open detail views inside the window instead (see components/os/apps/Projects.js)."
+                "message": "A desktop app must not PUSH a route — the desktop overlays every page, so the navigation is invisible. Reading the current route to decide what to show is the shell's job (components/os/DesktopOS.js), not an app's."
               }
             ]
           }

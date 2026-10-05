@@ -10,6 +10,7 @@ import PostBodyStyles from "./PostBodyStyles";
 import CopyLinkButton from "../home2/CopyLinkButton";
 import { readingMinutes, excerptFrom } from "../../lib/posts";
 import { renderMarkdown } from "../../lib/markdown";
+import { enhancePostBody } from "../../lib/postEnhance";
 
 const fmtDate = (s) => {
   if (!s) return "";
@@ -35,6 +36,17 @@ export default function PostView({ post, previous = null, next = null, related =
 
   const mins = post.readingTime || readingMinutes(post.body);
   const deck = post.excerpt || excerptFrom(post.body);
+
+  // Maths, diagrams and sketches. Everything it needs is dynamically
+  // imported, so a post that uses none of them pays nothing.
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return undefined;
+    const dark =
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark");
+    return enhancePostBody(root, { dark });
+  }, [html]);
 
   useEffect(() => {
     const root = bodyRef.current;
@@ -67,7 +79,11 @@ export default function PostView({ post, previous = null, next = null, related =
     };
 
     const buttons = [];
-    root.querySelectorAll("pre").forEach((pre) => {
+    // NOT .pb-src: those hold the source of a diagram or a sketch, which
+    // lib/postEnhance.js reads back as textContent. A "Copy" button inside
+    // one lands its own label in the middle of the source — a mermaid graph
+    // ending "G[(container)]Copy" is a parse error, and a baffling one.
+    root.querySelectorAll("pre:not(.pb-src)").forEach((pre) => {
       pre.classList.add("has-copy");
       const code = pre.querySelector("code");
       const button = document.createElement("button");
@@ -124,6 +140,9 @@ export default function PostView({ post, previous = null, next = null, related =
           image: post.cover || undefined,
           datePublished: post.publishedAt,
           dateModified: post.updatedAt || post.publishedAt,
+          tags: post.tags || [],
+          readingTime: mins,
+          wordCount: String(post.body || "").split(/\s+/).filter(Boolean).length,
           canonical: post.source === "devto" ? post.canonicalUrl || post.devtoUrl : undefined,
         }}
       />

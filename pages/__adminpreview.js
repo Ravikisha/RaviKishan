@@ -3,7 +3,7 @@
 // Open /__adminpreview in dev.
 //
 // 404s in production: it is a design tool, not a page.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import AdminShell from "../components/admin/AdminShell";
 import PostBodyStyles from "../components/blog/PostBodyStyles";
 import EditorStyles from "../components/admin/EditorStyles";
@@ -13,6 +13,7 @@ import ContentSection from "../components/admin/ContentEditor";
 import ContentEditorStyles from "../components/admin/ContentEditorStyles";
 import { projectImage, orgLogo, BUNDLED_LOGOS } from "../lib/assetUrl";
 import { renderMarkdown } from "../lib/markdown";
+import { enhancePostBody } from "../lib/postEnhance";
 
 const TABS = [
   ["search", "Search"],
@@ -52,6 +53,18 @@ const SAMPLE = [
   "```",
   "",
   "Read more in [the notes](https://ravikishan.me).",
+  "",
+  "## Where the time goes",
+  "",
+  "A single unshare costs $c$, and $n$ of them compose, so startup is about",
+  "",
+  "$$T = T_{fork} + nc$$",
+  "",
+  "```mermaid",
+  "flowchart LR",
+  "  W[Write] --> P[Preview]",
+  "  P --> L[Live article]",
+  "```",
 ].join("\n");
 
 export default function AdminPreview() {
@@ -75,6 +88,11 @@ export default function AdminPreview() {
     });
   };
   const [body, setBody] = useState(SAMPLE);
+
+  // The preview pane renders diagrams and maths exactly as the live article
+  // does — that is the entire point of this page. The admin is always dark.
+  const previewRef = useRef(null);
+  useEffect(() => enhancePostBody(previewRef.current, { dark: true }), [body]);
 
   return (
     <AdminShell
@@ -155,6 +173,7 @@ export default function AdminPreview() {
                 onChange={(e) => setBody(e.target.value)}
               />
               <div
+                ref={previewRef}
                 className="po-preview post-body"
                 dangerouslySetInnerHTML={{
                   __html: renderMarkdown(body, { mangle: false, headerIds: false }),

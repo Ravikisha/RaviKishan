@@ -417,6 +417,64 @@ console.log("\nGitHub tools curate, and cannot destroy");
   );
 }
 
+console.log("\nsocial tools promise only what the services offer");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const names = TOOLS.map((t) => t.name);
+  const has = (re) => names.filter((n) => re.test(n));
+
+  check(has(/youtube|instagram|_x_|social/).length > 0, "social tools exist");
+
+  // Each of these would be a tool that fails at call time, which is worse than
+  // no tool: the model only finds out after telling the user it is doing it.
+  check(
+    has(/^(edit|update)_x_post$/).length === 0,
+    "nothing claims to edit an X post — X has no edit endpoint at any tier",
+    String(has(/^(edit|update)_x_post$/))
+  );
+  check(
+    has(/^(edit|update)_instagram_(caption|media|post)$/).length === 0,
+    "nothing claims to edit an Instagram caption",
+    String(has(/^(edit|update)_instagram_(caption|media|post)$/))
+  );
+  check(
+    has(/^upload_youtube/).length === 0,
+    "nothing claims to upload a video — a resumable session cannot be held by a serverless function",
+    String(has(/^upload_youtube/))
+  );
+  check(
+    names.includes("get_social_capabilities"),
+    "a capabilities tool reports all of that in one call"
+  );
+  check(names.includes("list_social_accounts"), "and the accounts are discoverable");
+
+  // Multi-account: every social tool must accept an accountId, because with
+  // two handles connected the alternative is posting to whichever one the
+  // store happened to return first.
+  const perAccount = TOOLS.filter(
+    (t) => /^(get|list|update|delete|create|publish|reply|add)_(youtube|instagram|x)_/.test(t.name)
+  );
+  const missing = perAccount.filter((t) => !t.inputSchema?.properties?.accountId);
+  check(
+    perAccount.length > 0 && missing.length === 0,
+    "every per-account social tool takes an accountId",
+    String(missing.map((t) => t.name))
+  );
+  // Never REQUIRED: with one account connected, naming it is friction.
+  const required = perAccount.filter((t) => (t.inputSchema.required || []).includes("accountId"));
+  check(required.length === 0, "and never requires it", String(required.map((t) => t.name)));
+
+  // Anything public and irreversible is rehearsable or confirmed.
+  for (const n of ["create_x_post", "create_x_thread", "publish_instagram_post"]) {
+    const t = TOOLS.find((x) => x.name === n);
+    check(!!t?.inputSchema?.properties?.dryRun, `${n} can be rehearsed with dryRun`);
+  }
+  for (const n of ["delete_x_post", "delete_youtube_video"]) {
+    const t = TOOLS.find((x) => x.name === n);
+    check(!!t?.inputSchema?.properties?.confirm, `${n} asks for confirmation`);
+  }
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

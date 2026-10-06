@@ -842,6 +842,43 @@ async function integrationsAuthSuite() {
   } catch (e) {
     bad("linkedin GET", e.message);
   }
+
+  // /api/social carries the posting credential for every connected YouTube,
+  // Instagram and X account at once, so it is the single most valuable thing
+  // here to leave open by accident.
+  for (const [body, name] of [
+    [{ action: "accounts" }, "accounts"],
+    [{ action: "publish", provider: "x", text: "hello" }, "x publish"],
+    [{ action: "publish", provider: "instagram", imageUrl: "https://x.test/a.jpg" }, "instagram publish"],
+    [{ action: "updateVideo", provider: "youtube", videoId: "abc", title: "t" }, "youtube update"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}/api/social`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      check(res.status === 401, `/api/social ${name} refuses an anonymous caller`, String(res.status));
+    } catch (e) {
+      bad(`social ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/social`, { method: "GET" });
+    check(res.status === 405, "/api/social refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("social GET", e.message);
+  }
+
+  // Both multi-account consent routes are gated the same way as the rest.
+  for (const p of ["youtube", "instagram", "x"]) {
+    try {
+      const res = await fetch(`${BASE}/api/integrations/${p}/start`, { method: "POST" });
+      check(res.status === 401, `/api/integrations/${p}/start refuses an anonymous caller`, String(res.status));
+    } catch (e) {
+      bad(`${p} start`, e.message);
+    }
+  }
 }
 
 async function tasksSuite(browser) {

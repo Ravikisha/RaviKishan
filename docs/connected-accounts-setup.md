@@ -94,7 +94,47 @@ tenant id here only if you want to restrict it.
 
 ---
 
-## 4. Connect, once
+## 4. GitHub
+
+**github.com → Settings → Developer settings → OAuth Apps → New OAuth App.**
+(A classic *OAuth App*, not a GitHub App — a GitHub App issues installation
+tokens scoped to repositories you pick, which is the wrong shape for "edit my
+own profile and all my repos".)
+
+1. Application name: anything (`ravikishan.me admin`).
+2. Homepage URL: `https://ravikishan.me`
+3. Authorization callback URL — an OAuth App allows **one**, so register the
+   production one and add a second app for local work if you want it:
+   ```
+   https://ravikishan.me/api/integrations/github/callback
+   ```
+   For localhost, either make a second OAuth App with
+   `http://localhost:3000/api/integrations/github/callback`, or temporarily
+   point this one there.
+4. **Generate a new client secret** and copy it — it is shown once.
+
+```
+GITHUB_CLIENT_ID=<client id>
+GITHUB_CLIENT_SECRET=<client secret>
+```
+
+Scopes are requested by the code, not configured here: `public_repo` and
+`user`. `public_repo` covers descriptions, topics, homepages and file contents
+on public repositories; `user` is what allows the profile bio and links to be
+edited. Widen to `repo` in `lib/server/integrations.js` only if private
+repositories need managing from here.
+
+**`delete_repo` is never requested**, so nothing in this app — panel or MCP —
+can delete or transfer a repository, whatever it is asked to do.
+
+> GitHub's OAuth token does **not** expire. There is no refresh token and
+> nothing to renew; revoking it at
+> <https://github.com/settings/applications> is what ends the connection, and
+> so is pressing Disconnect in the admin.
+
+---
+
+## 5. Connect, once
 
 Open **/admin → Tasks**. Each shelf shows a Connect button; it sends you to the
 provider's consent screen already pointed at `ravikishan63392@gmail.com`, and
@@ -116,7 +156,7 @@ account as connected, unconnected, unconfigured, or rejected, with the fix.
 
 | | holds | can it read the token? |
 |---|---|---|
-| Firestore `integrations/googleTasks`, `integrations/microsoftTasks` | the **sealed** refresh token, admin-only | no — it is ciphertext |
+| Firestore `integrations/googleTasks`, `integrations/microsoftTasks`, `integrations/github` | the **sealed** token, admin-only | no — it is ciphertext |
 | The deployment environment | `INTEGRATION_SECRET` | no — it has no token attached |
 | Your browser | nothing durable | no |
 
@@ -130,7 +170,8 @@ both accounts at once.
 ## Verifying
 
 ```bash
-npm run test:integrations   # 48 assertions, no network, no credentials
+npm run test:integrations   # sealing, consent URLs, provider shapes — no network
+npm run test:github         # 22 assertions over the GitHub guards and the audit
 npm run e2e:tasks           # the board, plus every endpoint refusing anonymous callers
 npm run mcp:check           # the tool registry, including the absences
 ```

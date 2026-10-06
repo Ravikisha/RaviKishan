@@ -322,6 +322,68 @@ console.log("\ntwo task providers, one set of tools");
   }
 }
 
+console.log("\nGitHub tools curate, and cannot destroy");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const gh = TOOLS.filter((t) => /github/.test(t.name));
+  const names = gh.map((t) => t.name);
+
+  check(gh.length >= 10, "the github tools exist", String(gh.length));
+
+  // Deleting a repository is irreversible and GitHub gates it behind a scope
+  // this app never requests (see integrations-check). There must be no tool
+  // for it either, so the absence is a decision rather than an oversight.
+  check(
+    !names.some((n) => /delete_github|github_delete|transfer/.test(n)),
+    "nothing deletes or transfers a repository",
+    String(names.filter((n) => /delete|transfer/.test(n)))
+  );
+  // Making a repository private hides it from the profile, and making a
+  // private one public is a disclosure. Neither belongs behind a chat prompt.
+  const updater = TOOLS.find((t) => t.name === "update_github_repo");
+  check(!!updater, "update_github_repo exists");
+  check(
+    !updater?.inputSchema?.properties?.private,
+    "and it cannot flip a repository's visibility"
+  );
+
+  // Writes must be scoped as writes; a read-only token must get none of them.
+  const writers = gh.filter((t) => /^(update|create)_/.test(t.name));
+  check(writers.length > 0, "there are github write tools", String(writers.length));
+  check(
+    writers.every((t) => t.scope === "write"),
+    "and every one is behind the write scope",
+    String(writers.filter((t) => t.scope !== "write").map((t) => t.name))
+  );
+  const readers = gh.filter((t) => /^(get|list|audit)_/.test(t.name));
+  check(
+    readers.every((t) => t.scope === "read"),
+    "every github read tool is behind the read scope",
+    String(readers.filter((t) => t.scope !== "read").map((t) => t.name))
+  );
+
+  // owner is optional everywhere: it defaults to the connected account, and
+  // making a model supply it on every call is friction that buys nothing.
+  const withOwner = gh.filter((t) => t.inputSchema?.properties?.owner);
+  check(
+    withOwner.every((t) => !(t.inputSchema.required || []).includes("owner")),
+    "owner is never required — it defaults to the connected account",
+    String(withOwner.filter((t) => (t.inputSchema.required || []).includes("owner")).map((t) => t.name))
+  );
+
+  // A README write is a real commit on the default branch. The tool has to say
+  // so, or a model will treat it as a draft.
+  const readme = TOOLS.find((t) => t.name === "update_github_readme");
+  check(
+    /commit/i.test(readme?.description || ""),
+    "update_github_readme says it makes a commit"
+  );
+  check(
+    (readme?.inputSchema?.required || []).includes("content"),
+    "and requires the full replacement content"
+  );
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

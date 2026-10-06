@@ -135,6 +135,18 @@ export default function PostBodyStyles() {
           overflow-y: hidden;
           padding-bottom: 4px;
         }
+        /* styles/components_styles/_map.scss defines a GLOBAL, unscoped
+           .text rule setting colour to white and the font to Poppins, and
+           imports it. KaTeX emits <span class="mord text"> for every
+           textual bit of an equation, so every word inside every formula
+           rendered white on a white page, in the wrong face - invisible,
+           with nothing in the markup to suggest why. Inheriting from
+           .katex restores the colour and KaTeX's own metric-matched font. */
+        .post-body .katex .text,
+        .po-preview .katex .text {
+          color: inherit;
+          font-family: inherit;
+        }
         .pb-math.is-error {
           color: #d23;
           border-bottom: 1px dotted #d23;

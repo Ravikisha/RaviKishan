@@ -84,6 +84,7 @@ export default function ExportCheck() {
             preview: URL.createObjectURL(file.blob),
             videoBytes: file.video ? file.video.blob.size : 0,
             videoType: file.video ? file.video.contentType : "",
+            videoError: file.videoError || "",
             ok: file.blob.size > 500 && ink > 0.002,
           });
           assets[b.id] = file.video
@@ -155,7 +156,7 @@ export default function ExportCheck() {
                     {r.videoBytes
                       ? ` · video ${Math.round(r.videoBytes / 1024)} KB`
                       : r.kind === "p5"
-                      ? " · no video recorded"
+                      ? ` · no video recorded${r.videoError ? `: ${r.videoError}` : ""}`
                       : ""}
                   </span>
                 ) : (

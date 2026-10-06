@@ -53,6 +53,61 @@ console.log("maths");
   check((subs.match(/pb-math/g) || []).length === 2, "both expressions are marked");
 }
 
+console.log("\nmaths as people actually write it");
+{
+  // Only text OUTSIDE a math span counts as unrendered: a \begin{...} INSIDE
+  // one is the payload KaTeX needs.
+  const outside = (html) =>
+    html.replace(/<span class="pb-math"[\s\S]*?<\/span>/g, "").replace(/<[^>]+>/g, "");
+  const mathCount = (html) => (html.match(/class="pb-math"/g) || []).length;
+
+  // THE common form, and the one that was broken: delimiters on their own
+  // lines. An inline-level tokenizer never sees it, because by then the
+  // paragraph starts with "$$\n".
+  const ownLines = renderMarkdown("$$\nE = mc^2\n$$");
+  check(mathCount(ownLines) === 1, "display $$ on its own lines is maths", ownLines.slice(0, 80));
+  check(!outside(ownLines).includes("$$"), "and no stray $$ is left in the prose");
+  check(/data-display="1"/.test(ownLines), "marked as display, not inline");
+
+  // Markdown treats \\ as an escaped backslash, so a line break inside an
+  // aligned block used to collapse and the alignment was lost. A block-level
+  // tokenizer sees the raw source instead.
+  const aligned = renderMarkdown("$$\n\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}\n$$");
+  check(aligned.includes("\\\\"), "a LaTeX line break survives markdown escaping", aligned.slice(0, 120));
+  check(aligned.includes("\\begin{aligned}"), "and the environment reaches KaTeX intact");
+
+  // A bare environment with no delimiters at all.
+  for (const env of ["align", "equation", "gather", "cases"]) {
+    const out = renderMarkdown(`\\begin{${env}}\nx = 1\n\\end{${env}}`);
+    check(mathCount(out) === 1, `a bare \\begin{${env}} block is maths`);
+    check(out.includes(`\\begin{${env}}`), `and keeps its own \\begin{${env}}`);
+  }
+
+  // The bracket delimiters LaTeX users reach for out of habit. Markdown
+  // otherwise swallows the backslashes and prints "[ x ]".
+  const brDisplay = renderMarkdown("\\[ E = mc^2 \\]");
+  check(mathCount(brDisplay) === 1 && /data-display="1"/.test(brDisplay), "\\[ … \\] is display maths");
+  const brInline = renderMarkdown("Let \\( x = 1 \\) hold.");
+  check(mathCount(brInline) === 1 && /data-display="0"/.test(brInline), "\\( … \\) is inline maths");
+  check(!outside(brInline).includes("("), "with no bare bracket left behind", outside(brInline));
+
+  // Display maths inside a quote.
+  const quoted = renderMarkdown("> $$\n> E = mc^2\n> $$");
+  check(mathCount(quoted) === 1, "display maths inside a blockquote still renders");
+
+  // Context: maths has to survive being inside other markdown.
+  check(mathCount(renderMarkdown("- an $a_i$ item\n- a $b_j$ item")) === 2, "inline maths in list items");
+  check(mathCount(renderMarkdown("## The $O(n \\log n)$ bound")) === 1, "inline maths in a heading");
+  check(mathCount(renderMarkdown("| s | m |\n| - | - |\n| $k$ | count |")) === 1, "inline maths in a table cell");
+  check(mathCount(renderMarkdown("**bold $x$ text**")) === 1, "inline maths inside bold");
+
+  // And still not maths.
+  check(mathCount(renderMarkdown("From $5 to $10 today.")) === 0, "a currency pair is still money");
+  check(mathCount(renderMarkdown("Use `$5` and `$HOME`.")) === 0, "dollars in inline code are still code");
+  const fenced = renderMarkdown("```sh\n$$\necho hi\n$$\n```");
+  check(mathCount(fenced) === 0, "a $$ inside a code fence is not hijacked as maths", fenced.slice(0, 90));
+}
+
 console.log("\nrunnable and drawable blocks");
 {
   const mmd = renderMarkdown("```mermaid\ngraph TD; A-->B;\n```");

@@ -26,6 +26,7 @@ import { enhancePostBody } from "../../lib/postEnhance";
 import { listPortableBlocks, toPortableMarkdown } from "../../lib/server/portableMarkdown";
 import { buildDevtoAssets } from "../../lib/devtoAssets";
 import { absoluteUrl } from "../../lib/canonicalUrl";
+import { mediumImportUrl, mediumState } from "../../lib/server/medium";
 
 const nowISO = () => new Date().toISOString();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
@@ -54,6 +55,7 @@ export default function PostsPanel({ user }) {
   const coverRef = useRef(null);
   const [pane, setPane] = useState("write"); // write | preview | split
   const [devto, setDevto] = useState(null); // dev.to articles, once fetched
+  const [medium, setMedium] = useState(null); // what is already on Medium
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all"); // all | draft | live
   const [frontOpen, setFrontOpen] = useState(false);
@@ -139,6 +141,24 @@ export default function PostsPanel({ user }) {
       setMsg(`Found ${posts.length} articles on dev.to.`);
     } catch (e) {
       setErr(e?.message || "Could not reach dev.to.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Medium stopped issuing API tokens on 1 Jan 2025, so there is nothing to
+  // publish WITH. This reads the public feed to say what is already there; the
+  // actual copying is done by Medium's own importer, one click per post, which
+  // also sets the canonical URL back here.
+  const loadMedium = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      const data = await authed("/api/medium/list");
+      setMedium(data);
+      setMsg(`${data.count} stories on Medium.`);
+    } catch (e) {
+      setErr(e?.message || "Could not reach Medium.");
     } finally {
       setBusy(false);
     }
@@ -430,6 +450,19 @@ export default function PostsPanel({ user }) {
     return enhancePostBody(root, { dark: true });
   }, [form.body, pane]);
 
+  // slug -> { state, mediumUrl }. Empty until the feed is asked for, so the
+  // panel costs nothing extra on load.
+  const mediumBySlug = useMemo(() => {
+    if (!medium?.posts || !rows) return {};
+    const live = rows.filter((r) => r.published).map((r) => ({
+      slug: r.id,
+      title: r.title,
+      publishedAt: r.publishedAt,
+      updatedAt: r.updatedAt,
+    }));
+    return Object.fromEntries(mediumState(live, medium.posts).map((m) => [m.slug, m]));
+  }, [medium, rows]);
+
   const previewSlug = slugify(form.slug || form.title);
   const currentSource = editing ? (rows || []).find((r) => r.id === editing)?.source : null;
 
@@ -492,6 +525,34 @@ export default function PostsPanel({ user }) {
             dev.to
           </a>
         )}
+        {/* Medium's importer fetches the page, converts it, and stamps the
+            canonical back here. Only offered once a post is public — the
+            importer cannot read a draft. */}
+        {r.published &&
+          (mediumBySlug[r.id]?.state === "on-medium" ? (
+            <a
+              className="admin-ghost sm"
+              href={mediumBySlug[r.id].mediumUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Medium
+            </a>
+          ) : (
+            <a
+              className="admin-ghost sm"
+              href={mediumImportUrl(absoluteUrl(`/blog/${r.id}`))}
+              target="_blank"
+              rel="noreferrer"
+              title={
+                mediumBySlug[r.id]?.state === "unknown"
+                  ? "Medium's feed only lists recent stories, so this one's state is unknown — check before importing."
+                  : "Open Medium's importer with this post's URL"
+              }
+            >
+              {mediumBySlug[r.id]?.state === "unknown" ? "Medium?" : "Import on Medium"}
+            </a>
+          ))}
         <button className="admin-del" type="button" onClick={remove(r)} title="Delete">
           ✕
         </button>
@@ -523,6 +584,9 @@ export default function PostsPanel({ user }) {
             )}
             <button className="admin-ghost" type="button" onClick={loadDevto} disabled={busy}>
               {devto ? "Refresh dev.to" : "Show dev.to articles"}
+            </button>
+            <button className="admin-ghost" type="button" onClick={loadMedium} disabled={busy}>
+              {medium ? "Refresh Medium" : "Check Medium"}
             </button>
           </span>
         </div>

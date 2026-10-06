@@ -247,16 +247,24 @@ console.log("\ncapabilities that must stay absent");
     "no tool uploads to or deletes from the vault",
     String(has(/^(upload|create|delete)_vault/))
   );
-  // Google Tasks IS served now — by borrowing the admin's short-lived access
-  // token from an admin-only document. What must stay absent is any tool that
-  // mints or stores a Google credential: the refresh token would be permanent
-  // access to the account, held server-side.
-  check(has(/task/).length > 0, "Google Tasks tools exist", String(has(/task/).length));
+  // Tasks ARE served now, for both Google and Microsoft, from a refresh token
+  // sealed under INTEGRATION_SECRET. What must stay absent is any tool that
+  // CONNECTS or DISCONNECTS an account: consent happens in a browser, in front
+  // of the person whose account it is, and a tool that could re-point the
+  // connection would be a way to attach someone else's tasks from a chat
+  // client. Reading and writing tasks is the capability; granting access is not.
+  check(has(/task/).length > 0, "task tools exist", String(has(/task/).length));
   check(
-    has(/refresh|oauth_google|google_credential|connect_google/).length === 0,
-    "but nothing mints or stores a Google credential",
-    String(has(/refresh|oauth_google|google_credential|connect_google/))
+    has(/^(connect|disconnect|authorize|link|unlink)_/).length === 0,
+    "but nothing connects or disconnects an account",
+    String(has(/^(connect|disconnect|authorize|link|unlink)_/))
   );
+  check(
+    has(/refresh_token|oauth_google|google_credential|set_integration/).length === 0,
+    "and nothing mints or stores a provider credential",
+    String(has(/refresh_token|oauth_google|google_credential|set_integration/))
+  );
+
   // Vault tools never hand back bytes.
   const vaultTools = TOOLS.filter((t) => /vault/.test(t.name));
   check(
@@ -264,6 +272,54 @@ console.log("\ncapabilities that must stay absent");
     "every vault tool sits behind the vault scope",
     String(vaultTools.filter((t) => t.scope !== "vault").map((t) => t.name))
   );
+}
+
+console.log("\ntwo task providers, one set of tools");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const has = (re) => TOOLS.filter((t) => re.test(t.name)).map((t) => t.name);
+  const taskTools = TOOLS.filter((t) => /_task/.test(t.name));
+
+  // The alternative — nine google_* tools and nine microsoft_* tools — makes a
+  // model choose a NAME to express which account it meant, and it will choose
+  // wrong. One vocabulary, with the account as an argument.
+  check(
+    has(/^(google|microsoft|ms)_/).length === 0,
+    "no provider-specific tool names",
+    String(has(/^(google|microsoft|ms)_/))
+  );
+  check(
+    TOOLS.some((t) => t.name === "list_task_providers"),
+    "a tool reports which accounts are connected"
+  );
+
+  const needsProvider = taskTools.filter((t) => t.name !== "list_task_providers");
+  const missing = needsProvider.filter((t) => !t.inputSchema?.properties?.provider);
+  check(
+    missing.length === 0,
+    "every task tool takes a provider",
+    String(missing.map((t) => t.name))
+  );
+  const badEnum = needsProvider.filter(
+    (t) =>
+      JSON.stringify(t.inputSchema.properties.provider.enum || []) !==
+      JSON.stringify(["google", "microsoft"])
+  );
+  check(badEnum.length === 0, "and offers the same two everywhere", String(badEnum.map((t) => t.name)));
+  // Defaulted, not required: the overwhelming majority of calls mean Google,
+  // and a required argument on every call is friction that buys nothing.
+  const required = needsProvider.filter((t) => (t.inputSchema.required || []).includes("provider"));
+  check(required.length === 0, "and never requires it", String(required.map((t) => t.name)));
+
+  // Deleting a group or clearing completed tasks has no undo on either service.
+  for (const name of ["delete_task_group", "clear_completed_tasks"]) {
+    const t = TOOLS.find((x) => x.name === name);
+    check(
+      !!t?.inputSchema?.properties?.confirm,
+      `${name} asks for confirmation`,
+      t ? "no confirm property" : "tool missing"
+    );
+  }
 }
 
 console.log("\nguards refuse before they touch anything");

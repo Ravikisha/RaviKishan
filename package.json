@@ -16,9 +16,11 @@
     "e2e:tasks": "node scripts/e2e-check.js tasks",
     "e2e:seo": "node scripts/e2e-check.js seo",
     "e2e:blog": "node scripts/e2e-check.js blog",
+    "e2e:export": "node scripts/e2e-check.js export",
     "e2e:metrics": "node scripts/e2e-check.js metrics",
     "metrics": "node scripts/sync-metrics.mjs",
     "b2:check": "node scripts/b2-check.mjs",
+    "medium:check": "node scripts/medium-check.mjs",
     "devto:check": "node scripts/devto-check.mjs",
     "test:contacts": "node scripts/contacts-parse.test.mjs",
     "pwa:check": "node scripts/pwa-check.mjs",
@@ -30,7 +32,11 @@
     "og:image": "node scripts/make-og-image.mjs",
     "unused": "node scripts/find-unused.mjs",
     "export": "next export",
-    "postbuild": "next-sitemap"
+    "postbuild": "next-sitemap",
+    "probe:recorder": "node scripts/probe-recorder.mjs",
+    "test:integrations": "node scripts/integrations-check.mjs",
+    "rules:deploy": "firebase deploy --only firestore:rules",
+    "rules:check": "node scripts/rules-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

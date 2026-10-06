@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 import AdminShell from "../components/admin/AdminShell";
 import PostBodyStyles from "../components/blog/PostBodyStyles";
 import EditorStyles from "../components/admin/EditorStyles";
-import { Styles } from "./admin";
+import { Styles, TABS } from "./admin";
 import ImageField from "../components/admin/ImageField";
 import ContentSection from "../components/admin/ContentEditor";
 import ContentEditorStyles from "../components/admin/ContentEditorStyles";
@@ -15,23 +15,8 @@ import { projectImage, orgLogo, BUNDLED_LOGOS } from "../lib/assetUrl";
 import { renderMarkdown } from "../lib/markdown";
 import { enhancePostBody } from "../lib/postEnhance";
 
-const TABS = [
-  ["search", "Search"],
-  ["content", "Content"],
-  ["vault", "Vault"],
-  ["gallery", "Gallery"],
-  ["assets", "Assets"],
-  ["links", "Short links"],
-  ["jobs", "Jobs"],
-  ["tasks", "Tasks"],
-  ["posts", "Writing"],
-  ["drift", "Drift"],
-  ["contacts", "Contacts"],
-  ["mcp", "MCP"],
-  ["analytics", "Analytics"],
-  ["ops", "Backup & log"],
-  ["inbox", "Inbox"],
-];
+// TABS comes from pages/admin.js. It used to be copied here, which is how
+// a design reference quietly stops matching the thing it references.
 
 // Written as lines and joined, so the sample survives every tool that has
 // opinions about backslashes.
@@ -100,7 +85,11 @@ export default function AdminPreview() {
       view={view}
       onView={setView}
       email="ravikishan63392@gmail.com"
-      badges={{ jobs: 2, vault: 1, inbox: 4 }}
+      badges={{
+        jobs: { count: 2, tone: "late", noun: "late" },
+        vault: { count: 1, tone: "soon", noun: "expiring" },
+        inbox: { count: 4, tone: "waiting", noun: "unanswered" },
+      }}
       onSignOut={() => {}}
       actions={
         <>

@@ -1,388 +1,519 @@
-// Google Tasks, in the admin — as a board, not a dropdown.
+// Your real tasks, in the admin — two accounts, one board.
 //
-// Reads and writes your real Google Tasks lists. This is not a second todo
-// system to keep in sync, which is the usual failure mode of bolting tasks
-// onto a dashboard: everything here round-trips to Google immediately.
+// Reads and writes Google Tasks and Microsoft To Do directly. This is not a
+// second todo system to keep in sync, which is the usual failure mode of
+// bolting tasks onto a dashboard: everything here round-trips immediately.
 //
-// Design: your tasks are already organised into groups, and the old panel hid
-// that behind a <select> — one group visible at a time, no way to see the
-// shape of the week, and moving a task between groups was impossible. Every
-// group is a column now, and a task moves by being dragged. The one loud
-// moment in the interface is the amber drop target, because that is the moment
-// the interface is answering a question: "will it land here?"
+// DESIGN
+//
+// The board already had the right idea — every group is a column, a task moves
+// by being dragged, and the one loud moment is the amber drop target, because
+// that is the interface answering "will it land here?". Two accounts broke it,
+// because a groupId is only meaningful inside its own service and a drag from
+// one to the other is not a move at all: there is no API for it on either
+// side, so the task is recreated and the original deleted, with a new id.
+//
+// So the account is a SHELF you are inside, not a badge stamped on every card.
+// Position carries it — the strongest and cheapest signal there is — and the
+// board needs no second colour, no logo, and no per-card chrome to say where
+// something lives. It also makes the dangerous action legible for free: a drop
+// inside your shelf is the familiar solid amber, a drop onto the other shelf is
+// dashed and says what it will do before you let go.
+//
+// The shelf header says what needs you before you read a single card, in the
+// same words and the same graded colours as the rail in AdminShell — the two
+// surfaces are one system.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  getAccessToken,
-  forgetToken,
-  listTaskLists,
+  PROVIDERS,
+  providerLabel,
+  connectionStatus,
+  beginConnect,
+  finishConnect,
+  disconnect,
+  forgetTokens,
+  listGroups,
   listTasks,
+  createGroup,
+  renameGroup,
+  deleteGroup,
   createTask,
   patchTask,
   deleteTask,
   moveTask,
-  createTaskList,
-  renameTaskList,
-  deleteTaskList,
   clearCompleted,
-  toDue,
-  fromDue,
-} from "../../lib/googleTasks";
+} from "../../lib/taskProviders";
 import { logAdminAction } from "../../lib/auditLog";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const dueState = (due) => {
-  const d = fromDue(due);
-  if (!d) return null;
+export const dueState = (due) => {
+  if (!due) return null;
   const today = todayISO();
-  if (d < today) return "overdue";
-  if (d === today) return "today";
+  if (due < today) return "overdue";
+  if (due === today) return "today";
   return "later";
 };
 
-const dueLabel = (due) => {
-  const d = fromDue(due);
-  if (!d) return "";
+// Graded, not printed: "12 Oct" tells you nothing you can act on, and the
+// whole point of a due date is whether it has passed.
+export const dueLabel = (due) => {
+  if (!due) return "";
   const today = todayISO();
-  if (d === today) return "Today";
-  const t = new Date(`${today}T00:00:00Z`);
-  const x = new Date(`${d}T00:00:00Z`);
-  const days = Math.round((x - t) / 86400000);
+  if (due === today) return "Today";
+  const days = Math.round(
+    (new Date(`${due}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000
+  );
   if (days === 1) return "Tomorrow";
   if (days === -1) return "Yesterday";
   if (days < 0) return `${Math.abs(days)}d overdue`;
   if (days < 7) return `In ${days}d`;
-  return new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  return new Date(`${due}T00:00:00Z`).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+  });
 };
 
+// What the shelf header says. Counts come from the tasks themselves rather
+// than being tracked separately, so the sentence cannot disagree with the
+// board under it.
+export function shelfSummary(tasks) {
+  const open = tasks.filter((t) => !t.completed && !t.isStep);
+  const overdue = open.filter((t) => dueState(t.due) === "overdue").length;
+  const today = open.filter((t) => dueState(t.due) === "today").length;
+  if (!open.length) return { tone: "clear", text: "Nothing open." };
+  if (overdue) {
+    return {
+      tone: "overdue",
+      text: `${overdue} overdue${today ? `, ${today} due today` : ""} · ${open.length} open`,
+    };
+  }
+  if (today) return { tone: "today", text: `${today} due today · ${open.length} open` };
+  return { tone: "clear", text: `${open.length} open, nothing due yet` };
+}
+
+/* ================= the panel ================= */
+
 export default function TasksPanel({ user }) {
-  const [token, setToken] = useState(null);
-  const [lists, setLists] = useState([]);
-  const [byList, setByList] = useState({}); // listId -> tasks[]
+  const [conns, setConns] = useState(null); // provider id -> status
+  const [groups, setGroups] = useState({}); // provider -> group[]
+  const [tasks, setTasks] = useState({}); // `${provider}:${groupId}` -> task[]
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
   const [showDone, setShowDone] = useState(false);
-  const [editing, setEditing] = useState(null); // { listId, task }
+  const [editing, setEditing] = useState(null);
   const [dragOver, setDragOver] = useState(null);
   const dragged = useRef(null);
 
-  /* ---------------- connection ---------------- */
+  const key = (provider, groupId) => `${provider}:${groupId}`;
 
-  useEffect(() => {
-    getAccessToken({ interactive: false })
-      .then((t) => t && setToken(t))
-      .catch(() => {});
+  /* ---------------- connections ---------------- */
+
+  const loadConnections = useCallback(async () => {
+    const list = await connectionStatus();
+    setConns(Object.fromEntries(list.map((p) => [p.provider, p])));
+    return list;
   }, []);
 
-  const loadAll = useCallback(async (t) => {
-    const ls = await listTaskLists(t);
-    setLists(ls);
-    // Every group's tasks at once — a board that fills in column by column as
-    // you watch is worse than one that appears whole.
+  const loadProvider = useCallback(async (provider) => {
+    const gs = await listGroups(provider);
+    setGroups((m) => ({ ...m, [provider]: gs }));
+    // Every group at once: a board that fills in column by column while you
+    // watch is worse than one that appears whole.
     const entries = await Promise.all(
-      ls.map(async (l) => [l.id, await listTasks(t, l.id, { showCompleted: true })])
+      gs.map(async (g) => [`${provider}:${g.id}`, await listTasks(provider, g.id)])
     );
-    setByList(Object.fromEntries(entries));
+    setTasks((m) => ({ ...m, ...Object.fromEntries(entries) }));
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (!token) return;
-    setBusy("Loading your tasks…");
-    try {
-      await loadAll(token);
-      setErr("");
-    } catch (e) {
-      if (e.code === "gtasks/reauth") setToken(null);
-      setErr(e.message);
-    } finally {
-      setBusy("");
-    }
-  }, [token, loadAll]);
-
-  useEffect(() => {
-    if (token) refresh();
-  }, [token, refresh]);
-
-  const connect = async () => {
-    setErr("");
-    setBusy("Waiting for Google…");
-    try {
-      setToken(await getAccessToken({ interactive: true }));
-      setMsg("Connected to Google Tasks.");
-    } catch (e) {
-      if (!/popup-closed|cancelled-popup/.test(e?.code || "")) {
-        setErr(e.message || "Could not connect.");
-      }
-    } finally {
-      setBusy("");
-    }
-  };
-
-  const disconnect = () => {
-    forgetToken();
-    setToken(null);
-    setLists([]);
-    setByList({});
-    setMsg("Disconnected. Your tasks are untouched — this only forgets the token.");
-  };
-
-  /* ---------------- helpers ---------------- */
-
-  // Optimistic: Google is a round-trip away and a board that lags behind the
-  // pointer feels broken. Every mutation re-reads the affected group after.
-  const reloadList = useCallback(
-    async (listId) => {
-      if (!token) return;
+  const refresh = useCallback(
+    async (only) => {
+      setBusy("Loading your tasks…");
       try {
-        const rows = await listTasks(token, listId, { showCompleted: true });
-        setByList((m) => ({ ...m, [listId]: rows }));
+        const list = only ? Object.values(conns || {}) : await loadConnections();
+        const live = list.filter((p) => p.connected && (!only || p.provider === only));
+        await Promise.all(
+          live.map((p) =>
+            loadProvider(p.provider).catch((e) =>
+              setErr((prev) => prev || `${providerLabel(p.provider)}: ${e.message}`)
+            )
+          )
+        );
       } catch (e) {
-        setErr(e.message);
+        setErr(e.message || "Could not read your accounts.");
+      } finally {
+        setBusy("");
       }
     },
-    [token]
+    [conns, loadConnections, loadProvider]
   );
 
-  const run = async (label, fn, after) => {
+  // On load, and after the consent redirect lands back here.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const connected = params.get("connected");
+      const failed = params.get("connectError");
+
+      if (failed) setErr(failed);
+      if (connected) {
+        setBusy(`Saving the ${providerLabel(connected)} connection…`);
+        try {
+          const rec = await finishConnect(connected);
+          setMsg(
+            `${providerLabel(connected)} connected${rec?.email ? ` as ${rec.email}` : ""}. ` +
+              `It stays connected — the MCP tools use it too.`
+          );
+          logAdminAction({
+            action: "integration.connect",
+            target: connected,
+            detail: rec?.email || "",
+            user,
+          });
+        } catch (e) {
+          setErr(e.message || "That connection could not be saved.");
+        }
+      }
+      // Clean the query so a refresh does not try to claim a spent cookie.
+      if (connected || failed) {
+        const url = new URL(window.location.href);
+        ["connected", "connectError", "account"].forEach((k) => url.searchParams.delete(k));
+        window.history.replaceState({}, "", url.toString());
+      }
+      if (!cancelled) await refresh();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately once: this is the page-load sequence, not a subscription.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connect = async (provider) => {
     setErr("");
+    setBusy(`Opening ${providerLabel(provider)}…`);
+    try {
+      await beginConnect(provider);
+    } catch (e) {
+      setBusy("");
+      setErr(e.message || "Could not start the connection.");
+    }
+  };
+
+  const unlink = async (provider) => {
+    if (!window.confirm(`Disconnect ${providerLabel(provider)}? The MCP tools lose it too.`)) return;
+    await disconnect(provider);
+    forgetTokens();
+    logAdminAction({ action: "integration.disconnect", target: provider, user });
+    setGroups((m) => ({ ...m, [provider]: [] }));
+    setMsg(`${providerLabel(provider)} disconnected.`);
+    await loadConnections();
+  };
+
+  /* ---------------- writes ---------------- */
+
+  const run = async (label, fn) => {
+    setErr("");
+    setMsg("");
     setBusy(label);
     try {
       await fn();
-      if (after) await after();
     } catch (e) {
-      if (e.code === "gtasks/reauth") setToken(null);
       setErr(e.message || "That did not work.");
     } finally {
       setBusy("");
     }
   };
 
-  /* ---------------- task operations ---------------- */
+  const addTask = (provider, groupId, draft) =>
+    run("Adding…", async () => {
+      await createTask(provider, groupId, draft);
+      await reloadGroup(provider, groupId);
+      logAdminAction({
+        action: "task.create",
+        target: `${provider}:${groupId}`,
+        detail: draft.title,
+        user,
+      });
+    });
 
-  const addTask = (listId, fields) =>
-    run(
-      "Adding…",
-      async () => {
-        await createTask(token, listId, {
-          title: fields.title.trim(),
-          notes: fields.notes || undefined,
-          due: fields.due ? toDue(fields.due) : undefined,
-          parent: fields.parent || undefined,
-        });
-        await logAdminAction({ action: "task.create", detail: fields.title, user });
-      },
-      () => reloadList(listId)
-    );
-
-  const toggleDone = (listId, task) =>
-    run(
-      task.status === "completed" ? "Reopening…" : "Completing…",
-      () =>
-        patchTask(token, listId, task.id, {
-          status: task.status === "completed" ? "needsAction" : "completed",
-          // Google refuses a completion timestamp on a reopened task.
-          completed: task.status === "completed" ? null : new Date().toISOString(),
-        }),
-      () => reloadList(listId)
-    );
-
-  const saveTask = (listId, taskId, patch) =>
-    run("Saving…", () => patchTask(token, listId, taskId, patch), () => reloadList(listId));
-
-  const removeTask = (listId, task) => {
-    // eslint-disable-next-line no-alert
-    if (!confirm(`Delete “${task.title || "this task"}”?`)) return;
-    run(
-      "Deleting…",
-      async () => {
-        await deleteTask(token, listId, task.id);
-        await logAdminAction({ action: "task.delete", detail: task.title, user });
-      },
-      () => reloadList(listId)
-    );
+  const reloadGroup = async (provider, groupId) => {
+    const rows = await listTasks(provider, groupId);
+    setTasks((m) => ({ ...m, [key(provider, groupId)]: rows }));
   };
 
-  const moveToList = (fromListId, task, toListId) => {
-    if (fromListId === toListId) return;
-    // Move it on screen first; the board should answer the drop instantly.
-    setByList((m) => ({
-      ...m,
-      [fromListId]: (m[fromListId] || []).filter((t) => t.id !== task.id),
-      [toListId]: [...(m[toListId] || []), task],
-    }));
-    run(
-      "Moving…",
-      async () => {
-        await moveTask(token, fromListId, task.id, { toListId });
-        await logAdminAction({
-          action: "task.move",
-          detail: `${task.title} → ${lists.find((l) => l.id === toListId)?.title || toListId}`,
-          user,
-        });
-      },
-      async () => {
-        await reloadList(fromListId);
-        await reloadList(toListId);
+  const toggle = (provider, groupId, task) =>
+    run(task.completed ? "Reopening…" : "Completing…", async () => {
+      // Optimistic: a tick that waits for a round trip feels broken.
+      setTasks((m) => ({
+        ...m,
+        [key(provider, groupId)]: (m[key(provider, groupId)] || []).map((t) =>
+          t.id === task.id ? { ...t, completed: !task.completed } : t
+        ),
+      }));
+      await patchTask(provider, groupId, task.id, { completed: !task.completed });
+      await reloadGroup(provider, groupId);
+    });
+
+  const saveTask = (provider, groupId, task, patch) =>
+    run("Saving…", async () => {
+      await patchTask(provider, groupId, task.id, patch);
+      await reloadGroup(provider, groupId);
+      setEditing(null);
+    });
+
+  const removeTask = (provider, groupId, task) =>
+    run("Deleting…", async () => {
+      await deleteTask(provider, groupId, task.id);
+      await reloadGroup(provider, groupId);
+      logAdminAction({
+        action: "task.delete",
+        target: `${provider}:${groupId}`,
+        detail: task.title,
+        user,
+      });
+    });
+
+  const dropTask = (to) =>
+    run("Moving…", async () => {
+      const from = dragged.current;
+      dragged.current = null;
+      setDragOver(null);
+      if (!from) return;
+      if (from.provider === to.provider && from.groupId === to.groupId) return;
+
+      const out = await moveTask(
+        { provider: from.provider, listId: from.groupId },
+        { provider: to.provider, listId: to.groupId },
+        from.task
+      );
+      await reloadGroup(from.provider, from.groupId);
+      await reloadGroup(to.provider, to.groupId);
+      if (out.idChanged) {
+        setMsg(
+          from.provider === to.provider
+            ? `Moved. ${providerLabel(to.provider)} has no move operation, so the task was recreated with a new id.`
+            : `Moved to ${providerLabel(to.provider)}. It was recreated there, so it has a new id.`
+        );
       }
-    );
+      logAdminAction({
+        action: "task.move",
+        target: `${from.provider}:${from.groupId} → ${to.provider}:${to.groupId}`,
+        detail: from.task.title,
+        user,
+      });
+    });
+
+  const addGroup = (provider) => {
+    const title = window.prompt(`New list in ${providerLabel(provider)}:`);
+    if (!title?.trim()) return;
+    run("Creating…", async () => {
+      await createGroup(provider, title.trim());
+      await loadProvider(provider);
+    });
   };
 
-  /* ---------------- group operations ---------------- */
-
-  const addGroup = () => {
-    // eslint-disable-next-line no-alert
-    const title = prompt("Name the new group:");
-    if (!title || !title.trim()) return;
-    run("Creating group…", () => createTaskList(token, title.trim()), refresh);
+  const rename = (provider, group) => {
+    const title = window.prompt("Rename this list:", group.title);
+    if (!title?.trim() || title === group.title) return;
+    run("Renaming…", async () => {
+      await renameGroup(provider, group.id, title.trim());
+      await loadProvider(provider);
+    });
   };
 
-  const renameGroup = (list) => {
-    // eslint-disable-next-line no-alert
-    const title = prompt("Rename this group:", list.title);
-    if (!title || !title.trim() || title === list.title) return;
-    run("Renaming…", () => renameTaskList(token, list.id, title.trim()), refresh);
-  };
-
-  const removeGroup = (list) => {
-    const n = (byList[list.id] || []).length;
-    // eslint-disable-next-line no-alert
+  const removeGroup = (provider, group) => {
+    const rows = tasks[key(provider, group.id)] || [];
+    const n = rows.filter((t) => !t.isStep).length;
     if (
-      !confirm(
-        `Delete the group “${list.title}”?\n\n${n} task${n === 1 ? "" : "s"} inside will be deleted too. Google has no undo for this.`
+      !window.confirm(
+        `Delete "${group.title}"${n ? ` and its ${n} task${n === 1 ? "" : "s"}` : ""}? There is no undo.`
       )
     )
       return;
-    run("Deleting group…", () => deleteTaskList(token, list.id), refresh);
+    run("Deleting…", async () => {
+      await deleteGroup(provider, group.id);
+      await loadProvider(provider);
+    });
   };
 
-  const clearDone = (list) =>
-    run("Clearing completed…", () => clearCompleted(token, list.id), () => reloadList(list.id));
-
-  /* ---------------- counts ---------------- */
-
-  const totals = useMemo(() => {
-    let open = 0;
-    let done = 0;
-    for (const rows of Object.values(byList)) {
-      for (const t of rows) (t.status === "completed" ? done++ : open++);
-    }
-    return { open, done };
-  }, [byList]);
+  const clearDone = (provider, group) =>
+    run("Clearing…", async () => {
+      const n = await clearCompleted(provider, group.id);
+      await reloadGroup(provider, group.id);
+      setMsg(n ? `Cleared ${n} completed task${n === 1 ? "" : "s"}.` : "Nothing was completed.");
+    });
 
   /* ---------------- render ---------------- */
 
-  if (!token) {
-    return (
-      <main className="admin-main">
-        <div className="tk-connect">
-          <h3>Your Google Tasks, here</h3>
-          <p>
-            This reads and writes the same lists as the Tasks app on your phone — not a
-            separate copy. The connection lasts about an hour, then Google asks again.
-          </p>
-          <button className="admin-primary" type="button" onClick={connect} disabled={!!busy}>
-            {busy || "Connect Google Tasks"}
-          </button>
-          {err && <div className="admin-err">{err}</div>}
-        </div>
-        <TasksStyles />
-      </main>
-    );
-  }
+  const connected = useMemo(
+    () => PROVIDERS.filter((p) => conns?.[p.id]?.connected),
+    [conns]
+  );
 
   return (
-    <main className="admin-main tk-main">
+    <div className="tk-main">
       <div className="ops-head tk-head">
         <div>
-          <h3>
-            Tasks{" "}
-            <span className="admin-sub">
-              {totals.open} open · {totals.done} done · {lists.length} groups
-            </span>
-          </h3>
-          <p className="admin-sub tk-sub">
-            Drag a task onto another group to move it. Everything saves to Google straight away.
+          <h2>Tasks</h2>
+          <p className="tk-sub">
+            Your real Google Tasks and Microsoft To Do, side by side. Everything here saves
+            straight to the account it sits in.
           </p>
         </div>
-        <span className="tk-actions">
+        <div className="tk-actions">
           <label className="tk-toggle">
-            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
-            <span>Show completed</span>
+            <input
+              type="checkbox"
+              checked={showDone}
+              onChange={(e) => setShowDone(e.target.checked)}
+            />
+            Show completed
           </label>
-          <button className="admin-ghost" type="button" onClick={addGroup} disabled={!!busy}>
-            New group
-          </button>
-          <button className="admin-ghost" type="button" onClick={refresh} disabled={!!busy}>
+          <button className="admin-ghost" type="button" onClick={() => refresh()} disabled={!!busy}>
             Refresh
           </button>
-          <button className="admin-ghost" type="button" onClick={disconnect}>
-            Disconnect
-          </button>
-        </span>
+        </div>
       </div>
 
-      {err && <div className="admin-err">{err}</div>}
-      {msg && !err && <div className="rm-ok">{msg}</div>}
-      {busy && <div className="tk-busy">{busy}</div>}
+      {busy ? <p className="tk-busy">{busy}</p> : null}
+      {err ? <p className="admin-err">{err}</p> : null}
+      {msg ? <p className="tk-ok">{msg}</p> : null}
 
-      <div className="tk-board">
-        {lists.map((list) => (
-          <GroupColumn
-            key={list.id}
-            list={list}
-            tasks={byList[list.id] || []}
-            showDone={showDone}
-            busy={busy}
-            isDropTarget={dragOver === list.id}
-            onDragStateChange={setDragOver}
-            draggedRef={dragged}
-            onDropTask={moveToList}
-            onAdd={addTask}
-            onToggle={toggleDone}
-            onEdit={(task) => setEditing({ listId: list.id, task })}
-            onRemove={removeTask}
-            onRename={() => renameGroup(list)}
-            onDelete={() => removeGroup(list)}
-            onClearDone={() => clearDone(list)}
-          />
-        ))}
+      {conns === null ? (
+        <p className="tk-busy">Checking your accounts…</p>
+      ) : (
+        PROVIDERS.map((p) => {
+          const status = conns[p.id] || { connected: false, detail: "" };
+          const gs = groups[p.id] || [];
+          const all = gs.flatMap((g) => tasks[key(p.id, g.id)] || []);
+          const summary = shelfSummary(all);
 
-        <button className="tk-newgroup" type="button" onClick={addGroup} disabled={!!busy}>
-          <span>+</span> New group
-        </button>
-      </div>
+          return (
+            <section className="tk-shelf" key={p.id} data-provider={p.id}>
+              <header className={`tk-shelf-head ${summary.tone}`}>
+                <div className="tk-shelf-who">
+                  <h3>{p.label}</h3>
+                  {status.connected ? (
+                    <p>
+                      <span className="tk-acct">{status.email || "connected"}</span>
+                      <span className="tk-hair" aria-hidden="true" />
+                      <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
+                    </p>
+                  ) : (
+                    <p className="tk-off">{status.detail}</p>
+                  )}
+                </div>
+                <div className="tk-shelf-actions">
+                  {status.connected ? (
+                    <>
+                      <button
+                        className="admin-ghost"
+                        type="button"
+                        onClick={() => addGroup(p.id)}
+                        disabled={!!busy}
+                      >
+                        New list
+                      </button>
+                      <button
+                        className="admin-ghost"
+                        type="button"
+                        onClick={() => unlink(p.id)}
+                      >
+                        Disconnect
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="admin-primary"
+                      type="button"
+                      onClick={() => connect(p.id)}
+                      disabled={!!busy || status.configured === false}
+                    >
+                      Connect {p.short}
+                    </button>
+                  )}
+                </div>
+              </header>
 
-      {editing && (
-        <TaskEditor
-          listId={editing.listId}
-          task={editing.task}
-          lists={lists}
-          onClose={() => setEditing(null)}
-          onSave={(patch) => {
-            saveTask(editing.listId, editing.task.id, patch);
-            setEditing(null);
-          }}
-          onMove={(toListId) => {
-            moveToList(editing.listId, editing.task, toListId);
-            setEditing(null);
-          }}
-        />
+              {status.connected ? (
+                gs.length ? (
+                  <div className="tk-rail">
+                    {gs.map((g) => (
+                      <GroupColumn
+                        key={g.id}
+                        provider={p.id}
+                        list={g}
+                        tasks={tasks[key(p.id, g.id)] || []}
+                        showDone={showDone}
+                        busy={!!busy}
+                        dropState={
+                          dragOver === `${p.id}:${g.id}`
+                            ? dragged.current && dragged.current.provider !== p.id
+                              ? "cross"
+                              : "same"
+                            : null
+                        }
+                        draggedRef={dragged}
+                        onDragStateChange={setDragOver}
+                        onDropTask={() => dropTask({ provider: p.id, groupId: g.id })}
+                        onAdd={(groupId, draft) => addTask(p.id, groupId, draft)}
+                        onToggle={(groupId, task) => toggle(p.id, groupId, task)}
+                        onEdit={(groupId, task) => setEditing({ provider: p.id, groupId, task })}
+                        onRemove={(groupId, task) => removeTask(p.id, groupId, task)}
+                        onRename={() => rename(p.id, g)}
+                        onDelete={() => removeGroup(p.id, g)}
+                        onClearDone={() => clearDone(p.id, g)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="tk-empty">
+                    No lists in this account yet. Press New list to make the first one.
+                  </p>
+                )
+              ) : null}
+            </section>
+          );
+        })
       )}
 
+      {editing ? (
+        <TaskEditor
+          provider={editing.provider}
+          groupId={editing.groupId}
+          task={editing.task}
+          groups={groups[editing.provider] || []}
+          onClose={() => setEditing(null)}
+          onSave={(patch) => saveTask(editing.provider, editing.groupId, editing.task, patch)}
+          onMove={(toGroupId) => {
+            dragged.current = {
+              provider: editing.provider,
+              groupId: editing.groupId,
+              task: editing.task,
+            };
+            setEditing(null);
+            dropTask({ provider: editing.provider, groupId: toGroupId });
+          }}
+        />
+      ) : null}
+
       <TasksStyles />
-    </main>
+    </div>
   );
 }
 
-/* ---------------- a group ---------------- */
+/* ================= one group ================= */
 
 export function GroupColumn({
+  provider = "google",
   list,
   tasks,
   showDone,
   busy,
-  isDropTarget,
+  dropState,
   onDragStateChange,
   draggedRef,
   onDropTask,
@@ -400,19 +531,19 @@ export function GroupColumn({
   const [expanded, setExpanded] = useState(false);
   const [menu, setMenu] = useState(false);
 
-  const open = tasks.filter((t) => t.status !== "completed");
-  const done = tasks.filter((t) => t.status === "completed");
+  const open = tasks.filter((t) => !t.completed);
+  const done = tasks.filter((t) => t.completed);
   const shown = showDone ? [...open, ...done] : open;
 
-  // Subtasks hang off a parent id; render them under their parent rather than
-  // as orphan rows, which is how they look in the Google app.
+  // Subtasks and steps hang off a parent id; render them under their parent
+  // rather than as orphan rows, which is how both apps show them.
   const roots = shown.filter((t) => !t.parent);
   const childrenOf = (id) => shown.filter((t) => t.parent === id);
 
   const submit = (e) => {
     e.preventDefault();
     if (!title.trim()) return;
-    onAdd(list.id, { title, due, notes });
+    onAdd(list.id, { title: title.trim(), due, notes });
     setTitle("");
     setDue("");
     setNotes("");
@@ -421,97 +552,139 @@ export function GroupColumn({
 
   return (
     <section
-      className={`tk-col${isDropTarget ? " drop" : ""}`}
+      className={`tk-col${dropState ? ` is-drop is-drop-${dropState}` : ""}`}
+      data-list={list.id}
+      data-provider={provider}
       onDragOver={(e) => {
         e.preventDefault();
-        onDragStateChange(list.id);
+        onDragStateChange(`${provider}:${list.id}`);
       }}
       onDragLeave={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget)) return;
-        onDragStateChange(null);
+        // Only when the pointer truly left the column, not on the way between
+        // two of its own children.
+        if (!e.currentTarget.contains(e.relatedTarget)) onDragStateChange(null);
       }}
       onDrop={(e) => {
         e.preventDefault();
-        onDragStateChange(null);
-        const payload = draggedRef.current;
-        if (payload && payload.listId !== list.id) onDropTask(payload.listId, payload.task, list.id);
-        draggedRef.current = null;
+        onDropTask();
       }}
     >
       <header className="tk-col-head">
-        <div className="tk-col-title">
-          <h4>{list.title}</h4>
-          <span className="tk-count">{open.length}</span>
-        </div>
-        <div className="tk-col-menu">
+        <h4 title={list.title}>{list.title}</h4>
+        <span className="tk-count">{open.filter((t) => !t.isStep).length}</span>
+        <div className="tk-menu-wrap">
           <button
-            className="tk-icon"
             type="button"
-            aria-label={`Actions for ${list.title}`}
+            className="tk-menu-btn"
+            aria-haspopup="true"
             aria-expanded={menu}
+            aria-label={`Actions for ${list.title}`}
             onClick={() => setMenu((v) => !v)}
           >
-            ⋯
+            <span aria-hidden="true">···</span>
           </button>
-          {menu && (
-            <>
-              <div className="tk-menu-scrim" onClick={() => setMenu(false)} />
-              <div className="tk-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => { setMenu(false); onRename(); }}>
-                  Rename group
-                </button>
-                <button type="button" role="menuitem" onClick={() => { setMenu(false); onClearDone(); }}>
-                  Clear completed
-                </button>
-                <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(false); onDelete(); }}>
-                  Delete group
-                </button>
-              </div>
-            </>
-          )}
+          {menu ? (
+            <div className="tk-menu" role="menu" onMouseLeave={() => setMenu(false)}>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={list.readOnlyName}
+                title={
+                  list.readOnlyName
+                    ? "Microsoft's built-in lists cannot be renamed"
+                    : undefined
+                }
+                onClick={() => {
+                  setMenu(false);
+                  onRename();
+                }}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(false);
+                  onClearDone();
+                }}
+              >
+                Clear completed
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                disabled={list.readOnlyName}
+                title={
+                  list.readOnlyName
+                    ? "Microsoft's built-in lists cannot be deleted"
+                    : undefined
+                }
+                onClick={() => {
+                  setMenu(false);
+                  onDelete();
+                }}
+              >
+                Delete list
+              </button>
+            </div>
+          ) : null}
         </div>
       </header>
 
       <div className="tk-rows">
-        {roots.length === 0 && (
-          <p className="tk-empty">Nothing here. Add the first task below.</p>
-        )}
-        {roots.map((t) => (
-          <React.Fragment key={t.id}>
-            <TaskRow
-              task={t}
-              listId={list.id}
-              draggedRef={draggedRef}
-              onToggle={onToggle}
-              onEdit={onEdit}
-              onRemove={onRemove}
-            />
-            {childrenOf(t.id).map((c) => (
+        {roots.length === 0 ? (
+          <p className="tk-none">Nothing here. Add the first task below.</p>
+        ) : (
+          roots.map((t) => (
+            <React.Fragment key={t.id}>
               <TaskRow
-                key={c.id}
-                task={c}
+                task={t}
                 listId={list.id}
-                child
+                provider={provider}
                 draggedRef={draggedRef}
                 onToggle={onToggle}
                 onEdit={onEdit}
                 onRemove={onRemove}
               />
-            ))}
-          </React.Fragment>
-        ))}
+              {childrenOf(t.id).map((c) => (
+                <TaskRow
+                  key={c.id}
+                  task={c}
+                  listId={list.id}
+                  provider={provider}
+                  child
+                  draggedRef={draggedRef}
+                  onToggle={onToggle}
+                  onEdit={onEdit}
+                  onRemove={onRemove}
+                />
+              ))}
+            </React.Fragment>
+          ))
+        )}
       </div>
 
-      <form className="tk-add" onSubmit={submit}>
+      <form className={`tk-add${expanded ? " is-open" : ""}`} onSubmit={submit}>
         <input
           className="admin-input tk-add-title"
           placeholder="Add a task"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onFocus={() => setExpanded(true)}
+          disabled={busy}
+          aria-label={`Add a task to ${list.title}`}
         />
-        {expanded && (
+        {expanded ? (
           <>
+            <textarea
+              className="admin-input tk-add-notes"
+              placeholder="Details"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
             <div className="tk-add-row">
               <input
                 className="admin-input"
@@ -520,92 +693,77 @@ export function GroupColumn({
                 onChange={(e) => setDue(e.target.value)}
                 aria-label="Due date"
               />
-            </div>
-            <textarea
-              className="admin-input tk-add-notes"
-              placeholder="Details"
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-            <div className="tk-add-actions">
-              <button className="admin-primary sm" type="submit" disabled={!!busy || !title.trim()}>
+              <button className="admin-primary" type="submit" disabled={!title.trim()}>
                 Add task
-              </button>
-              <button
-                className="admin-ghost sm"
-                type="button"
-                onClick={() => { setExpanded(false); setTitle(""); setDue(""); setNotes(""); }}
-              >
-                Cancel
               </button>
             </div>
           </>
-        )}
+        ) : null}
       </form>
+
+      {dropState ? (
+        <p className={`tk-drop-note ${dropState}`} role="status">
+          {dropState === "cross"
+            ? `Recreated in ${providerLabel(provider)} with a new id`
+            : "Move here"}
+        </p>
+      ) : null}
     </section>
   );
 }
 
-/* ---------------- a task ---------------- */
+/* ================= one task ================= */
 
-function TaskRow({ task, listId, child, draggedRef, onToggle, onEdit, onRemove }) {
-  const done = task.status === "completed";
+function TaskRow({ task, listId, provider, child, draggedRef, onToggle, onEdit, onRemove }) {
   const state = dueState(task.due);
-
   return (
     <article
-      className={`tk-row${done ? " done" : ""}${child ? " child" : ""}`}
-      draggable
-      onDragStart={(e) => {
-        draggedRef.current = { listId, task };
-        e.dataTransfer.effectAllowed = "move";
-        // Firefox refuses to start a drag without data on the transfer.
-        e.dataTransfer.setData("text/plain", task.id);
+      className={`tk-row${child ? " is-child" : ""}${task.completed ? " is-done" : ""}`}
+      draggable={!task.isStep}
+      data-task={task.id}
+      onDragStart={() => {
+        draggedRef.current = { provider, groupId: listId, task };
       }}
       onDragEnd={() => {
         draggedRef.current = null;
       }}
     >
       <button
-        className={`tk-check${done ? " on" : ""}`}
         type="button"
-        role="checkbox"
-        aria-checked={done}
-        aria-label={done ? `Reopen ${task.title}` : `Complete ${task.title}`}
+        className={`tk-tick${task.completed ? " on" : ""}`}
+        aria-label={task.completed ? `Reopen ${task.title}` : `Complete ${task.title}`}
         onClick={() => onToggle(listId, task)}
+      />
+      <div className="tk-body" role="button" tabIndex={0} onClick={() => onEdit(listId, task)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onEdit(listId, task);
+          }
+        }}
       >
-        {done && (
-          <svg viewBox="0 0 14 14" aria-hidden="true">
-            <path d="M3 7.4 L5.8 10 L11 4.4" />
-          </svg>
-        )}
-      </button>
-
-      <button className="tk-body" type="button" onClick={() => onEdit(task)} title="Edit task">
-        <span className="tk-title">{task.title || "Untitled task"}</span>
-        {task.notes && <span className="tk-notes">{task.notes}</span>}
-        {task.due && <span className={`tk-due ${state}`}>{dueLabel(task.due)}</span>}
-      </button>
-
+        <p className="tk-title">{task.title}</p>
+        {task.notes ? <p className="tk-notes">{task.notes}</p> : null}
+        {task.due ? <span className={`tk-due ${state}`}>{dueLabel(task.due)}</span> : null}
+      </div>
       <button
-        className="tk-icon tk-del"
         type="button"
+        className="tk-del"
         aria-label={`Delete ${task.title}`}
         onClick={() => onRemove(listId, task)}
       >
-        ✕
+        <span aria-hidden="true">×</span>
       </button>
     </article>
   );
 }
 
-/* ---------------- the editor ---------------- */
+/* ================= edit one task ================= */
 
-function TaskEditor({ listId, task, lists, onClose, onSave, onMove }) {
-  const [title, setTitle] = useState(task.title || "");
+function TaskEditor({ provider, groupId, task, groups, onClose, onSave, onMove }) {
+  const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes || "");
-  const [due, setDue] = useState(fromDue(task.due));
+  const [due, setDue] = useState(task.due || "");
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -613,46 +771,67 @@ function TaskEditor({ listId, task, lists, onClose, onSave, onMove }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const step = task.isStep;
+
   return (
-    <div className="tk-modal-scrim" onMouseDown={onClose}>
-      <div className="tk-modal" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Edit task">
-        <h4>Edit task</h4>
+    <div className="tk-scrim" onClick={onClose}>
+      <div
+        className="tk-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit task"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h4>{step ? "Edit step" : "Edit task"}</h4>
+
+        {step ? (
+          <p className="tk-note-line">
+            A step lives inside its task. It holds a title and a tick — details and a due date
+            belong on the task itself.
+          </p>
+        ) : null}
 
         <label className="tk-field">
           <span>Title</span>
-          <input className="admin-input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+          <input className="admin-input" value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
 
-        <label className="tk-field">
-          <span>Details</span>
-          <textarea
-            className="admin-input tk-add-notes"
-            rows={4}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Anything the title does not say"
-          />
-        </label>
-
-        <label className="tk-field">
-          <span>Due</span>
-          <input className="admin-input" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-        </label>
-
-        <label className="tk-field">
-          <span>Group</span>
-          <select
-            className="admin-input"
-            value={listId}
-            onChange={(e) => e.target.value !== listId && onMove(e.target.value)}
-          >
-            {lists.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!step ? (
+          <>
+            <label className="tk-field">
+              <span>Details</span>
+              <textarea
+                className="admin-input"
+                rows={4}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </label>
+            <label className="tk-field">
+              <span>Due</span>
+              <input
+                className="admin-input"
+                type="date"
+                value={due}
+                onChange={(e) => setDue(e.target.value)}
+              />
+            </label>
+            <label className="tk-field">
+              <span>Move to list</span>
+              <select
+                className="admin-input"
+                value={groupId}
+                onChange={(e) => e.target.value !== groupId && onMove(e.target.value)}
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
 
         <div className="tk-modal-actions">
           <button className="admin-ghost" type="button" onClick={onClose}>
@@ -662,11 +841,7 @@ function TaskEditor({ listId, task, lists, onClose, onSave, onMove }) {
             className="admin-primary"
             type="button"
             onClick={() =>
-              onSave({
-                title: title.trim() || "Untitled task",
-                notes,
-                due: due ? toDue(due) : null,
-              })
+              onSave(step ? { title } : { title, notes, due })
             }
           >
             Save changes
@@ -677,7 +852,7 @@ function TaskEditor({ listId, task, lists, onClose, onSave, onMove }) {
   );
 }
 
-/* ---------------- styles ---------------- */
+/* ================= styles ================= */
 
 export function TasksStyles() {
   return (
@@ -691,6 +866,9 @@ export function TasksStyles() {
       .tk-sub {
         margin: 6px 0 0;
         max-width: 60ch;
+        color: var(--a-dim, #8b90a0);
+        font-size: 13px;
+        line-height: 1.5;
       }
       .tk-actions {
         display: flex;
@@ -711,214 +889,289 @@ export function TasksStyles() {
         font-size: 12.5px;
         color: var(--a-dim, #8b90a0);
       }
-
-      .tk-connect {
-        max-width: 48ch;
-        margin: 40px auto;
-        text-align: center;
-        display: grid;
-        gap: 12px;
-        justify-items: center;
-      }
-      .tk-connect h3 {
-        margin: 0;
-        font-size: 18px;
-        color: var(--a-text, #e7e8ee);
-        font-family: "Space Grotesk", sans-serif;
-      }
-      .tk-connect p {
-        margin: 0;
-        color: var(--a-dim, #8b90a0);
-        font-size: 13.5px;
-        line-height: 1.6;
+      .tk-ok {
+        margin: 10px 0;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: var(--a-amber, #ffb020);
+        max-width: 72ch;
       }
 
-      /* ---- the board ---- */
-      .tk-board {
+      /* ---- the shelf: which account you are inside ---- */
+      .tk-shelf {
+        margin: 22px 0 0;
+        border-top: 1px solid var(--a-line, #23262f);
+        padding-top: 16px;
+      }
+      .tk-shelf-head {
         display: flex;
-        gap: 14px;
         align-items: flex-start;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding-left: 12px;
+        border-left: 3px solid var(--a-line, #23262f);
+      }
+      /* The same graded language as the rail in AdminShell. */
+      .tk-shelf-head.overdue {
+        border-left-color: #a33b45;
+      }
+      .tk-shelf-head.today {
+        border-left-color: var(--a-amber, #ffb020);
+      }
+      .tk-shelf-who {
+        flex: 1;
+        min-width: 0;
+      }
+      .tk-shelf-who h3 {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--a-text, #e7e8ee);
+      }
+      .tk-shelf-who p {
+        margin: 4px 0 0;
+        font-size: 12.5px;
+        color: var(--a-dim, #8b90a0);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      /* Hairlines, not middots. */
+      .tk-hair {
+        width: 16px;
+        height: 1px;
+        background: var(--a-line, #2a2e38);
+        flex: none;
+      }
+      .tk-state.overdue {
+        color: #ff9a9a;
+      }
+      .tk-state.today {
+        color: var(--a-amber, #ffb020);
+      }
+      .tk-off {
+        max-width: 62ch;
+        line-height: 1.5;
+      }
+      .tk-shelf-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .tk-empty {
+        margin: 14px 0 0 15px;
+        font-size: 13px;
+        color: var(--a-dim, #8b90a0);
+      }
+
+      /* ---- the column rail ---- */
+      .tk-rail {
+        display: flex;
+        gap: 12px;
         overflow-x: auto;
-        padding: 4px 2px 20px;
+        padding: 14px 2px 6px;
         scroll-snap-type: x proximity;
+        /* Each column is its own height. Stretching them all to the tallest is
+           the kanban default and it turns a list with one task into a tall
+           empty box; the floor on .tk-rows keeps a short column a big enough
+           target to drop onto, which is the only thing the stretch was buying. */
+        align-items: flex-start;
       }
       .tk-col {
-        flex: 0 0 306px;
+        flex: 0 0 288px;
         scroll-snap-align: start;
         display: flex;
         flex-direction: column;
-        max-height: calc(100vh - 230px);
-        border: 1px solid var(--a-line, #262a35);
-        border-radius: 14px;
-        background: var(--a-panel, #0f1117);
-        transition: border-color 0.14s ease, background 0.14s ease;
+        background: var(--a-raise, #15171d);
+        border: 1px solid var(--a-line, #23262f);
+        border-radius: 12px;
+        max-height: 70vh;
+        position: relative;
+        transition: border-color 0.12s ease, background 0.12s ease;
       }
       /* The one loud moment: the board answering "will it land here?" */
-      .tk-col.drop {
+      .tk-col.is-drop-same {
         border-color: var(--a-amber, #ffb020);
-        background: rgba(255, 176, 32, 0.05);
+        background: rgba(255, 176, 32, 0.06);
       }
+      /* A different answer deserves a different mark. Dashed, because this one
+         is not a move: the task is recreated and the original deleted. */
+      .tk-col.is-drop-cross {
+        border-style: dashed;
+        border-color: var(--a-amber, #ffb020);
+        background: rgba(255, 176, 32, 0.03);
+      }
+      .tk-drop-note {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 8px;
+        margin: 0;
+        font-size: 11px;
+        text-align: center;
+        color: #1a1300;
+        background: var(--a-amber, #ffb020);
+        border-radius: 6px;
+        padding: 4px 6px;
+      }
+      .tk-drop-note.cross {
+        background: none;
+        color: var(--a-amber, #ffb020);
+        border: 1px dashed rgba(255, 176, 32, 0.6);
+      }
+
       .tk-col-head {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 8px;
-        padding: 12px 12px 10px;
-        border-bottom: 1px solid var(--a-line, #1e222c);
+        padding: 11px 10px 9px 13px;
+        border-bottom: 1px solid var(--a-line, #23262f);
       }
-      .tk-col-title {
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
-        min-width: 0;
-      }
-      .tk-col-title h4 {
+      .tk-col-head h4 {
         margin: 0;
+        flex: 1;
+        min-width: 0;
+        font-family: "Space Grotesk", sans-serif;
         font-size: 13.5px;
         font-weight: 600;
         color: var(--a-text, #e7e8ee);
-        font-family: "Space Grotesk", sans-serif;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       .tk-count {
-        font-size: 11.5px;
+        font-size: 11px;
         color: var(--a-dim, #7d8496);
-        font-variant-numeric: tabular-nums;
+        border: 1px solid var(--a-line, #2a2e38);
+        border-radius: 999px;
+        padding: 1px 7px;
       }
-      .tk-col-menu {
+      .tk-menu-wrap {
         position: relative;
       }
-      .tk-menu-scrim {
-        position: fixed;
-        inset: 0;
-        z-index: 40;
+      .tk-menu-btn {
+        background: none;
+        border: 0;
+        color: var(--a-dim, #7d8496);
+        font: inherit;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 6px;
+        line-height: 1;
+      }
+      .tk-menu-btn:hover {
+        color: var(--a-text, #e7e8ee);
       }
       .tk-menu {
         position: absolute;
         right: 0;
-        top: 26px;
-        z-index: 41;
-        min-width: 170px;
-        padding: 5px;
-        border: 1px solid var(--a-line, #262a35);
+        top: 100%;
+        z-index: 30;
+        min-width: 152px;
+        background: var(--a-panel, #111319);
+        border: 1px solid var(--a-line, #23262f);
         border-radius: 10px;
-        background: var(--a-raise, #171a22);
-        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+        padding: 5px;
         display: flex;
         flex-direction: column;
       }
       .tk-menu button {
-        text-align: left;
         background: none;
-        border: none;
-        color: var(--a-text, #e7e8ee);
+        border: 0;
+        text-align: left;
         font: inherit;
         font-size: 12.5px;
-        padding: 8px 10px;
+        color: var(--a-text, #e7e8ee);
+        padding: 7px 9px;
         border-radius: 7px;
         cursor: pointer;
       }
-      .tk-menu button:hover {
+      .tk-menu button:hover:not(:disabled) {
         background: rgba(255, 255, 255, 0.05);
       }
-      .tk-menu button.danger {
-        color: #ff8f8f;
+      .tk-menu button:disabled {
+        color: #555b69;
+        cursor: not-allowed;
+      }
+      .tk-menu button.danger:hover:not(:disabled) {
+        color: #ff8a8a;
       }
 
       .tk-rows {
-        flex: 1;
         overflow-y: auto;
-        padding: 8px;
+        padding: 6px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        min-height: 60px;
+        gap: 4px;
+        flex: 1;
+        min-height: 84px;
       }
-      .tk-empty {
-        margin: 10px 4px;
-        font-size: 12.5px;
+      .tk-none {
+        margin: 14px 8px;
+        font-size: 12px;
         color: #5c6377;
       }
 
-      /* ---- a task ---- */
+      /* A row, with its state on the left edge — the same language as the
+         content editor and the blog's contents rail. */
       .tk-row {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: start;
-        gap: 9px;
-        padding: 9px 10px;
-        border: 1px solid var(--a-line, #1e222c);
-        border-radius: 10px;
-        background: #12151d;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 8px 8px 9px;
+        border-radius: 8px;
+        border-left: 2px solid transparent;
         cursor: grab;
       }
-      .tk-row:active {
-        cursor: grabbing;
-      }
       .tk-row:hover {
-        border-color: #2f3545;
+        background: rgba(255, 255, 255, 0.03);
       }
-      .tk-row.child {
+      .tk-row.is-child {
         margin-left: 18px;
-        border-left: 2px solid var(--a-line, #262a35);
+        border-left-color: var(--a-line, #2a2e38);
       }
-      .tk-row.done .tk-title {
+      .tk-row.is-done .tk-title {
         text-decoration: line-through;
-        color: #6a7183;
+        color: #5c6377;
       }
-      .tk-check {
-        width: 17px;
-        height: 17px;
-        margin-top: 1px;
-        border: 1.5px solid #3a4152;
-        border-radius: 5px;
+      .tk-tick {
+        margin-top: 2px;
+        width: 15px;
+        height: 15px;
+        flex: none;
+        border-radius: 50%;
+        border: 1.5px solid #434959;
         background: none;
         cursor: pointer;
-        display: grid;
-        place-items: center;
         padding: 0;
       }
-      .tk-check:hover {
+      .tk-tick:hover {
         border-color: var(--a-amber, #ffb020);
       }
-      .tk-check.on {
+      .tk-tick.on {
         background: var(--a-amber, #ffb020);
         border-color: var(--a-amber, #ffb020);
       }
-      .tk-check svg {
-        width: 12px;
-        height: 12px;
-        fill: none;
-        stroke: #1a1300;
-        stroke-width: 2.2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
       .tk-body {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
+        flex: 1;
         min-width: 0;
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        text-align: left;
         cursor: pointer;
-        color: inherit;
       }
       .tk-title {
+        margin: 0;
         font-size: 13px;
-        line-height: 1.4;
+        line-height: 1.35;
         color: var(--a-text, #e7e8ee);
         overflow-wrap: anywhere;
       }
       .tk-notes {
+        margin: 3px 0 0;
         font-size: 11.5px;
-        line-height: 1.45;
+        line-height: 1.4;
         color: var(--a-dim, #7d8496);
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -926,124 +1179,93 @@ export function TasksStyles() {
         overflow: hidden;
       }
       .tk-due {
+        display: inline-block;
+        margin-top: 5px;
         font-size: 11px;
-        padding: 1px 7px;
-        border-radius: 999px;
-        border: 1px solid var(--a-line, #262a35);
-        color: var(--a-dim, #8b90a0);
-      }
-      .tk-due.today {
-        color: #1a1300;
-        background: var(--a-amber, #ffb020);
-        border-color: var(--a-amber, #ffb020);
-        font-weight: 600;
+        color: var(--a-dim, #7d8496);
       }
       .tk-due.overdue {
-        color: #ff9d9d;
-        border-color: #5d2b2b;
-        background: rgba(255, 90, 90, 0.08);
+        color: #ff8a8a;
       }
-      .tk-icon {
-        background: none;
-        border: none;
-        color: #6a7183;
-        font-size: 13px;
-        cursor: pointer;
-        padding: 2px 5px;
-        border-radius: 6px;
-        line-height: 1;
+      .tk-due.today {
+        color: var(--a-amber, #ffb020);
       }
-      .tk-icon:hover {
-        color: var(--a-text, #e7e8ee);
-        background: rgba(255, 255, 255, 0.06);
-      }
-      .tk-row .tk-del {
+      .tk-del {
         opacity: 0;
+        background: none;
+        border: 0;
+        color: #6b7285;
+        font-size: 15px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 6px;
         transition: opacity 0.12s ease;
       }
       .tk-row:hover .tk-del,
-      .tk-row:focus-within .tk-del {
+      .tk-del:focus-visible {
         opacity: 1;
       }
+      .tk-del:hover {
+        color: #ff8a8a;
+      }
 
-      /* ---- add ---- */
       .tk-add {
+        border-top: 1px solid var(--a-line, #23262f);
         padding: 8px;
-        border-top: 1px solid var(--a-line, #1e222c);
         display: flex;
         flex-direction: column;
         gap: 7px;
       }
-      .tk-add .admin-input {
-        font-size: 12.5px;
-        padding: 8px 10px;
+      .tk-add-title {
+        font-size: 13px;
       }
       .tk-add-notes {
         font-family: inherit;
-        resize: vertical;
+        font-size: 12.5px;
       }
-      .tk-add-actions {
+      .tk-add-row {
         display: flex;
         gap: 7px;
-      }
-      .admin-primary.sm,
-      .admin-ghost.sm {
-        padding: 6px 11px;
-        font-size: 12px;
-        border-radius: 8px;
-      }
-
-      .tk-newgroup {
-        flex: 0 0 210px;
-        min-height: 92px;
-        border: 1.5px dashed var(--a-line, #2a3040);
-        border-radius: 14px;
-        background: none;
-        color: var(--a-dim, #8b90a0);
-        font: inherit;
-        font-size: 13px;
-        cursor: pointer;
-        display: flex;
         align-items: center;
-        justify-content: center;
-        gap: 8px;
       }
-      .tk-newgroup:hover {
-        border-color: var(--a-amber, #ffb020);
-        color: var(--a-text, #e7e8ee);
-      }
-      .tk-newgroup span {
-        font-size: 17px;
+      .tk-add-row .admin-input {
+        flex: 1;
+        min-width: 0;
       }
 
-      /* ---- editor ---- */
-      .tk-modal-scrim {
+      .tk-scrim {
         position: fixed;
         inset: 0;
-        z-index: 60;
-        background: rgba(5, 6, 10, 0.62);
-        backdrop-filter: blur(3px);
+        z-index: 120;
+        background: rgba(4, 5, 8, 0.72);
         display: grid;
         place-items: center;
-        padding: 20px;
+        padding: 18px;
       }
       .tk-modal {
-        width: min(480px, 100%);
-        max-height: 88vh;
-        overflow-y: auto;
-        padding: 20px;
-        border: 1px solid var(--a-line, #262a35);
-        border-radius: 16px;
+        width: min(460px, 100%);
         background: var(--a-panel, #111319);
+        border: 1px solid var(--a-line, #23262f);
+        border-radius: 14px;
+        padding: 18px;
         display: flex;
         flex-direction: column;
         gap: 13px;
+        max-height: 88vh;
+        overflow-y: auto;
       }
       .tk-modal h4 {
         margin: 0;
         font-size: 15px;
         color: var(--a-text, #e7e8ee);
         font-family: "Space Grotesk", sans-serif;
+      }
+      .tk-note-line {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--a-dim, #8b90a0);
       }
       .tk-field {
         display: flex;
@@ -1068,6 +1290,9 @@ export function TasksStyles() {
         }
         .tk-rows {
           overflow-y: visible;
+        }
+        .tk-shelf-actions {
+          width: 100%;
         }
       }
       @media (prefers-reduced-motion: reduce) {

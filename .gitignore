@@ -39,3 +39,9 @@ next-env.d.ts
 .e2e-chrome-profile/
 vault-manifest.json
 # manifest maps the private vault; keep it out of the repo
+
+# Firebase CLI local artefacts. firebase.json and .firebaserc ARE committed —
+# they pin the project so rules deploy from the repo rather than the console.
+firebase-debug.log
+firebase-debug.*.log
+.firebase/

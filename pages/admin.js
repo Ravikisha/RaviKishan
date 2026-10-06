@@ -56,22 +56,34 @@ const KEEP_VERSIONS = 30;
 
 // Tab id → label. Also the allow-list for the ?tab= deep link used by the
 // installed PWA's shortcuts; "inbox" has its own button after these.
-const TABS = [
-  ["search", "Search"],
-  ["content", "Content"],
-  ["vault", "Vault"],
-  ["gallery", "Gallery"],
-  ["assets", "Assets"],
-  ["links", "Short links"],
-  ["jobs", "Jobs"],
-  ["tasks", "Tasks"],
-  ["posts", "Writing"],
-  ["drift", "Drift"],
-  ["contacts", "Contacts"],
-  ["mcp", "MCP"],
-  ["analytics", "Analytics"],
-  ["ops", "Backup & log"],
-  ["inbox", "Inbox"],
+// [key, label, group]. Fifteen sections are not peers, and listing them as
+// fifteen equal words is something you re-scan on every visit instead of
+// learning. Grouped by what the section DOES, the shape is memorable: the
+// things you publish, the work waiting on you, what is stored, what is
+// watching, and the way in.
+export const TABS = [
+  // Search sits above the groups: it reaches into all of them, and a
+  // heading over a single item is weight for nothing.
+  ["search", "Search", ""],
+
+  ["content", "Content", "Publish"],
+  ["posts", "Writing", "Publish"],
+  ["gallery", "Gallery", "Publish"],
+  ["links", "Short links", "Publish"],
+
+  ["inbox", "Inbox", "Waiting on you"],
+  ["jobs", "Jobs", "Waiting on you"],
+  ["tasks", "Tasks", "Waiting on you"],
+  ["contacts", "Contacts", "Waiting on you"],
+
+  ["vault", "Vault", "Stored"],
+  ["assets", "Assets", "Stored"],
+  ["ops", "Backup & log", "Stored"],
+
+  ["analytics", "Analytics", "Signals"],
+  ["drift", "Drift", "Signals"],
+
+  ["mcp", "MCP", "Access"],
 ];
 
 
@@ -94,7 +106,10 @@ function useBadges() {
             const r = d.data();
             return open.has(r.stage) && r.nextFollowUp && Date.parse(r.nextFollowUp) <= Date.now();
           }).length;
-          set("jobs", due);
+          // Late is not the same as waiting: a follow-up past its date is
+          // something you are already behind on, and it should not look like
+          // an unread message.
+          set("jobs", due ? { count: due, tone: "late", noun: "late" } : 0);
         },
         () => {}
       ),
@@ -105,13 +120,16 @@ function useBadges() {
             const e = d.data().expiresAt;
             return e && Date.parse(e) - Date.now() <= 60 * day;
           }).length;
-          set("vault", soon);
+          set("vault", soon ? { count: soon, tone: "soon", noun: "expiring" } : 0);
         },
         () => {}
       ),
       onSnapshot(
         collection(db, "mail"),
-        (snap) => set("inbox", snap.docs.filter((d) => !d.data().repliedAt).length),
+        (snap) => {
+          const n = snap.docs.filter((d) => !d.data().repliedAt).length;
+          set("inbox", n ? { count: n, tone: "waiting", noun: "unanswered" } : 0);
+        },
         () => {}
       ),
     ];

@@ -1,42 +1,76 @@
 // Design reference for the Tasks board, rendered with the REAL GroupColumn so
 // it cannot drift from the live panel.
 //
-// The panel itself needs a Google Tasks session, which makes the board
-// impossible to look at — or to assert on — without signing in. This renders
-// the same components against fixed data: no Google, no network.
+// The panel needs two connected accounts, which makes the board impossible to
+// look at — or to assert on — without signing in to both. This renders the same
+// components against fixed data: no Google, no Microsoft, no network.
+//
+// It shows BOTH shelves, because the thing worth checking is the thing the
+// screenshots cannot otherwise reach: that a drag within an account looks
+// different from a drag across accounts, which is a different operation.
 //
 // 404s in production: it is a design tool, not a page.
 import React, { useRef, useState } from "react";
-import { GroupColumn, TasksStyles } from "../components/admin/TasksPanel";
+import { GroupColumn, TasksStyles, shelfSummary } from "../components/admin/TasksPanel";
 
-const today = new Date().toISOString().slice(0, 10);
-const shift = (days) => {
+const iso = (days) => {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return `${d.toISOString().slice(0, 10)}T00:00:00.000Z`;
+  return d.toISOString().slice(0, 10);
 };
 
-const LISTS = [
-  { id: "l1", title: "My Tasks" },
-  { id: "l2", title: "Portfolio" },
-  { id: "l3", title: "Reading" },
+const SHELVES = [
+  {
+    provider: "google",
+    label: "Google Tasks",
+    email: "ravikishan63392@gmail.com",
+    lists: [
+      { id: "l1", title: "My Tasks", provider: "google" },
+      { id: "l2", title: "Portfolio", provider: "google" },
+      { id: "l3", title: "Reading", provider: "google" },
+    ],
+  },
+  {
+    provider: "microsoft",
+    label: "Microsoft To Do",
+    email: "ravikishan63392@gmail.com",
+    lists: [
+      { id: "m1", title: "Tasks", provider: "microsoft", readOnlyName: true },
+      { id: "m2", title: "Work", provider: "microsoft" },
+    ],
+  },
 ];
 
 const SEED = {
   l1: [
-    { id: "t1", title: "Interview platforms using Claude Code", status: "needsAction", due: shift(-2) },
-    { id: "t2", title: "Make a CLI for pch", status: "needsAction", notes: "Start with the argument parser, then the config file.", due: `${today}T00:00:00.000Z` },
-    { id: "t3", title: "Draft the parser", status: "needsAction", parent: "t2" },
-    { id: "t4", title: "Build AI engineering application", status: "needsAction", due: shift(5) },
-    { id: "t5", title: "Add book on portfolio", status: "completed" },
+    { id: "t1", title: "Interview platforms using Claude Code", completed: false, due: iso(-2) },
+    {
+      id: "t2",
+      title: "Make a CLI for pch",
+      completed: false,
+      notes: "Start with the argument parser, then the config file.",
+      due: iso(0),
+    },
+    { id: "t3", title: "Draft the parser", completed: false, parent: "t2" },
+    { id: "t4", title: "Build AI engineering application", completed: false, due: iso(5) },
+    { id: "t5", title: "Add book on portfolio", completed: true },
   ],
   l2: [
-    { id: "t6", title: "Rewrite the About page in the systems voice", status: "needsAction", notes: "It still reads like the old template." },
-    { id: "t7", title: "Regenerate the OG image", status: "needsAction", due: shift(1) },
+    {
+      id: "t6",
+      title: "Rewrite the About page in the systems voice",
+      completed: false,
+      notes: "It still reads like the old template.",
+    },
+    { id: "t7", title: "Regenerate the OG image", completed: false, due: iso(1) },
   ],
-  l3: [
-    { id: "t8", title: "Designing Data-Intensive Applications — ch. 7", status: "needsAction", due: shift(12) },
+  l3: [{ id: "t8", title: "Designing Data-Intensive Applications — ch. 7", completed: false, due: iso(12) }],
+  m1: [
+    { id: "x1", title: "Renew the domain", completed: false, due: iso(3) },
+    { id: "x2", title: "Check the backup ran", completed: false },
+    { id: "x3", title: "Open the dashboard", completed: false, parent: "x2", isStep: true },
   ],
+  m2: [{ id: "x4", title: "Send the invoice", completed: false, due: iso(-1) }],
 };
 
 export default function TasksPreview() {
@@ -45,22 +79,27 @@ export default function TasksPreview() {
   const [dragOver, setDragOver] = useState(null);
   const dragged = useRef(null);
 
+  const listsOf = (p) => SHELVES.find((s) => s.provider === p).lists;
+  const providerOfList = (listId) =>
+    SHELVES.find((s) => s.lists.some((l) => l.id === listId)).provider;
+
   // The harness moves tasks locally so drag and drop is genuinely exercisable.
-  const moveToList = (fromListId, task, toListId) =>
+  const drop = (toListId) => {
+    const from = dragged.current;
+    dragged.current = null;
+    setDragOver(null);
+    if (!from || from.groupId === toListId) return;
     setByList((m) => ({
       ...m,
-      [fromListId]: (m[fromListId] || []).filter((t) => t.id !== task.id),
-      [toListId]: [...(m[toListId] || []), task],
+      [from.groupId]: (m[from.groupId] || []).filter((t) => t.id !== from.task.id),
+      [toListId]: [...(m[toListId] || []), from.task],
     }));
+  };
 
   const toggle = (listId, task) =>
     setByList((m) => ({
       ...m,
-      [listId]: m[listId].map((t) =>
-        t.id === task.id
-          ? { ...t, status: t.status === "completed" ? "needsAction" : "completed" }
-          : t
-      ),
+      [listId]: m[listId].map((t) => (t.id === task.id ? { ...t, completed: !t.completed } : t)),
     }));
 
   const add = (listId, fields) =>
@@ -72,8 +111,8 @@ export default function TasksPreview() {
           id: `new-${Date.now()}`,
           title: fields.title,
           notes: fields.notes || "",
-          due: fields.due ? `${fields.due}T00:00:00.000Z` : undefined,
-          status: "needsAction",
+          due: fields.due || "",
+          completed: false,
         },
       ],
     }));
@@ -82,56 +121,89 @@ export default function TasksPreview() {
     setByList((m) => ({ ...m, [listId]: m[listId].filter((t) => t.id !== task.id) }));
 
   return (
-    <main className="admin-main tk-main" style={{ background: "#08090d", minHeight: "100vh", padding: "88px 24px 24px" }}>
+    <main
+      className="admin-main tk-main"
+      style={{ background: "#08090d", minHeight: "100vh", padding: "88px 24px 24px" }}
+    >
       <div className="ops-head tk-head">
         <div>
-          <h3>
-            Tasks{" "}
-            <span className="admin-sub">
-              {Object.values(byList).flat().filter((t) => t.status !== "completed").length} open ·{" "}
-              {Object.values(byList).flat().filter((t) => t.status === "completed").length} done ·{" "}
-              {LISTS.length} groups
-            </span>
-          </h3>
+          <h3>Tasks</h3>
           <p className="admin-sub tk-sub">
-            Drag a task onto another group to move it. Everything saves to Google straight away.
+            Your real Google Tasks and Microsoft To Do, side by side. Everything here saves
+            straight to the account it sits in.
           </p>
         </div>
         <span className="tk-actions">
           <label className="tk-toggle">
-            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={showDone}
+              onChange={(e) => setShowDone(e.target.checked)}
+            />
             <span>Show completed</span>
           </label>
-          <button className="admin-ghost" type="button">New group</button>
-          <button className="admin-ghost" type="button">Refresh</button>
+          <button className="admin-ghost" type="button">
+            Refresh
+          </button>
         </span>
       </div>
 
-      <div className="tk-board">
-        {LISTS.map((list) => (
-          <GroupColumn
-            key={list.id}
-            list={list}
-            tasks={byList[list.id] || []}
-            showDone={showDone}
-            busy=""
-            isDropTarget={dragOver === list.id}
-            onDragStateChange={setDragOver}
-            draggedRef={dragged}
-            onDropTask={moveToList}
-            onAdd={add}
-            onToggle={toggle}
-            onEdit={() => {}}
-            onRemove={remove}
-            onRename={() => {}}
-            onDelete={() => {}}
-            onClearDone={() => {}}
-          />
-        ))}
-        <button className="tk-newgroup" type="button">
-          <span>+</span> New group
-        </button>
-      </div>
+      {SHELVES.map((shelf) => {
+        const all = shelf.lists.flatMap((l) => byList[l.id] || []);
+        const summary = shelfSummary(all);
+        return (
+          <section className="tk-shelf" key={shelf.provider} data-provider={shelf.provider}>
+            <header className={`tk-shelf-head ${summary.tone}`}>
+              <div className="tk-shelf-who">
+                <h3>{shelf.label}</h3>
+                <p>
+                  <span className="tk-acct">{shelf.email}</span>
+                  <span className="tk-hair" aria-hidden="true" />
+                  <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
+                </p>
+              </div>
+              <div className="tk-shelf-actions">
+                <button className="admin-ghost" type="button">
+                  New list
+                </button>
+                <button className="admin-ghost" type="button">
+                  Disconnect
+                </button>
+              </div>
+            </header>
+
+            <div className="tk-rail">
+              {shelf.lists.map((list) => (
+                <GroupColumn
+                  key={list.id}
+                  provider={shelf.provider}
+                  list={list}
+                  tasks={byList[list.id] || []}
+                  showDone={showDone}
+                  busy={false}
+                  dropState={
+                    dragOver === `${shelf.provider}:${list.id}`
+                      ? dragged.current && dragged.current.provider !== shelf.provider
+                        ? "cross"
+                        : "same"
+                      : null
+                  }
+                  onDragStateChange={setDragOver}
+                  draggedRef={dragged}
+                  onDropTask={() => drop(list.id)}
+                  onAdd={add}
+                  onToggle={toggle}
+                  onEdit={() => {}}
+                  onRemove={remove}
+                  onRename={() => {}}
+                  onDelete={() => {}}
+                  onClearDone={() => {}}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       <TasksStyles />
       {/* The board borrows the admin's shared controls. */}
@@ -199,6 +271,7 @@ export default function TasksPreview() {
   );
 }
 
+// Dev-only: a design tool, not a page.
 export async function getStaticProps() {
   if (process.env.NODE_ENV === "production") return { notFound: true };
   return { props: {} };

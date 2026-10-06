@@ -632,6 +632,46 @@ async function richContentSuite(browser) {
     });
 
     check(r.mathRendered === r.math && r.math > 0, "every expression is typeset", `${r.mathRendered}/${r.math}`);
+
+    // Every shape people actually write display maths in. The $$-on-its-own-
+    // lines form is the common one and was silently left as literal text,
+    // because an inline-level tokenizer never sees it.
+    const forms = await page.evaluate(() => ({
+      display: document.querySelectorAll(".pb-math.is-display").length,
+      katexErrors: document.querySelectorAll(".katex-error").length,
+      // A multi-line aligned block keeps its rows only if the \\ line breaks
+      // survived markdown's escape handling.
+      alignedRows: document.querySelectorAll(".pb-math .vlist-t .vlist > span").length,
+      leftover: /\$\$|\\begin\{|\\\[|\\\(/.test(
+        document.querySelector(".post-body")?.innerText || ""
+      ),
+    }));
+    check(forms.display >= 4, "display maths in all its delimiter forms renders", String(forms.display));
+    check(forms.katexErrors === 0, "and KaTeX reports no errors", String(forms.katexErrors));
+    check(forms.alignedRows > 2, "a multi-line derivation keeps its rows", String(forms.alignedRows));
+    check(!forms.leftover, "no raw delimiter survives into the reading text");
+
+    // styles/_map.scss has a global, unscoped `.text` rule setting colour to
+    // white. KaTeX marks every textual bit of an equation with that same class,
+    // so \text{...} rendered white on white with nothing in the markup to say
+    // why. This asserts the colour, not the absence of the rule.
+    const textColour = await page.evaluate(() => {
+      const t = document.querySelector(".post-body .katex .text");
+      if (!t) return null;
+      return {
+        colour: getComputedStyle(t).color,
+        page: getComputedStyle(document.querySelector(".post-body")).color,
+        font: getComputedStyle(t).fontFamily.split(",")[0].replace(/"/g, ""),
+      };
+    });
+    if (textColour) {
+      check(
+        textColour.colour === textColour.page,
+        "words inside an equation are the same colour as the prose",
+        JSON.stringify(textColour)
+      );
+      check(/KaTeX/i.test(textColour.font), "and keep KaTeX's own font", textColour.font);
+    }
     // KaTeX renders a visual copy AND a MathML copy; the MathML is what a
     // screen reader actually reads, and forcing output:"html" removes it.
     check(r.mathml > 0, "maths keeps its MathML layer for screen readers", String(r.mathml));
@@ -715,6 +755,69 @@ async function richContentSuite(browser) {
 // looked at — or asserted on — without signing in. /__taskspreview renders the
 // SAME GroupColumn components against fixed data, which is what makes drag and
 // drop testable at all.
+// Every connected-account endpoint, unauthenticated. No browser: what matters
+// is what the routes do for someone who simply calls them.
+//
+// These hold a live OAuth credential path, so an open one is not a bug that
+// degrades the feature — it is a way to attach, read or re-point the owner's
+// task accounts from the internet.
+async function integrationsAuthSuite() {
+  console.log("\nconnected accounts are closed to everyone else");
+  const routes = [
+    "/api/integrations/status",
+    "/api/integrations/google/start",
+    "/api/integrations/google/token",
+    "/api/integrations/google/claim",
+    "/api/integrations/microsoft/token",
+  ];
+
+  for (const r of routes) {
+    try {
+      const res = await fetch(`${BASE}${r}`, { method: "POST" });
+      check(res.status === 401, `${r} refuses an unauthenticated POST`, String(res.status));
+    } catch (e) {
+      bad(r, e.message);
+    }
+  }
+
+  // A bearer token that is not a Firebase ID token must not be taken on trust.
+  try {
+    const res = await fetch(`${BASE}/api/integrations/status`, {
+      method: "POST",
+      headers: { Authorization: "Bearer not.a.real.token" },
+    });
+    check(res.status === 401, "a forged bearer token is refused", String(res.status));
+  } catch (e) {
+    bad("forged token", e.message);
+  }
+
+  // The callback is the one route that cannot carry an Authorization header,
+  // because the provider navigates to it. Its gate is the sealed state.
+  try {
+    const res = await fetch(
+      `${BASE}/api/integrations/google/callback?code=stolen&state=forged`,
+      { redirect: "manual" }
+    );
+    const to = res.headers.get("location") || "";
+    check(res.status === 302, "the callback always redirects rather than rendering", String(res.status));
+    check(
+      /connectError/.test(to) && !/connected=/.test(to),
+      "and a forged state connects nothing",
+      to.slice(0, 120)
+    );
+  } catch (e) {
+    bad("callback state", e.message);
+  }
+
+  // The claim route hands back a sealed connection; a GET must not reach it.
+  try {
+    const res = await fetch(`${BASE}/api/integrations/google/claim`);
+    check(res.status === 405, "claim refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("claim GET", e.message);
+  }
+}
+
 async function tasksSuite(browser) {
   console.log("\ntasks board");
   const page = await browser.newPage();
@@ -728,14 +831,20 @@ async function tasksSuite(browser) {
     await new Promise((r) => setTimeout(r, 1200));
 
     const shape = await page.evaluate(() => ({
+      shelves: document.querySelectorAll(".tk-shelf").length,
+      providers: Array.from(document.querySelectorAll(".tk-shelf")).map((s) => s.dataset.provider),
+      accountNamed: Array.from(document.querySelectorAll(".tk-shelf")).every((s) =>
+        /@/.test(s.querySelector(".tk-acct")?.textContent || "")
+      ),
       columns: document.querySelectorAll(".tk-col").length,
+      colProviders: Array.from(document.querySelectorAll(".tk-col")).map((c) => c.dataset.provider),
       rows: document.querySelectorAll(".tk-row").length,
-      subtasks: document.querySelectorAll(".tk-row.child").length,
+      subtasks: document.querySelectorAll(".tk-row.is-child").length,
       overdue: document.querySelectorAll(".tk-due.overdue").length,
       today: document.querySelectorAll(".tk-due.today").length,
       addInputs: document.querySelectorAll(".tk-add-title").length,
-      newGroup: !!document.querySelector(".tk-newgroup"),
-      selects: document.querySelectorAll(".tk-board select").length,
+      newList: document.querySelectorAll(".tk-shelf-actions").length,
+      selects: document.querySelectorAll(".tk-rail select").length,
       scrollW: document.documentElement.scrollWidth,
       clientW: document.documentElement.clientWidth,
     }));
@@ -745,32 +854,52 @@ async function tasksSuite(browser) {
     check(shape.columns > 1, "every group is a column", String(shape.columns));
     check(shape.selects === 0, "and no group is hidden behind a dropdown");
     check(shape.addInputs === shape.columns, "each group can be added to directly", `${shape.addInputs}/${shape.columns}`);
-    check(shape.newGroup, "a group can be created from the board");
-    check(shape.subtasks > 0, "subtasks render nested under their parent");
+    check(shape.subtasks > 0, "subtasks and steps render nested under their parent");
     check(shape.overdue > 0 && shape.today > 0, "due dates are graded, not just printed",
       `overdue ${shape.overdue}, today ${shape.today}`);
     check(shape.scrollW === shape.clientW, "the board does not overflow the page", `${shape.scrollW} vs ${shape.clientW}`);
 
-    // --- drag a task into another group ---
+    // --- two accounts, as shelves ---
+    check(shape.shelves === 2, "both accounts are on the board", JSON.stringify(shape.providers));
+    check(
+      shape.providers.includes("google") && shape.providers.includes("microsoft"),
+      "Google Tasks and Microsoft To Do each get their own shelf"
+    );
+    check(shape.accountNamed, "each shelf says which account it is");
+    check(shape.newList === shape.shelves, "a list can be created in either account", String(shape.newList));
+    // The provider is carried by WHERE a column sits, which is what makes a
+    // cross-account drag detectable at all.
+    check(
+      new Set(shape.colProviders).size === 2,
+      "every column knows which account it belongs to",
+      JSON.stringify(shape.colProviders)
+    );
+
+    // --- drag a task into another group in the SAME account ---
     const before = await page.evaluate(() =>
       Array.from(document.querySelectorAll(".tk-col")).map((c) => c.querySelectorAll(".tk-row").length)
     );
     const pts = await page.evaluate(() => {
       const row = document.querySelector(".tk-col .tk-row");
-      const target = document.querySelectorAll(".tk-col")[2] || document.querySelectorAll(".tk-col")[1];
+      const target = document.querySelectorAll(".tk-col")[2];
       const a = row.getBoundingClientRect();
       const t = target.getBoundingClientRect();
       return {
         from: { x: a.left + 40, y: a.top + 14 },
-        to: { x: t.left + t.width / 2, y: t.top + 120 },
+        to: { x: t.left + t.width / 2, y: t.top + 60 },
       };
     });
     await page.mouse.move(pts.from.x, pts.from.y);
     await page.mouse.down();
     await page.mouse.move(pts.to.x, pts.to.y, { steps: 18 });
     await new Promise((r) => setTimeout(r, 400));
-    const lit = await page.evaluate(() => document.querySelectorAll(".tk-col.drop").length);
-    check(lit === 1, "exactly one group lights up as the drop target", String(lit));
+    const mid = await page.evaluate(() => ({
+      lit: document.querySelectorAll(".tk-col.is-drop").length,
+      same: document.querySelectorAll(".tk-col.is-drop-same").length,
+      note: document.querySelector(".tk-drop-note")?.textContent || "",
+    }));
+    check(mid.lit === 1, "exactly one group lights up as the drop target", String(mid.lit));
+    check(mid.same === 1, "a move inside one account is the plain amber target", mid.note);
     await page.mouse.up();
     await new Promise((r) => setTimeout(r, 900));
 
@@ -789,6 +918,40 @@ async function tasksSuite(browser) {
       JSON.stringify(after)
     );
 
+    // --- drag ACROSS accounts: a different operation, and it must look like one ---
+    const cross = await page.evaluate(() => {
+      const cols = Array.from(document.querySelectorAll(".tk-col"));
+      const src = cols.find((c) => c.dataset.provider === "google" && c.querySelector(".tk-row"));
+      const dst = cols.find((c) => c.dataset.provider === "microsoft");
+      const a = src.querySelector(".tk-row").getBoundingClientRect();
+      const t = dst.getBoundingClientRect();
+      return {
+        from: { x: a.left + 40, y: a.top + 14 },
+        to: { x: t.left + t.width / 2, y: t.top + 60 },
+      };
+    });
+    await page.mouse.move(cross.from.x, cross.from.y);
+    await page.mouse.down();
+    await page.mouse.move(cross.to.x, cross.to.y, { steps: 18 });
+    await new Promise((r) => setTimeout(r, 400));
+    const crossState = await page.evaluate(() => ({
+      cross: document.querySelectorAll(".tk-col.is-drop-cross").length,
+      same: document.querySelectorAll(".tk-col.is-drop-same").length,
+      note: document.querySelector(".tk-drop-note.cross")?.textContent || "",
+    }));
+    await page.mouse.up();
+    await new Promise((r) => setTimeout(r, 600));
+
+    // There is no move API across services: the task is recreated and the
+    // original deleted, so the board must not dress it up as an ordinary move.
+    check(crossState.cross === 1, "a drag to the other account is marked differently", String(crossState.cross));
+    check(crossState.same === 0, "and never as a plain move");
+    check(
+      /recreated/i.test(crossState.note),
+      "the board says the task will be recreated before you let go",
+      crossState.note
+    );
+
     // --- add a task without leaving the board ---
     await page.evaluate(() => {
       document.querySelectorAll(".tk-col")[1].querySelector(".tk-add-title").focus();
@@ -800,7 +963,7 @@ async function tasksSuite(browser) {
     );
     check(expanded, "the add form opens its details field on focus");
     await page.evaluate(() =>
-      document.querySelectorAll(".tk-col")[1].querySelector(".admin-primary.sm").click()
+      document.querySelectorAll(".tk-col")[1].querySelector(".admin-primary").click()
     );
     await new Promise((r) => setTimeout(r, 700));
     const added = await page.evaluate(() =>
@@ -809,20 +972,46 @@ async function tasksSuite(browser) {
     check(added, "and the task appears in that group");
 
     // --- completing a task ---
-    const check0 = await page.evaluate(() => {
-      const row = document.querySelector(".tk-row:not(.done)");
-      row.querySelector(".tk-check").click();
+    const title = await page.evaluate(() => {
+      const row = document.querySelector(".tk-row:not(.is-done)");
+      row.querySelector(".tk-tick").click();
       return row.querySelector(".tk-title").innerText;
     });
     await new Promise((r) => setTimeout(r, 500));
     const done = await page.evaluate(
       (t) =>
-        Array.from(document.querySelectorAll(".tk-row.done")).some((r) =>
+        Array.from(document.querySelectorAll(".tk-row.is-done")).some((r) =>
           r.innerText.includes(t)
         ),
-      check0
+      title
     );
-    check(done, "ticking a task marks it complete", check0.slice(0, 40));
+    check(done, "ticking a task marks it complete", title.slice(0, 40));
+
+    // --- Microsoft's built-in lists refuse a rename ---
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll(".tk-col"))
+        .find((c) => c.dataset.provider === "microsoft")
+        .querySelector(".tk-menu-btn")
+        .click();
+    });
+    // The menu opens on React state, so it is not in the DOM in the same tick
+    // as the click that asked for it.
+    await page.waitForSelector(".tk-menu button", { timeout: 5000 });
+    const builtIn = await page.evaluate(() => {
+      const col = Array.from(document.querySelectorAll(".tk-col")).find(
+        (c) => c.dataset.provider === "microsoft"
+      );
+      const items = Array.from(col.querySelectorAll(".tk-menu button"));
+      return {
+        rename: items.find((b) => /rename/i.test(b.textContent))?.disabled,
+        del: items.find((b) => /delete/i.test(b.textContent))?.disabled,
+      };
+    });
+    check(
+      builtIn.rename === true && builtIn.del === true,
+      "Microsoft's built-in list cannot be renamed or deleted",
+      JSON.stringify(builtIn)
+    );
   } catch (e) {
     bad("tasks board", e.message);
   } finally {
@@ -983,10 +1172,23 @@ async function exportSuite(browser) {
       check(r.ink > 0.002, `${kind} actually drew something`, `${(r.ink * 100).toFixed(2)}% ink`);
     }
 
-    // p5 animates, so it also records. An off-screen frame gets no
-    // requestAnimationFrame ticks and silently records nothing.
+    // p5 animates, so it also records — and a recording is the one artefact
+    // here that can come back perfectly valid and completely empty.
+    //
+    // TWO separate causes, both silent, both now fixed:
+    //   - an off-screen capture frame gets no requestAnimationFrame ticks, so
+    //     the draw loop never advances (the frame is on-screen at 1.5% opacity)
+    //   - `video/webm;codecs=vp9` WITH a videoBitsPerSecond encodes a 110-byte
+    //     header and no frames at all, while isTypeSupported says yes and
+    //     onstop fires normally (see scripts/probe-recorder.mjs)
+    //
+    // So the floor is measured, not nominal: a real 5s capture of this sketch
+    // lands at 9-17 KB, and the empty one was 110 bytes. 6 KB sits well clear
+    // of anything that is not a genuine recording, where the old 2 KB bar was
+    // the same number the renderer itself refuses below — it could only ever
+    // confirm the guard had run.
     const p5row = rows.find((x) => x.kind === "p5");
-    check(p5row && p5row.video > 2000, "the p5 sketch also records a video", `${p5row?.video} bytes`);
+    check(p5row && p5row.video > 6000, "the p5 sketch also records a real video", `${p5row?.video} bytes`);
 
     const md = await page.evaluate(
       () => document.querySelector("#export-markdown")?.textContent || ""
@@ -1423,6 +1625,7 @@ async function resumeSuite() {
       await searchSuite(browser);
       await exportSuite(browser);
       await tasksSuite(browser);
+      await integrationsAuthSuite();
       await seoSuite();
     } finally {
       await browser.close();
@@ -1432,9 +1635,22 @@ async function resumeSuite() {
     await seoSuite();
   }
   if (which === "tasks") {
+    await integrationsAuthSuite();
     const browser = await launch({ headful: !!process.env.HEADFUL });
     try {
       await tasksSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  // The export suite is the slowest and the only one that can fail for a reason
+  // outside the code — a p5 recording needs real animation frames, so a machine
+  // busy with something else starves it. Being able to re-run it alone is the
+  // difference between confirming a flake and re-running the whole blog suite.
+  if (which === "export") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await exportSuite(browser);
     } finally {
       await browser.close();
     }

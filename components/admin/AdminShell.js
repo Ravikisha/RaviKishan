@@ -11,10 +11,26 @@
 //            where you are; tapping it raises a full-height sheet of big tap
 //            targets. This is a tool used one-handed for thirty seconds.
 //
-// The rail also carries information, not just links: a section with something
-// waiting — an overdue follow-up, a document about to expire, unread mail —
-// gets a dot. The navigation tells you where to GO, not merely where you can.
+// The rail carries INFORMATION, not just links.
+//
+//   grouped   fifteen sections are not peers. Listed as fifteen equal words
+//             they are something you re-scan every visit; grouped by what they
+//             do — what you publish, what is waiting on you, what is stored —
+//             the shape is learnable.
+//   graded    a badge distinguishes LATE (you are already behind) from WAITING
+//             (something expects you) from a plain count. One amber circle for
+//             all three said "there are numbers", not "here is what needs you".
+//   status    the first thing in the rail is whether anything needs you at
+//             all. The hero of a control panel is its state, not its name.
 import React, { useEffect, useRef, useState } from "react";
+
+// A badge is either a bare number (a plain count) or { count, tone, noun }.
+// Both shapes are accepted so a panel can add a badge without ceremony.
+const readBadge = (b) => {
+  if (!b) return null;
+  if (typeof b === "number") return b > 0 ? { count: b, tone: "count", noun: "" } : null;
+  return b.count > 0 ? { count: b.count, tone: b.tone || "count", noun: b.noun || "" } : null;
+};
 
 export default function AdminShell({
   tabs,
@@ -60,6 +76,33 @@ export default function AdminShell({
   const current = tabs.find(([k]) => k === view);
   const currentLabel = current ? current[1] : title;
 
+  // Preserve the order the tabs were given; the group is just a heading that
+  // appears the first time a new one shows up.
+  const groups = [];
+  for (const t of tabs) {
+    const name = t[2] || "";
+    const last = groups[groups.length - 1];
+    if (!last || last.name !== name) groups.push({ name, items: [t] });
+    else last.items.push(t);
+  }
+
+  // What the rail says before you have picked anything.
+  const flags = tabs
+    .map(([k]) => ({ k, b: readBadge(badges[k]) }))
+    .filter((x) => x.b);
+  const total = flags.reduce((n, x) => n + x.b.count, 0);
+  const worst = flags.some((x) => x.b.tone === "late")
+    ? "late"
+    : flags.some((x) => x.b.tone === "waiting")
+    ? "waiting"
+    : flags.length
+    ? "soon"
+    : "clear";
+  const summary = flags
+    .map((x) => `${x.b.count} ${x.b.noun}`.trim())
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <div className="ad">
       {/* ---------- desktop rail ---------- */}
@@ -67,6 +110,15 @@ export default function AdminShell({
         <div className="ad-brand">
           <span className="ad-dot" aria-hidden="true" />
           <span>Control</span>
+        </div>
+
+        {/* Before you choose a section, the rail answers the only question
+            you had on the way in. */}
+        <div className={`ad-status ${worst}`} role="status">
+          <strong>
+            {total ? `${total} ${total === 1 ? "thing needs" : "things need"} you` : "All clear"}
+          </strong>
+          <span>{summary || "Nothing waiting, nothing overdue."}</span>
         </div>
 
         <div className="ad-list" ref={listRef}>
@@ -79,22 +131,34 @@ export default function AdminShell({
               opacity: marker.ready ? 1 : 0,
             }}
           />
-          {tabs.map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              data-tab={k}
-              className={`ad-item${view === k ? " on" : ""}`}
-              aria-current={view === k ? "page" : undefined}
-              onClick={go(k)}
-            >
-              <span>{label}</span>
-              {badges[k] ? (
-                <i className="ad-badge" title={`${badges[k]} need attention`}>
-                  {badges[k] > 9 ? "9+" : badges[k]}
-                </i>
-              ) : null}
-            </button>
+          {groups.map((g) => (
+            <React.Fragment key={g.name || "ungrouped"}>
+              {g.name ? <p className="ad-group">{g.name}</p> : null}
+              {g.items.map(([k, label]) => {
+                const b = readBadge(badges[k]);
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    data-tab={k}
+                    className={`ad-item${view === k ? " on" : ""}`}
+                    aria-current={view === k ? "page" : undefined}
+                    onClick={go(k)}
+                  >
+                    <span>{label}</span>
+                    {b ? (
+                      <i
+                        className={`ad-badge ${b.tone}`}
+                        title={`${b.count} ${b.noun || "waiting"}`}
+                      >
+                        {b.count > 9 ? "9+" : b.count}
+                        {b.noun ? <em>{b.noun}</em> : null}
+                      </i>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </React.Fragment>
           ))}
         </div>
 
@@ -141,7 +205,11 @@ export default function AdminShell({
                   onClick={go(k)}
                 >
                   <span>{label}</span>
-                  {badges[k] ? <i className="ad-badge">{badges[k] > 9 ? "9+" : badges[k]}</i> : null}
+                  {readBadge(badges[k]) ? (
+                    <i className={`ad-badge ${readBadge(badges[k]).tone}`}>
+                      {readBadge(badges[k]).count > 9 ? "9+" : readBadge(badges[k]).count}
+                    </i>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -223,6 +291,10 @@ export default function AdminShell({
           gap: 1px;
           overflow-y: auto;
           flex: 1;
+          /* A flex child will not shrink below its content without this, so
+             overflow-y never engaged: the group headings pushed the last
+             section (MCP) off the bottom, behind the pinned footer. */
+          min-height: 0;
           margin: 0 -4px;
           padding: 0 4px;
         }
@@ -266,18 +338,110 @@ export default function AdminShell({
         .ad-item span {
           flex: 1;
         }
+        /* Three meanings, three marks. One amber circle for all of them told
+           you there were numbers, not what they wanted. */
         .ad-badge {
           font-style: normal;
           font-size: 10.5px;
           font-weight: 700;
           min-width: 18px;
           height: 18px;
-          padding: 0 5px;
+          padding: 0 6px;
           border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          white-space: nowrap;
+        }
+        /* The noun rides along on the rail, where there is room to say what the
+           number means; the mobile sheet shows the number alone. */
+        .ad-badge em {
+          font-style: normal;
+          font-weight: 500;
+          font-size: 9.5px;
+          letter-spacing: 0.01em;
+          opacity: 0.85;
+        }
+        /* You are already behind on this one. */
+        .ad-badge.late {
+          background: #43171c;
+          color: #ffb4b4;
+          box-shadow: inset 0 0 0 1px #6d2a31;
+        }
+        /* Something is expecting you. */
+        .ad-badge.waiting {
           background: var(--a-amber);
           color: #1a1300;
-          display: grid;
-          place-items: center;
+        }
+        /* A clock is running, but not out. */
+        .ad-badge.soon {
+          background: none;
+          color: var(--a-amber);
+          box-shadow: inset 0 0 0 1px rgba(255, 176, 32, 0.45);
+        }
+        /* Just a count. */
+        .ad-badge.count {
+          background: none;
+          color: var(--a-dim);
+          box-shadow: inset 0 0 0 1px var(--a-line);
+        }
+
+        /* Group headings: quiet, sentence case, separated by a hairline rather
+           than shouted in tracked-out capitals. */
+        .ad-list::-webkit-scrollbar {
+          width: 6px;
+        }
+        .ad-list::-webkit-scrollbar-thumb {
+          background: #242836;
+          border-radius: 3px;
+        }
+        .ad-group {
+          margin: 16px 0 5px;
+          padding: 0 14px 5px;
+          font-size: 10.5px;
+          font-weight: 500;
+          color: #5c6377;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+        }
+        .ad-group:first-of-type {
+          margin-top: 2px;
+        }
+
+        /* The rail answers before you ask. */
+        .ad-status {
+          margin: 2px 12px 10px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid var(--a-line);
+          background: rgba(255, 255, 255, 0.015);
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          border-left-width: 3px;
+          border-left-color: var(--a-line);
+        }
+        .ad-status strong {
+          font-size: 12.5px;
+          font-weight: 600;
+          color: var(--a-text);
+        }
+        .ad-status span {
+          font-size: 11px;
+          line-height: 1.45;
+          color: var(--a-dim);
+        }
+        .ad-status.late {
+          border-left-color: #a33b45;
+        }
+        .ad-status.waiting {
+          border-left-color: var(--a-amber);
+        }
+        .ad-status.soon {
+          border-left-color: rgba(255, 176, 32, 0.5);
+        }
+        .ad-status.clear strong {
+          color: var(--a-dim);
+          font-weight: 500;
         }
         .ad-foot {
           border-top: 1px solid var(--a-line);

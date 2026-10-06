@@ -116,6 +116,33 @@ svg.selectAll("text.v").data(data).join("text").attr("class", "v")
 
 The network namespace is two orders of magnitude more expensive than the rest put together. That is the whole performance story.
 
+## The shapes maths actually comes in
+
+Display delimiters on their own lines, which is how everyone writes them:
+
+$$
+T_{start} = T_{fork} + \\sum_{i=1}^{n} c_i
+$$
+
+A multi-line derivation, where the line breaks have to survive markdown:
+
+$$
+\\begin{aligned}
+t_{total} &= t_{fork} + t_{unshare} \\\\
+             &= 0.4 + 18.2 \\; \\text{ms}
+\\end{aligned}
+$$
+
+A bare environment, with no delimiters at all:
+
+\\begin{equation}
+f(n) = O(n \\log n)
+\\end{equation}
+
+And the bracket forms LaTeX users reach for out of habit: \\( \\alpha \\in \\mathbb{R} \\) inline, and
+
+\\[ \\lim_{n \\to \\infty} \\frac{1}{n} = 0 \\]
+
 ## A sketch, because why not
 
 \`\`\`p5 height=260

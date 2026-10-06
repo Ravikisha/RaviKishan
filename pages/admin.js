@@ -33,6 +33,7 @@ import JobsPanel from "../components/admin/JobsPanel";
 import PostsPanel from "../components/admin/PostsPanel";
 import DriftPanel from "../components/admin/DriftPanel";
 import LinkedInPanel from "../components/admin/LinkedInPanel";
+import SocialPanel from "../components/admin/SocialPanel";
 import ContactsPanel from "../components/admin/ContactsPanel";
 import McpPanel from "../components/admin/McpPanel";
 import TasksPanel from "../components/admin/TasksPanel";
@@ -74,6 +75,7 @@ export const TABS = [
   ["gallery", "Gallery", "Publish"],
   ["links", "Short links", "Publish"],
   ["linkedin", "LinkedIn", "Publish"],
+  ["social", "Social", "Publish"],
 
   ["inbox", "Inbox", "Waiting on you"],
   ["jobs", "Jobs", "Waiting on you"],
@@ -754,6 +756,8 @@ function Editor({ user }) {
         </ContentContext.Provider>
       ) : view === "vault" ? (
         <VaultPanel user={user} />
+      ) : view === "social" ? (
+        <SocialPanel user={user} />
       ) : view === "linkedin" ? (
         <LinkedInPanel user={user} />
       ) : view === "drift" ? (

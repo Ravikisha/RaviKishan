@@ -6,7 +6,10 @@
 import { verifyAdmin, AuthError } from "../../../../lib/server/verifyAdmin";
 import {
   authorizeUrl,
+  challengeFor,
+  getProvider,
   makeState,
+  makeVerifier,
   providerConfig,
   redirectUriFor,
 } from "../../../../lib/server/integrations";
@@ -30,13 +33,26 @@ export default async function handler(req, res) {
     }
 
     const redirectUri = redirectUriFor(req, cfg.id);
+
+    // PKCE, for the providers that require it (X). The verifier is sealed into
+    // the state rather than stored anywhere: it comes back with the state and
+    // nothing server-side has to remember it between the two requests.
+    const p = getProvider(cfg.id);
+    const verifier = p.pkce ? makeVerifier() : "";
+
     const url = authorizeUrl({
       provider: cfg.id,
       clientId: cfg.clientId,
       redirectUri,
+      challenge: verifier ? challengeFor(verifier) : "",
       // The state is sealed and carries the admin's uid, so a code delivered
       // to the callback cannot have been started by anyone else.
-      state: makeState({ provider: cfg.id, uid: claims.user_id || claims.sub, redirectUri }),
+      state: makeState({
+        provider: cfg.id,
+        uid: claims.user_id || claims.sub,
+        redirectUri,
+        verifier,
+      }),
     });
 
     return res.status(200).json({ url, redirectUri, provider: cfg.id });

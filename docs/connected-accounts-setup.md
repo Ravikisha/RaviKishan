@@ -223,3 +223,97 @@ LINKEDIN_CLIENT_SECRET=<client secret>
 > product, not a defect in this code. The code already handles the partner case:
 > if LinkedIn ever returns a refresh token, it is sealed and used instead and
 > the countdown disappears.
+
+---
+
+## 6. YouTube, Instagram and X — several accounts each
+
+These three are **multi-account**: connect as many channels, Instagram accounts
+and handles as you like. Each lands as its own document in `socialAccounts`,
+keyed on the provider's own id for it, so reconnecting the same account updates
+that row rather than adding a rival one beside it.
+
+### What each one actually allows
+
+| | YouTube | Instagram | X |
+|---|---|---|---|
+| create | upload **not offered here** (see below) | image / video / reel / story, 100 per 24h | post, thread |
+| **edit** | **yes** — title, description, tags, category, privacy | **no caption edit, ever** | **no edit endpoint, any tier** |
+| read | channel, videos, playlists, comments | media, comments, insights | own posts (**paid tier only**) |
+| delete | video | in the app | post |
+| cost | free, 10,000 quota units/day | free | **paid** — X ended its free tier on 6 Feb 2026 |
+
+### YouTube
+
+**Google Cloud Console**, same project as Tasks:
+
+1. **APIs & Services → Library → YouTube Data API v3 → Enable.**
+2. OAuth consent screen: add the scopes
+   `youtube.force-ssl` and `youtube.readonly`.
+3. Credentials → OAuth client ID → Web application → redirect URIs:
+   ```
+   https://ravikishan.me/api/integrations/youtube/callback
+   http://localhost:3000/api/integrations/youtube/callback
+   ```
+
+```
+YOUTUBE_CLIENT_ID=
+YOUTUBE_CLIENT_SECRET=
+```
+
+> **Uploading is deliberately not offered.** It needs a resumable session
+> carrying the file itself, which a serverless function cannot hold for a real
+> video. Publish in YouTube Studio, then set the metadata from here.
+
+### Instagram
+
+**The account must be Professional (Business or Creator)** — free to switch in
+the Instagram app. A personal account cannot be connected at all: the Basic
+Display API that served them shut down on 4 December 2024.
+
+**Meta app dashboard** → <https://developers.facebook.com/apps>
+
+1. Create an app, add the **Instagram** product, and use **Instagram Login**
+   (not Facebook Login — it needs no linked Page).
+2. Permissions: `instagram_business_basic`, `instagram_business_content_publish`.
+3. OAuth redirect URIs:
+   ```
+   https://ravikishan.me/api/integrations/instagram/callback
+   http://localhost:3000/api/integrations/instagram/callback
+   ```
+
+```
+INSTAGRAM_CLIENT_ID=
+INSTAGRAM_CLIENT_SECRET=
+```
+
+> Instagram **fetches** the file from a public URL rather than accepting an
+> upload, so media must already be reachable — a signed or expiring URL fails.
+> The long-lived token lasts 60 days; the panel counts down.
+
+### X
+
+**X has no free tier for new developers since 6 February 2026** — access is
+pay-per-usage credits, so reads in particular may refuse on billing rather than
+on anything wrong here. The error says which.
+
+**X developer portal** → <https://developer.x.com>
+
+1. Create a project and app, then **User authentication settings**:
+   - Type of App: **Web App** (confidential client)
+   - Permissions: **Read and write**
+   - Callback URI:
+     ```
+     https://ravikishan.me/api/integrations/x/callback
+     http://localhost:3000/api/integrations/x/callback
+     ```
+2. Copy the **OAuth 2.0** Client ID and Client Secret (not the API key/secret).
+
+```
+X_CLIENT_ID=
+X_CLIENT_SECRET=
+```
+
+> X requires **PKCE**. The verifier is generated per connection and sealed
+> inside the OAuth state, so nothing is stored server-side between the two
+> requests.

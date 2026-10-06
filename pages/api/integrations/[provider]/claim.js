@@ -48,7 +48,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "That connection could not be read. Press Connect again." });
     }
 
-    return res.status(200).json({ record });
+    // The browser needs to know WHERE to write it: a multi-account provider
+    // goes to socialAccounts/<provider>__<accountId>, everything else to
+    // integrations/<docId>.
+    const multi = !!p.multi;
+    return res.status(200).json({
+      record,
+      collection: multi ? "socialAccounts" : "integrations",
+      docId: multi ? `${p.id}__${encodeURIComponent(record.accountId)}` : p.docId,
+    });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     return res.status(e.status || 500).json({ error: e.message || "Could not save the connection." });

@@ -58,7 +58,19 @@ const throws = (fn, name, re) => {
 };
 
 console.log("\nproviders");
-check(providerIds().length === 4, "four providers are registered", providerIds().join(", "));
+// Assert the SET, not just the count: a provider silently renamed or dropped
+// is the failure that matters, and a count passes right through it.
+check(
+  providerIds().join(",") === "google,microsoft,github,youtube,instagram,x,notion,linkedin",
+  "all eight providers are registered, in order",
+  providerIds().join(", ")
+);
+// Multi-account providers are the ones whose connections live per account.
+check(
+  providerIds().filter((id) => PROVIDERS[id].multi).join(",") === "youtube,instagram,x",
+  "and exactly the social three allow several accounts",
+  providerIds().filter((id) => PROVIDERS[id].multi).join(", ")
+);
 check(
   ["google", "microsoft", "github"].every((id) => providerIds().includes(id)),
   "google, microsoft and github",

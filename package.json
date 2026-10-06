@@ -37,7 +37,8 @@
     "test:integrations": "node scripts/integrations-check.mjs",
     "rules:deploy": "firebase deploy --only firestore:rules",
     "rules:check": "node scripts/rules-check.mjs",
-    "test:linkedin": "node scripts/linkedin-check.mjs"
+    "test:linkedin": "node scripts/linkedin-check.mjs",
+    "test:github": "node scripts/github-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

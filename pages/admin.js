@@ -36,6 +36,7 @@ import LinkedInPanel from "../components/admin/LinkedInPanel";
 import ContactsPanel from "../components/admin/ContactsPanel";
 import McpPanel from "../components/admin/McpPanel";
 import TasksPanel from "../components/admin/TasksPanel";
+import GithubPanel from "../components/admin/GithubPanel";
 import AnalyticsPanel from "../components/admin/AnalyticsPanel";
 import SearchPanel from "../components/admin/SearchPanel";
 import AssetsPanel from "../components/admin/AssetsPanel";
@@ -84,6 +85,7 @@ export const TABS = [
 
   ["analytics", "Analytics", "Signals"],
   ["drift", "Drift", "Signals"],
+  ["github", "GitHub", "Signals"],
 
   ["mcp", "MCP", "Access"],
 ];
@@ -764,6 +766,8 @@ function Editor({ user }) {
         <ContactsPanel user={user} />
       ) : view === "posts" ? (
         <PostsPanel user={user} />
+      ) : view === "github" ? (
+        <GithubPanel user={user} />
       ) : view === "tasks" ? (
         <TasksPanel user={user} />
       ) : view === "jobs" ? (

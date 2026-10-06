@@ -39,6 +39,7 @@ import McpPanel from "../components/admin/McpPanel";
 import TasksPanel from "../components/admin/TasksPanel";
 import GithubPanel from "../components/admin/GithubPanel";
 import NotesPanel from "../components/admin/NotesPanel";
+import AgentPanel from "../components/admin/AgentPanel";
 import AnalyticsPanel from "../components/admin/AnalyticsPanel";
 import SearchPanel from "../components/admin/SearchPanel";
 import AssetsPanel from "../components/admin/AssetsPanel";
@@ -91,6 +92,7 @@ export const TABS = [
   ["notes", "Notes", "Publish"],
   ["github", "GitHub", "Signals"],
 
+  ["agent", "Agent", "Access"],
   ["mcp", "MCP", "Access"],
 ];
 
@@ -772,6 +774,8 @@ function Editor({ user }) {
         <ContactsPanel user={user} />
       ) : view === "posts" ? (
         <PostsPanel user={user} />
+      ) : view === "agent" ? (
+        <AgentPanel user={user} />
       ) : view === "notes" ? (
         <NotesPanel user={user} />
       ) : view === "github" ? (

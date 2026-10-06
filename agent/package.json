@@ -1,0 +1,21 @@
+{
+  "name": "agentd",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs Claude Code and Codex on your own server, driven from the admin PWA.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node test/agent-check.mjs",
+    "doctor": "node src/doctor.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.18.0"
+  }
+}

@@ -41,7 +41,9 @@
     "test:github": "node scripts/github-check.mjs",
     "test:notes": "node scripts/notes-check.mjs",
     "e2e:notes": "node scripts/e2e-check.js notes",
-    "test:social": "node scripts/social-check.mjs"
+    "test:social": "node scripts/social-check.mjs",
+    "test:agent": "node agent/test/agent-check.mjs",
+    "e2e:agent": "node scripts/e2e-check.js agent"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

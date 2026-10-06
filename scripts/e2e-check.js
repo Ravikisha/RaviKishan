@@ -982,6 +982,105 @@ async function notesSuite(browser) {
   }
 }
 
+// The Agent panel.
+//
+// These assertions are about the approval card, because that card is the only
+// thing standing between a spoken sentence and a force-push. The properties
+// pinned here are safety properties, not visual ones: if Deny stops being the
+// larger, nearer target, or the countdown stops saying that silence means no,
+// or a secret reaches the transcript, the panel has become dangerous while
+// still looking fine.
+async function agentSuite(browser) {
+  console.log("\nagent: the approval card is the product");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__agentpreview?noload`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".ag-card", { timeout: 30000 });
+
+    const card = await page.evaluate(() => {
+      const deny = document.querySelector(".ag-deny");
+      const allow = document.querySelector(".ag-allow");
+      const d = deny.getBoundingClientRect();
+      const a = allow.getBoundingClientRect();
+      return {
+        cmd: document.querySelector(".ag-card-cmd")?.textContent || "",
+        note: document.querySelector(".ag-card-note")?.textContent || "",
+        clock: document.querySelector(".ag-card-clock")?.textContent || "",
+        denyArea: d.width * d.height,
+        allowArea: a.width * a.height,
+        denyFirst: d.top < a.top || (Math.abs(d.top - a.top) < 2 && d.left < a.left),
+      };
+    });
+
+    // The exact command, not a summary of it. "Run a git command" is not
+    // something anyone can meaningfully approve.
+    check(/git push -u origin/.test(card.cmd), "the card shows the literal command", card.cmd);
+    // A mistaken deny costs a tap; a mistaken allow costs a repository.
+    check(card.denyArea > card.allowArea * 2, "Deny is a much larger target than Allow", `${Math.round(card.denyArea)} vs ${Math.round(card.allowArea)}`);
+    check(card.denyFirst, "and comes first");
+    check(/No answer means no/i.test(card.note), "the card states that silence is a refusal", card.note);
+    check(/left$/.test(card.clock.trim()), "and shows how long is left", card.clock);
+
+    // Hydration: the mic button and the countdown both differ between server
+    // and client, so both must be decided after mount. A mismatch here used to
+    // blank the whole panel behind an error overlay.
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.reload({ waitUntil: "networkidle2" });
+    await page.waitForSelector(".ag-card", { timeout: 20000 });
+    check(
+      !errors.some((e) => /hydrat/i.test(e)),
+      "the panel hydrates without a mismatch",
+      errors.find((e) => /hydrat/i.test(e)) || ""
+    );
+
+    const body = await page.evaluate(() => document.body.innerText);
+    // The transcript is redacted on the SERVER; this asserts the panel is not
+    // quietly undoing that.
+    check(/•{4,}/.test(body), "a secret in the transcript renders masked");
+    check(!/ghp_[A-Za-z0-9]/.test(body), "and no raw token reaches the page");
+
+    // `.text` is a global unscoped rule in _map.scss. A transcript line using
+    // it renders as a white Poppins heading, which is how it first shipped.
+    const lines = await page.evaluate(() =>
+      [...document.querySelectorAll(".ag-line")].map((x) => ({
+        cls: x.className,
+        size: parseFloat(getComputedStyle(x).fontSize),
+        family: getComputedStyle(x).fontFamily,
+      }))
+    );
+    check(lines.length > 0, "the transcript renders lines", String(lines.length));
+    check(
+      lines.every((l) => l.size < 14),
+      "no line inherits the global .text rule and renders heading-sized",
+      JSON.stringify(lines.find((l) => l.size >= 14) || {})
+    );
+    check(
+      lines.every((l) => /Mono/.test(l.family)),
+      "and every line keeps the monospace face",
+      JSON.stringify(lines.find((l) => !/Mono/.test(l.family)) || {})
+    );
+
+    const jobs = await page.evaluate(() => ({
+      total: document.querySelectorAll(".ag-job").length,
+      failed: document.querySelectorAll(".ag-job.bad").length,
+      done: document.querySelectorAll(".ag-job.ok").length,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    check(jobs.total === 3, "every job is listed", String(jobs.total));
+    // A failed job that looks like a finished one is how you deploy a broken
+    // branch believing it passed.
+    check(jobs.failed === 1 && jobs.done === 1, "a failed job does not look like a finished one", `${jobs.failed} failed, ${jobs.done} done`);
+    check(!jobs.overflow, "the panel does not overflow the page");
+  } catch (e) {
+    bad("agent panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 async function tasksSuite(browser) {
   console.log("\ntasks board");
   const page = await browser.newPage();
@@ -1790,6 +1889,7 @@ async function resumeSuite() {
       await exportSuite(browser);
       await tasksSuite(browser);
       await notesSuite(browser);
+      await agentSuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
     } finally {
@@ -1798,6 +1898,14 @@ async function resumeSuite() {
   }
   if (which === "seo") {
     await seoSuite();
+  }
+  if (which === "agent") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await agentSuite(browser);
+    } finally {
+      await browser.close();
+    }
   }
   if (which === "notes") {
     const browser = await launch({ headful: !!process.env.HEADFUL });

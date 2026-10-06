@@ -317,3 +317,47 @@ X_CLIENT_SECRET=
 > X requires **PKCE**. The verifier is generated per connection and sealed
 > inside the OAuth state, so nothing is stored server-side between the two
 > requests.
+
+---
+
+## 7. Google Analytics
+
+**GA4 only.** Universal Analytics stopped collecting in July 2023 and its data
+was deleted in July 2024, so a `UA-` id has nothing behind it — the tools refuse
+one by name rather than returning an empty report.
+
+Held **read-only**: the scope requested is `analytics.readonly`, so nothing
+here can edit a property, change a data stream or delete an account. A
+reporting section does not need write access.
+
+Multi-account, like the social three — connect more than one Google account if
+your properties live under different ones. The **property** is chosen inside an
+account, because one account commonly owns several.
+
+**Google Cloud Console**, same project as Tasks and YouTube:
+
+1. **APIs & Services → Library → enable both:**
+   - **Google Analytics Data API** (the reports)
+   - **Google Analytics Admin API** (listing your properties)
+   Missing either produces a 403 that names the API, and the error says so.
+2. OAuth consent screen: add the scope
+   `https://www.googleapis.com/auth/analytics.readonly`
+3. Credentials → OAuth client ID → Web application → redirect URIs:
+   ```
+   https://ravikishan.me/api/integrations/analytics/callback
+   http://localhost:3000/api/integrations/analytics/callback
+   ```
+
+```
+ANALYTICS_CLIENT_ID=
+ANALYTICS_CLIENT_SECRET=
+```
+
+Then open **/admin → Analytics**. Google Analytics sits below the first-party
+counters in the same tab — the counters are about the work (résumé opened, PDF
+taken, short link followed), GA answers the audience question they deliberately
+do not.
+
+> **Thresholding.** GA4 withholds rows that could identify an individual, so a
+> low-traffic property can report zero rows while having real traffic. The panel
+> and the tools both flag that case rather than showing it as "no traffic".

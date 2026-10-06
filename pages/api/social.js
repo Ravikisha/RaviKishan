@@ -9,11 +9,11 @@
 // carrying the owner's posting credentials.
 import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
 import {
-  socialToken,
+  connectedToken,
   accountStatus,
   listAccounts,
-  SocialAuthError,
-} from "../../lib/server/socialAccounts";
+  ConnectedAuthError,
+} from "../../lib/server/connectedStore";
 import * as yt from "../../lib/server/youtube";
 import * as ig from "../../lib/server/instagram";
 import * as xapi from "../../lib/server/xapi";
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
     if (!PROVIDERS.includes(provider)) {
       return res.status(400).json({ error: `Unknown provider "${provider}".` });
     }
-    const { token } = await socialToken(idToken, provider, accountId);
+    const { token } = await connectedToken(idToken, provider, accountId);
 
     /* ---- YouTube ---- */
     if (provider === "youtube") {
@@ -140,7 +140,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `Unknown action "${action}" for ${provider}.` });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
-    if (e instanceof SocialAuthError) {
+    if (e instanceof ConnectedAuthError) {
       return res.status(409).json({ error: e.message, code: e.code, provider: e.provider });
     }
     return res.status(e.status || 400).json({ error: e.message || "That did not work." });

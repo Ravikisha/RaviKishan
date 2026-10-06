@@ -601,6 +601,11 @@ console.log("\nthe registry survived however it was last merged");
       "get_x_account", "list_x_posts", "create_x_post", "create_x_thread",
       "delete_x_post",
     ],
+    analytics: [
+      "list_analytics_properties", "get_analytics_fields", "get_analytics_summary",
+      "get_analytics_report", "get_analytics_top_pages", "get_analytics_sources",
+      "get_analytics_realtime",
+    ],
   };
 
   const byName = new Map(TOOLS.map((t) => [t.name, t]));
@@ -633,6 +638,44 @@ console.log("\nthe registry survived however it was last merged");
   const all = TOOLS.map((t) => t.name);
   const dupes = all.filter((n, i) => all.indexOf(n) !== i);
   check(dupes.length === 0, "and no tool was duplicated by one", dupes.join(", "));
+}
+
+console.log("\nGoogle Analytics is read-only by construction");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const ga = TOOLS.filter((t) => /^(list|get)_analytics_/.test(t.name));
+
+  check(ga.length > 0, "analytics tools exist", String(ga.length));
+  // The connection holds analytics.readonly, so a write tool could not work
+  // even if it existed — but it must not exist, because a tool that fails at
+  // call time is worse than no tool.
+  const writes = ga.filter((t) => t.scope !== "read");
+  check(writes.length === 0, "every analytics tool is read scope", String(writes.map((t) => t.name)));
+  const mutators = TOOLS.filter((t) =>
+    /^(create|update|delete|set)_analytics_|_analytics_(property|stream|account)$/.test(t.name)
+  );
+  check(
+    mutators.length === 0,
+    "nothing creates, edits or deletes a property or data stream",
+    String(mutators.map((t) => t.name))
+  );
+  // Every report needs a property, and one Google account commonly owns
+  // several — so the list has to be discoverable before anything else.
+  check(
+    TOOLS.some((t) => t.name === "list_analytics_properties"),
+    "the properties are discoverable"
+  );
+  check(
+    TOOLS.some((t) => t.name === "get_analytics_fields"),
+    "and so is the metric and dimension vocabulary"
+  );
+  const needProp = ga.filter((t) => /summary|report|top_pages|sources|realtime/.test(t.name));
+  const missing = needProp.filter((t) => !(t.inputSchema.required || []).includes("propertyId"));
+  check(
+    needProp.length > 0 && missing.length === 0,
+    "every reporting tool requires a propertyId",
+    String(missing.map((t) => t.name))
+  );
 }
 
 console.log("\nguards refuse before they touch anything");

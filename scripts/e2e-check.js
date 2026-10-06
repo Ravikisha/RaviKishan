@@ -870,8 +870,33 @@ async function integrationsAuthSuite() {
     bad("social GET", e.message);
   }
 
+  // Google Analytics reads traffic for every property the account can see.
+  for (const [body, name] of [
+    [{ action: "accounts" }, "accounts"],
+    [{ action: "properties" }, "properties"],
+    [{ action: "summary", propertyId: "123456" }, "summary"],
+    [{ action: "report", propertyId: "123456", metrics: ["activeUsers"] }, "report"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}/api/analytics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      check(res.status === 401, `/api/analytics ${name} refuses an anonymous caller`, String(res.status));
+    } catch (e) {
+      bad(`analytics ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/analytics`, { method: "GET" });
+    check(res.status === 405, "/api/analytics refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("analytics GET", e.message);
+  }
+
   // Both multi-account consent routes are gated the same way as the rest.
-  for (const p of ["youtube", "instagram", "x"]) {
+  for (const p of ["youtube", "instagram", "x", "analytics"]) {
     try {
       const res = await fetch(`${BASE}/api/integrations/${p}/start`, { method: "POST" });
       check(res.status === 401, `/api/integrations/${p}/start refuses an anonymous caller`, String(res.status));

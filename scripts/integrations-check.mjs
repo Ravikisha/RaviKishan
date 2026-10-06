@@ -61,14 +61,14 @@ console.log("\nproviders");
 // Assert the SET, not just the count: a provider silently renamed or dropped
 // is the failure that matters, and a count passes right through it.
 check(
-  providerIds().join(",") === "google,microsoft,github,youtube,instagram,x,notion,linkedin",
-  "all eight providers are registered, in order",
+  providerIds().join(",") === "google,microsoft,github,youtube,instagram,x,analytics,notion,linkedin",
+  "all nine providers are registered, in order",
   providerIds().join(", ")
 );
 // Multi-account providers are the ones whose connections live per account.
 check(
-  providerIds().filter((id) => PROVIDERS[id].multi).join(",") === "youtube,instagram,x",
-  "and exactly the social three allow several accounts",
+  providerIds().filter((id) => PROVIDERS[id].multi).join(",") === "youtube,instagram,x,analytics",
+  "and exactly the four multi-account providers allow several",
   providerIds().filter((id) => PROVIDERS[id].multi).join(", ")
 );
 check(

@@ -585,6 +585,22 @@ console.log("\nthe registry survived however it was last merged");
       "list_note_sources", "list_notebooks", "list_notes", "get_note", "create_note",
       "update_note", "append_to_note", "delete_note", "search_notes",
     ],
+    linkedin: [
+      "get_linkedin_capabilities", "get_linkedin_profile", "create_linkedin_post",
+      "list_linkedin_posts", "delete_linkedin_post", "draft_linkedin_post",
+      "get_linkedin_drift", "linkedin_job_search_url",
+    ],
+    social: [
+      "list_social_accounts", "get_social_capabilities",
+      "get_youtube_channel", "list_youtube_videos", "get_youtube_video",
+      "update_youtube_video", "delete_youtube_video", "list_youtube_playlists",
+      "create_youtube_playlist", "add_video_to_youtube_playlist",
+      "list_youtube_comments", "reply_to_youtube_comment",
+      "get_instagram_account", "list_instagram_media", "publish_instagram_post",
+      "list_instagram_comments", "reply_to_instagram_comment",
+      "get_x_account", "list_x_posts", "create_x_post", "create_x_thread",
+      "delete_x_post",
+    ],
   };
 
   const byName = new Map(TOOLS.map((t) => [t.name, t]));

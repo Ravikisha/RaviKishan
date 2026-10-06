@@ -587,9 +587,29 @@ console.log("\nthe registry survived however it was last merged");
     ],
   };
 
+  const byName = new Map(TOOLS.map((t) => [t.name, t]));
+
   for (const [family, names] of Object.entries(EXPECTED)) {
     const gone = names.filter((n) => !loaded.has(n));
     check(gone.length === 0, `every ${family} tool is still registered`, gone.join(", "));
+
+    // The OTHER half of the same corruption: a tool whose body was cut but
+    // whose opening lines survived. The object still parses and the name is
+    // still there, so a presence check passes — but the handler is gone, which
+    // is the one field that cannot be faked by a half-eaten object.
+    const hollow = names
+      .filter((n) => byName.has(n))
+      .filter((n) => {
+        const t = byName.get(n);
+        return (
+          typeof t.handler !== "function" ||
+          !t.scope ||
+          !t.inputSchema ||
+          t.inputSchema.type !== "object" ||
+          !t.description
+        );
+      });
+    check(hollow.length === 0, `and every ${family} tool still has a body`, hollow.join(", "));
   }
 
   // The other half of a bad merge: both sides' copy of one tool surviving.

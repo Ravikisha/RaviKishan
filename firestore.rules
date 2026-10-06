@@ -194,6 +194,15 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // What this app has published to LinkedIn. Admin-only, and it exists
+    // because LinkedIn cannot be asked: reading a member's own posts needs
+    // r_member_social, which is restricted, so this record is the ONLY
+    // history there is. It holds post text that may be unpublished drafts
+    // and the member's own URNs, so it is not world-readable.
+    match /linkedinPosts/{postId} {
+      allow read, write: if isAdmin();
+    }
+
     // PRIVATE contact book, imported from the LinkedIn data export. Names,
     // employers and any e-mail addresses LinkedIn chose to include — other
     // people's personal data, so admin-only in both directions.

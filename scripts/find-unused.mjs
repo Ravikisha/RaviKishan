@@ -20,6 +20,10 @@ import { fileURLToPath } from "url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP_DIRS = new Set([
   "node_modules", ".next", ".git", ".e2e-chrome-profile", "out", ".vercel",
+  // Tooling state, not application code. A git worktree under .claude/
+  // is a second full checkout, so every config and dev-only page in it
+  // gets reported as an orphan of the real tree.
+  ".claude",
 ]);
 
 function walk(dir, out = []) {

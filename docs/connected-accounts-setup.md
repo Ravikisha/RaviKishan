@@ -134,3 +134,51 @@ npm run test:integrations   # 48 assertions, no network, no credentials
 npm run e2e:tasks           # the board, plus every endpoint refusing anonymous callers
 npm run mcp:check           # the tool registry, including the absences
 ```
+
+---
+
+## 5. LinkedIn
+
+**Read this first: LinkedIn allows much less than the other three.** Verified
+against LinkedIn's own documentation, not assumed:
+
+| | |
+|---|---|
+| Publish a post | **yes** — `w_member_social`, self-serve, 150 requests/day |
+| Read name + email | **yes** — OIDC `/v2/userinfo` |
+| Read headline / positions / skills | **no** — `r_fullprofile` is partner-only |
+| Change the profile | **no API at any tier** |
+| Search jobs | **no** self-serve API — Talent Solutions, partnerships closed |
+| Apply to a job | **no API at any tier** |
+| List your own posts | **no** — `r_member_social` is restricted |
+
+So the panel publishes posts for real, and for the rest it gives the route that
+works rather than a button that fails.
+
+**LinkedIn Developer portal** → <https://www.linkedin.com/developers/apps>
+
+1. **Create an app.** It must be attached to a LinkedIn **Page** you control —
+   LinkedIn requires one even for a personal integration. Verify the app from
+   the Settings tab.
+2. **Products tab — add both**, each self-serve and usually instant:
+   - *Sign In with LinkedIn using OpenID Connect* → `openid`, `profile`, `email`
+   - *Share on LinkedIn* → `w_member_social`
+3. **Auth tab → Authorized redirect URLs**, add both exactly:
+   ```
+   https://ravikishan.me/api/integrations/linkedin/callback
+   http://localhost:3000/api/integrations/linkedin/callback
+   ```
+4. Copy the Client ID and Client Secret.
+
+```
+LINKEDIN_CLIENT_ID=<client id>
+LINKEDIN_CLIENT_SECRET=<client secret>
+```
+
+> **The 60-day problem.** LinkedIn issues refresh tokens only to approved
+> Marketing Developer Platform partners. A self-serve app gets a 60-day access
+> token and nothing else, so this connection cannot renew itself — the LinkedIn
+> shelf counts down and tells you when to press Connect again. That is the
+> product, not a defect in this code. The code already handles the partner case:
+> if LinkedIn ever returns a refresh token, it is sealed and used instead and
+> the countdown disappears.

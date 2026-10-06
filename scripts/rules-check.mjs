@@ -67,6 +67,7 @@ const PRIVATE = [
   ["contacts", "1,000+ people's personal data"],
   ["jobs", "the job tracker"],
   ["postVersions", "post snapshots, which include draft bodies"],
+  ["linkedinPosts", "what this app published to LinkedIn"],
   ["siteDrafts", "unpublished site content"],
   ["auditLog", "the audit trail"],
   ["mcpTokens", "MCP token records"],

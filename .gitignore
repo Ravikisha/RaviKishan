@@ -45,3 +45,7 @@ vault-manifest.json
 firebase-debug.log
 firebase-debug.*.log
 .firebase/
+
+# A git worktree lives here while parallel work is in flight. It is a second
+# full checkout of this repo, not source.
+.claude/worktrees/

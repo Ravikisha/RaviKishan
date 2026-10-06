@@ -816,6 +816,32 @@ async function integrationsAuthSuite() {
   } catch (e) {
     bad("claim GET", e.message);
   }
+
+  // The LinkedIn route is the one that can PUBLISH. It exists because
+  // api.linkedin.com sends no CORS headers, which makes it the only
+  // browser-reachable path to the owner's posting credential.
+  for (const [body, name] of [
+    [{ action: "capabilities" }, "capabilities"],
+    [{ action: "publish", text: "hello" }, "publish"],
+    [{ action: "delete", urn: "urn:li:share:1" }, "delete"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}/api/linkedin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      check(res.status === 401, `/api/linkedin ${name} refuses an anonymous caller`, String(res.status));
+    } catch (e) {
+      bad(`linkedin ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/linkedin`, { method: "GET" });
+    check(res.status === 405, "/api/linkedin refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("linkedin GET", e.message);
+  }
 }
 
 async function tasksSuite(browser) {

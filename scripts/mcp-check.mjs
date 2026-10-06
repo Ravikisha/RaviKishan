@@ -322,6 +322,39 @@ console.log("\ntwo task providers, one set of tools");
   }
 }
 
+console.log("\nLinkedIn promises only what LinkedIn actually offers");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const names = TOOLS.map((t) => t.name);
+  const has = (re) => names.filter((n) => re.test(n));
+
+  check(has(/linkedin/).length > 0, "linkedin tools exist", String(has(/linkedin/).length));
+
+  // These are the tools a model will go looking for, and every one of them
+  // would be a lie: LinkedIn has no profile write API at any tier, no
+  // self-serve job search, and no application-submission API at all. A tool
+  // that existed and failed at call time is worse than no tool, because the
+  // model only finds out after telling the user it is doing it.
+  const forbidden = has(/^(update|set|edit)_linkedin_(profile|headline|about|experience)/);
+  check(forbidden.length === 0, "nothing claims to edit the LinkedIn profile", String(forbidden));
+  const applying = has(/linkedin.*appl|appl.*linkedin/);
+  check(applying.length === 0, "nothing claims to apply to a job", String(applying));
+  const searching = has(/^search_linkedin_jobs$|^find_linkedin_jobs$/);
+  check(searching.length === 0, "nothing claims to search jobs through an API", String(searching));
+
+  // The tool that makes the absences discoverable in one cheap call, so a
+  // model asked to "update my headline" learns it must hand the text back.
+  check(
+    names.includes("get_linkedin_capabilities"),
+    "a capabilities tool says what is impossible and what to do instead"
+  );
+  // Publishing is immediate and public, so it must be rehearsable.
+  const post = TOOLS.find((t) => t.name === "create_linkedin_post");
+  check(!!post?.inputSchema?.properties?.dryRun, "create_linkedin_post can be rehearsed with dryRun");
+  const del = TOOLS.find((t) => t.name === "delete_linkedin_post");
+  check(!!del?.inputSchema?.properties?.confirm, "delete_linkedin_post asks for confirmation");
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

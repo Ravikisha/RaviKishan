@@ -58,7 +58,7 @@ const throws = (fn, name, re) => {
 };
 
 console.log("\nproviders");
-check(providerIds().length === 3, "three providers are registered", providerIds().join(", "));
+check(providerIds().length === 4, "four providers are registered", providerIds().join(", "));
 check(
   ["google", "microsoft", "github"].every((id) => providerIds().includes(id)),
   "google, microsoft and github",
@@ -276,6 +276,48 @@ console.log("\nGitHub is a different shape of grant, and the registry says so");
     connectionRecord({ provider: "google", sealed: "S", email: "a@b.c", scope: "" }).kind === "refresh",
     "where google records a refresh token"
   );
+}
+
+console.log("\nLinkedIn is the awkward grant: refresh token for partners only");
+{
+  const u = new URL(
+    authorizeUrl({ provider: "linkedin", clientId: "cid", redirectUri: "https://x/cb", state: "ST" })
+  );
+  check(u.origin === "https://www.linkedin.com", "the consent URL points at LinkedIn", u.origin);
+  const scope = u.searchParams.get("scope") || "";
+  // The two self-serve products. w_member_social is the one that lets anything
+  // be published at all.
+  check(scope.includes("w_member_social"), "it asks to post", scope);
+  check(scope.includes("openid") && scope.includes("profile"), "and for the OIDC profile read");
+  // Asking for a scope LinkedIn will not grant a self-serve app fails the WHOLE
+  // consent screen, so these must stay out.
+  check(!scope.includes("r_fullprofile"), "it does NOT ask for r_fullprofile, which is partner-only");
+  check(!/r_member_social/.test(scope), "nor r_member_social, which is restricted");
+  // LinkedIn's authorization endpoint has no login_hint equivalent.
+  check(!u.searchParams.has("login_hint"), "and sends no account hint, which LinkedIn ignores");
+  check(u.searchParams.get("state") === "ST", "the sealed state travels");
+
+  check(
+    docPathFor("linkedin") === "integrations/linkedin",
+    "it stores under its own document",
+    docPathFor("linkedin")
+  );
+
+  // The reason connectionRecord takes `kind` explicitly: LinkedIn is BOTH. An
+  // approved Marketing Developer Platform partner gets a refresh token; a
+  // self-serve app gets a 60-day access token. Inferring it from the provider
+  // table would be wrong half the time.
+  const asAccess = connectionRecord({
+    provider: "linkedin",
+    sealed: "S",
+    kind: "access",
+    expiresAt: "2026-12-01T00:00:00.000Z",
+  });
+  check(asAccess.kind === "access", "a self-serve connection records an access token");
+  check(asAccess.expiresAt === "2026-12-01T00:00:00.000Z", "and keeps its expiry, which is real");
+  const asRefresh = connectionRecord({ provider: "linkedin", sealed: "S", kind: "refresh" });
+  check(asRefresh.kind === "refresh", "a partner connection records a refresh token");
+  check(asRefresh.expiresAt === "", "and has no expiry worth showing");
 }
 
 console.log(`\n${pass} passed, ${fails.length} failed`);

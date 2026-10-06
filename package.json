@@ -36,7 +36,8 @@
     "probe:recorder": "node scripts/probe-recorder.mjs",
     "test:integrations": "node scripts/integrations-check.mjs",
     "rules:deploy": "firebase deploy --only firestore:rules",
-    "rules:check": "node scripts/rules-check.mjs"
+    "rules:check": "node scripts/rules-check.mjs",
+    "test:linkedin": "node scripts/linkedin-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

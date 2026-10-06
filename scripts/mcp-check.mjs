@@ -547,6 +547,58 @@ console.log("\nsocial tools promise only what the services offer");
   }
 }
 
+console.log("\nthe registry survived however it was last merged");
+{
+  // This exists because a merge silently ATE a tool.
+  //
+  // Two sessions append tool blocks at the same anchor in mcpTools.js, so every
+  // merge conflicts there, and resolving it by keeping both sides cut through
+  // the middle of a tool object. That one happened to leave an unbalanced brace
+  // and `node --check` caught it. A cut landing cleanly BETWEEN two objects
+  // balances perfectly and simply loses tools.
+  //
+  // Nothing derived from the file can catch that: a whole object disappearing
+  // takes its source text AND its registry entry with it, so the two still
+  // agree. A first attempt at this guard compared them and passed happily with
+  // a tool deleted — verified by deleting one. The only thing that catches it
+  // is an expectation held OUTSIDE the file.
+  //
+  // So the names are pinned here. Adding a tool means adding a line, which is
+  // the point: a tool should not appear or vanish without someone saying so.
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const loaded = new Set(TOOLS.map((t) => t.name));
+
+  // One line per family, so a merge that drops a whole block is as loud as one
+  // that drops a single tool.
+  const EXPECTED = {
+    tasks: [
+      "list_task_providers", "list_task_groups", "create_task_group", "rename_task_group",
+      "delete_task_group", "list_tasks", "create_task", "update_task", "move_task",
+      "delete_task", "clear_completed_tasks",
+    ],
+    github: [
+      "get_github_profile", "update_github_profile", "list_github_repos", "get_github_repo",
+      "update_github_repo", "create_github_repo", "get_github_readme", "update_github_readme",
+      "get_github_file", "update_github_file", "list_github_pinned", "audit_github_repos",
+    ],
+    notes: [
+      "list_note_sources", "list_notebooks", "list_notes", "get_note", "create_note",
+      "update_note", "append_to_note", "delete_note", "search_notes",
+    ],
+  };
+
+  for (const [family, names] of Object.entries(EXPECTED)) {
+    const gone = names.filter((n) => !loaded.has(n));
+    check(gone.length === 0, `every ${family} tool is still registered`, gone.join(", "));
+  }
+
+  // The other half of a bad merge: both sides' copy of one tool surviving.
+  // toolByName would silently resolve to whichever came first.
+  const all = TOOLS.map((t) => t.name);
+  const dupes = all.filter((n, i) => all.indexOf(n) !== i);
+  check(dupes.length === 0, "and no tool was duplicated by one", dupes.join(", "));
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

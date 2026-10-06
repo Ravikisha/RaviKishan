@@ -69,6 +69,7 @@ const PRIVATE = [
   ["postVersions", "post snapshots, which include draft bodies"],
   ["linkedinPosts", "what this app published to LinkedIn"],
   ["socialAccounts", "sealed YouTube, Instagram and X credentials"],
+  ["notes", "note bodies, including unfinished ones"],
   ["siteDrafts", "unpublished site content"],
   ["auditLog", "the audit trail"],
   ["mcpTokens", "MCP token records"],

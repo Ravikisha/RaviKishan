@@ -10,8 +10,8 @@
 //   node scripts/social-check.mjs
 const { PROVIDERS, providerIds, authorizeUrl, makeVerifier, challengeFor, makeState, readState } =
   await import("../lib/server/integrations.js");
-const { accountDocId, accountPath, socialRecord, assertMulti, expiryOf } = await import(
-  "../lib/server/socialAccounts.js"
+const { accountDocId, accountPath, connectedRecord, assertMulti, expiryOf } = await import(
+  "../lib/server/connectedStore.js"
 );
 const xapi = await import("../lib/server/xapi.js");
 const ig = await import("../lib/server/instagram.js");
@@ -70,11 +70,11 @@ console.log("\naccount documents are keyed so a reconnect updates in place");
     accountDocId("instagram", "a/b/c")
   );
   check(
-    accountPath("x", "99").startsWith("socialAccounts/"),
-    "they live in socialAccounts",
+    accountPath("x", "99").startsWith("connectedAccounts/"),
+    "they live in connectedAccounts",
     accountPath("x", "99")
   );
-  const rec = socialRecord({
+  const rec = connectedRecord({
     provider: "x",
     accountId: "99",
     label: "@me",
@@ -84,7 +84,7 @@ console.log("\naccount documents are keyed so a reconnect updates in place");
   check(rec.provider === "x" && rec.accountId === "99", "the record carries provider and account");
   check(rec.secret === "SEALED", "and the sealed credential");
   check(
-    socialRecord({ provider: "x", accountId: "99", sealed: "S" }).label === "99",
+    connectedRecord({ provider: "x", accountId: "99", sealed: "S" }).label === "99",
     "a nameless account falls back to its id rather than rendering blank"
   );
   check(expiryOf({ kind: "refresh", expiresAt: "" }) === null, "a refresh token has no countdown");

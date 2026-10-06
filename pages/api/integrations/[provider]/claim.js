@@ -49,12 +49,12 @@ export default async function handler(req, res) {
     }
 
     // The browser needs to know WHERE to write it: a multi-account provider
-    // goes to socialAccounts/<provider>__<accountId>, everything else to
+    // goes to connectedAccounts/<provider>__<accountId>, everything else to
     // integrations/<docId>.
     const multi = !!p.multi;
     return res.status(200).json({
       record,
-      collection: multi ? "socialAccounts" : "integrations",
+      collection: multi ? "connectedAccounts" : "integrations",
       docId: multi ? `${p.id}__${encodeURIComponent(record.accountId)}` : p.docId,
     });
   } catch (e) {

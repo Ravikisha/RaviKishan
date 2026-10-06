@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { COUNTERS, dayId } from "../../lib/analytics";
+import GaPanel from "./GaPanel";
 
 const LABELS = {
   pageView: "Visits",
@@ -225,6 +226,13 @@ export default function AnalyticsPanel() {
           color: #ffb020;
         }
       `}</style>
+
+      {/* Google Analytics lives in this tab rather than its own. The counters
+          above are about THE WORK — did anyone open the résumé, take the PDF,
+          follow a short link. GA answers the audience question they
+          deliberately do not. Two tabs would make the first thing anyone does
+          be deciding which set of numbers to believe. */}
+      <GaPanel />
     </main>
   );
 }

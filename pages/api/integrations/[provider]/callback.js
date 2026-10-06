@@ -18,7 +18,7 @@ import {
   redirectUriFor,
   seal,
 } from "../../../../lib/server/integrations";
-import { socialRecord } from "../../../../lib/server/socialAccounts";
+import { connectedRecord } from "../../../../lib/server/connectedStore";
 
 export const COOKIE_PREFIX = "rk_conn_";
 const COOKIE_MAX_AGE = 300;
@@ -104,7 +104,7 @@ export default async function handler(req, res) {
     }
 
     const record = p.multi
-      ? socialRecord({
+      ? connectedRecord({
           provider: p.id,
           accountId,
           label: accountLabel || email,

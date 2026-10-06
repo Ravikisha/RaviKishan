@@ -207,16 +207,16 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Connected YouTube channels, Instagram accounts and X handles — one
-    // document per ACCOUNT, because unlike every other integration here you
-    // can hold several of each.
+    // Connected accounts you can hold SEVERAL of: YouTube channels, Instagram
+    // accounts, X handles and Google Analytics logins — one document per
+    // ACCOUNT, unlike the single-connection providers in integrations/.
     //
     // Same shape as integrations/: each holds a SEALED credential, encrypted
     // with AES-256-GCM under INTEGRATION_SECRET, which lives only in the
     // deployment environment and never in Firestore. Reading this collection
     // yields ciphertext. The admin's browser writes it, because the API routes
     // have no Firestore credential of their own.
-    match /socialAccounts/{accountId} {
+    match /connectedAccounts/{accountId} {
       allow read, write: if isAdmin();
     }
 

@@ -417,6 +417,78 @@ console.log("\nGitHub tools curate, and cannot destroy");
   );
 }
 
+console.log("\nNotes speak one vocabulary over four places");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const { NOTE_SOURCES, DEFAULT_SOURCE } = await import("../lib/server/noteSources.js");
+  const noteTools = TOOLS.filter((t) => /note/.test(t.name));
+  const names = noteTools.map((t) => t.name);
+
+  check(noteTools.length >= 8, "the note tools exist", String(noteTools.length));
+
+  // Four families of tool name would make a model express WHICH service it
+  // meant by picking a name, and it would pick wrong.
+  check(
+    !names.some((n) => /^(notion|trello|obsidian|local|keep)_/.test(n)),
+    "no source-specific tool names",
+    String(names.filter((n) => /^(notion|trello|obsidian|local|keep)_/.test(n)))
+  );
+
+  const withSource = noteTools.filter((t) => t.inputSchema?.properties?.source);
+  check(withSource.length >= 7, "the tools take a source", String(withSource.length));
+  // Defaulted, never required: the built-in store is the one that always works.
+  check(
+    withSource.every((t) => !(t.inputSchema.required || []).includes("source")),
+    "and never require it",
+    String(withSource.filter((t) => (t.inputSchema.required || []).includes("source")).map((t) => t.name))
+  );
+  check(DEFAULT_SOURCE === "local", "the default source is the built-in store");
+
+  // Google Keep must not be offerable. Its API is a Workspace admin/DLP API
+  // that a personal account cannot reach, so a tool accepting it would be a
+  // call that always fails.
+  const enums = withSource.map((t) => t.inputSchema.properties.source.enum || []);
+  check(
+    enums.every((e) => !e.includes("keep")),
+    "Google Keep is not selectable anywhere",
+    JSON.stringify(enums.find((e) => e.includes("keep")) || [])
+  );
+  check(
+    NOTE_SOURCES.keep.available === false && /enterprise|Workspace/i.test(NOTE_SOURCES.keep.reason),
+    "but it is declared, with the reason, rather than quietly missing"
+  );
+  check(
+    TOOLS.some((t) => t.name === "list_note_sources"),
+    "and a tool reports which sources are usable"
+  );
+
+  // Deleting means four different things; the one with no undo is Trello.
+  const del = TOOLS.find((t) => t.name === "delete_note");
+  check(!!del?.inputSchema?.properties?.confirm, "delete_note asks for confirmation");
+  check(
+    !(del?.inputSchema?.required || []).includes("confirm"),
+    "without making confirm required, so the dry run is the default"
+  );
+
+  const writers = noteTools.filter((t) => /^(create|update|append|delete)_/.test(t.name));
+  check(writers.length >= 4, "there are note write tools", String(writers.length));
+  check(
+    writers.every((t) => t.scope === "write"),
+    "and every one is behind the write scope",
+    String(writers.filter((t) => t.scope !== "write").map((t) => t.name))
+  );
+  check(
+    noteTools.filter((t) => /^(list|get|search)_/.test(t.name)).every((t) => t.scope === "read"),
+    "every note read tool is behind the read scope"
+  );
+
+  // The reason append_to_note exists at all.
+  check(
+    /without sending its whole body/i.test(TOOLS.find((t) => t.name === "append_to_note")?.description || ""),
+    "append_to_note says why it is not just update_note"
+  );
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

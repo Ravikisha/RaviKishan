@@ -169,6 +169,19 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // The built-in note store — the source that needs no third party, and the
+    // one every other note source falls back to. Admin-only in both
+    // directions: a note is private writing, not site content, and nothing on
+    // the public site reads this collection.
+    //
+    // There is deliberately no `published` flag here. The moment notes can be
+    // world-readable, every rule below has to distinguish a published note
+    // from a draft one, and a mistake in that is a private notebook on the
+    // internet. Writing meant for readers already has a home: posts/.
+    match /notes/{noteId} {
+      allow read, write: if isAdmin();
+    }
+
     // PRIVATE document vault. Metadata only — the bytes live in a private
     // Backblaze bucket. This is the one collection with NO public read: it
     // indexes payslips, letters, marksheets and identity documents.

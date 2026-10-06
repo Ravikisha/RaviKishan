@@ -38,7 +38,9 @@
     "rules:deploy": "firebase deploy --only firestore:rules",
     "rules:check": "node scripts/rules-check.mjs",
     "test:linkedin": "node scripts/linkedin-check.mjs",
-    "test:github": "node scripts/github-check.mjs"
+    "test:github": "node scripts/github-check.mjs",
+    "test:notes": "node scripts/notes-check.mjs",
+    "e2e:notes": "node scripts/e2e-check.js notes"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

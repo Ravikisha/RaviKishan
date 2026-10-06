@@ -844,6 +844,107 @@ async function integrationsAuthSuite() {
   }
 }
 
+// The Notes panel, against the real components.
+//
+// What is worth asserting here is the thing the panel exists for: four
+// services disagree about what a note is, and every disagreement is silent. A
+// panel that renders the same controls for all of them teaches you to expect
+// something that will be dropped. So these assertions are about what the panel
+// REFUSES to offer, not about what it shows.
+async function notesSuite(browser) {
+  console.log("\nnotes: one desk, four places, no silent surprises");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__notespreview?noload`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".nt-tab", { timeout: 30000 });
+
+    const strip = await page.evaluate(() => ({
+      tabs: [...document.querySelectorAll(".nt-tab")].map((t) => t.textContent.trim()),
+      unavailable: [...document.querySelectorAll(".nt-tab.off")].map((t) => t.textContent.trim()),
+      caps: document.querySelector(".nt-caps")?.textContent?.trim() || "",
+      rows: document.querySelectorAll(".nt-row").length,
+      pinned: document.querySelectorAll(".nt-row.pinned").length,
+      archived: document.querySelectorAll(".nt-row.archived").length,
+      scrollW: document.documentElement.scrollWidth,
+      clientW: document.documentElement.clientWidth,
+    }));
+
+    check(strip.tabs.length === 5, "every place a note could live is listed", String(strip.tabs.length));
+    // Shown rather than omitted: a missing Keep reads as an oversight.
+    check(
+      strip.unavailable.length === 1 && /Keep/.test(strip.unavailable[0]),
+      "Google Keep is shown, marked unavailable rather than hidden",
+      JSON.stringify(strip.unavailable)
+    );
+    check(/tags/.test(strip.caps) && /pinning/.test(strip.caps), "the local source says what it can do", strip.caps);
+    check(strip.rows === 3, "notes list", String(strip.rows));
+    check(strip.pinned === 1 && strip.archived === 1, "pinned and archived notes are marked", `${strip.pinned}/${strip.archived}`);
+    check(strip.scrollW === strip.clientW, "the panel does not overflow the page", `${strip.scrollW} vs ${strip.clientW}`);
+
+    const localCtl = await page.evaluate(() => ({
+      tagInput: !!document.querySelector(".nt-tag-input"),
+      pin: !!document.querySelector(".nt-toggle"),
+    }));
+    check(localCtl.tagInput && localCtl.pin, "the built-in store offers tags and pinning");
+
+    // --- Trello: labels are board objects, so tags must be read-only ---
+    await page.evaluate(() => {
+      [...document.querySelectorAll(".nt-tab")].find((t) => t.textContent.trim().startsWith("Trello")).click();
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const trello = await page.evaluate(() => ({
+      caps: document.querySelector(".nt-caps")?.textContent?.trim() || "",
+      tagsOff: !!document.querySelector(".nt-tags.off"),
+      tagInput: !!document.querySelector(".nt-tag-input"),
+      removeButtons: document.querySelectorAll(".nt-tag button").length,
+      pin: !!document.querySelector(".nt-toggle"),
+      reason: document.querySelector(".nt-field span em")?.textContent || "",
+    }));
+    check(/no tags/.test(trello.caps), "Trello says up front that it has no tags", trello.caps);
+    check(trello.tagsOff && !trello.tagInput, "so the tag input is not offered");
+    check(trello.removeButtons === 0, "and existing labels cannot be removed from here");
+    check(/board-wide/i.test(trello.reason), "with the reason in the control's own place", trello.reason.slice(0, 70));
+    check(!trello.pin, "Trello offers no pin, because its API has none");
+
+    // --- Google Keep: declared unusable, with evidence ---
+    await page.evaluate(() => {
+      [...document.querySelectorAll(".nt-tab")].find((t) => t.textContent.trim().startsWith("Google Keep")).click();
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const keep = await page.evaluate(() => ({
+      blocked: !!document.querySelector(".nt-blocked"),
+      editor: !!document.querySelector(".nt-editor"),
+      text: document.querySelector(".nt-blocked")?.innerText || "",
+      caps: document.querySelector(".nt-caps")?.textContent?.trim() || "",
+    }));
+    check(keep.blocked && !keep.editor, "Google Keep offers no editor at all");
+    check(/enterprise|Workspace/i.test(keep.text), "it states the reason, which is that the API is enterprise-only");
+    check(/Obsidian|notes here/i.test(keep.text), "and points at what to use instead");
+    // The reason is long; printing it in the strip AND the panel put the same
+    // paragraph on screen twice.
+    check(keep.caps.length < 80, "without repeating the whole paragraph in the strip", `${keep.caps.length} chars`);
+
+    // --- Obsidian: connected is not the same as configured ---
+    await page.evaluate(() => {
+      [...document.querySelectorAll(".nt-tab")].find((t) => t.textContent.trim().startsWith("Obsidian")).click();
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const vault = await page.evaluate(() => ({
+      blocked: !!document.querySelector(".nt-blocked"),
+      text: document.querySelector(".nt-blocked")?.innerText || "",
+    }));
+    check(vault.blocked, "an unconfigured vault explains itself rather than showing an empty list");
+    check(/no cloud API/i.test(vault.text), "saying Obsidian has no cloud API", vault.text.slice(0, 60));
+    check(/GitHub/i.test(vault.text), "and that the vault is read as a GitHub repository");
+  } catch (e) {
+    bad("notes panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 async function tasksSuite(browser) {
   console.log("\ntasks board");
   const page = await browser.newPage();
@@ -1651,6 +1752,7 @@ async function resumeSuite() {
       await searchSuite(browser);
       await exportSuite(browser);
       await tasksSuite(browser);
+      await notesSuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
     } finally {
@@ -1659,6 +1761,14 @@ async function resumeSuite() {
   }
   if (which === "seo") {
     await seoSuite();
+  }
+  if (which === "notes") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await notesSuite(browser);
+    } finally {
+      await browser.close();
+    }
   }
   if (which === "tasks") {
     await integrationsAuthSuite();

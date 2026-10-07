@@ -24,6 +24,7 @@ import {
   say,
   parseCommand,
 } from "../../lib/agentClient";
+import WhatsappPanel from "./WhatsappPanel";
 
 // Whether this browser can hear you is not knowable on the server, so it is
 // decided after mount. Calling speechSupported() during render makes the server
@@ -57,6 +58,8 @@ export default function AgentPanel({ user }) {
   const [events, setEvents] = useState({});
   const [err, setErr] = useState("");
   const [voice, setVoice] = useState(false);
+  const [tab, setTab] = useState("jobs");
+  const [wa, setWa] = useState({ status: null, chats: [], thread: null });
   const canSpeak = useSpeech();
   const client = useRef(null);
 
@@ -67,6 +70,14 @@ export default function AgentPanel({ user }) {
       onState: (s) => {
         setStatus(s.status);
         if (s.status === "connected") {
+          // Asked for once a socket exists, so the WhatsApp section is not a
+          // blank box until something else happens to refresh it.
+          setTimeout(() => {
+            try {
+              client.current?.send({ type: "whatsapp", action: "status" });
+              client.current?.send({ type: "whatsapp", action: "chats", limit: 60 });
+            } catch (_) {}
+          }, 0);
           setJobs(s.jobs || []);
           setApprovals(s.approvals || []);
           setProfiles(s.profiles || []);
@@ -101,6 +112,32 @@ export default function AgentPanel({ user }) {
             return setHalted(false);
           case "profiles":
             return setProfiles(msg.profiles || []);
+          case "whatsapp":
+            // One reply shape for every action, so the panel does not need a
+            // branch per capability.
+            return setWa((w) => {
+              if (msg.action === "chats") return { ...w, chats: msg.result?.chats || [] };
+              if (msg.action === "read") return { ...w, thread: msg.result };
+              if (msg.action === "status" || msg.action === "connect") {
+                return { ...w, status: msg.result?.sessions ? msg.result : { ...w.status, sessions: [msg.result] } };
+              }
+              return w;
+            });
+          case "whatsapp.qr":
+          case "whatsapp.open":
+          case "whatsapp.close":
+            // A connection event changes what the panel may do, so re-ask
+            // rather than trying to patch the status locally.
+            try {
+              client.current?.send({ type: "whatsapp", action: "status" });
+            } catch (_) {}
+            return;
+          case "whatsapp.message":
+            // New traffic invalidates both the chat list and the open thread.
+            try {
+              client.current?.send({ type: "whatsapp", action: "chats", limit: 60 });
+            } catch (_) {}
+            return;
           case "error":
             return setErr(msg.error);
           default:
@@ -138,6 +175,18 @@ export default function AgentPanel({ user }) {
 
   const live = jobs.filter((j) => ["queued", "running", "waiting"].includes(j.state));
 
+  // WhatsApp actions go over the same socket as everything else. Returning a
+  // promise lets the compose box show "Sending…" and surface a refusal.
+  const waAction = (msg) =>
+    new Promise((resolve, reject) => {
+      try {
+        client.current.send({ type: "whatsapp", ...msg });
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    });
+
   return (
     <div className="ag-main">
       <div className="ops-head">
@@ -166,6 +215,24 @@ export default function AgentPanel({ user }) {
         </span>
       </div>
 
+      <div className="ag-tabs" role="tablist">
+        {[
+          ["jobs", `Jobs${live.length ? ` (${live.length})` : ""}`],
+          ["whatsapp", "WhatsApp"],
+        ].map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            className={`ag-tab${tab === k ? " on" : ""}`}
+            onClick={() => setTab(k)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {err ? <p className="admin-err">{err}</p> : null}
       {halted ? (
         <p className="ag-halted">
@@ -188,6 +255,16 @@ export default function AgentPanel({ user }) {
         </section>
       ) : null}
 
+      {tab === "whatsapp" ? (
+        <WhatsappPanel
+          client={client.current}
+          status={wa.status}
+          chats={wa.chats}
+          thread={wa.thread}
+          onAction={waAction}
+        />
+      ) : (
+      <>
       <NewJob
         profiles={profiles}
         repos={repos}
@@ -217,6 +294,9 @@ export default function AgentPanel({ user }) {
           ))
         )}
       </div>
+
+      </>
+      )}
 
       <AgentStyles />
     </div>
@@ -528,6 +608,25 @@ export function AgentStyles() {
         font-size: 12.5px;
         color: var(--a-dim, #8b90a0);
         cursor: pointer;
+      }
+      .ag-tabs {
+        display: flex;
+        gap: 6px;
+        margin: 14px 0 4px;
+      }
+      .ag-tab {
+        background: none;
+        border: 1px solid var(--a-line, #2b3040);
+        border-radius: 999px;
+        color: var(--a-dim, #8b90a0);
+        padding: 6px 14px;
+        font: inherit;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .ag-tab.on {
+        border-color: var(--a-amber, #ffb020);
+        color: var(--a-text, #e7e8ee);
       }
       .ag-halt {
         background: none;

@@ -635,6 +635,60 @@ console.log("\nthe registry survived however it was last merged");
   check(dupes.length === 0, "and no tool was duplicated by one", dupes.join(", "));
 }
 
+console.log("\nWhatsApp: one chat at a time, and nothing automatic");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const wa = TOOLS.filter((t) => /whatsapp/.test(t.name));
+  const names = wa.map((t) => t.name);
+
+  check(wa.length >= 6, "the whatsapp tools exist", String(wa.length));
+  check(names.includes("whatsapp_status"), "a tool reports whether the session is live");
+
+  // THE deliberate absences. Each of these is a capability that is both what
+  // gets an account banned and what reaches people who did not ask to hear
+  // from you. They are missing on purpose, and this is where that is recorded.
+  const banned = /broadcast|bulk|blast|mass|campaign|autoreply|auto_reply|schedule_message/i;
+  check(
+    !names.some((n) => banned.test(n)),
+    "nothing broadcasts, bulk-sends or auto-replies",
+    String(names.filter((n) => banned.test(n)))
+  );
+
+  const send = TOOLS.find((t) => t.name === "whatsapp_send");
+  check(!!send, "whatsapp_send exists");
+  // A list-typed recipient is how a single-send tool becomes a bulk-send tool.
+  check(
+    send.inputSchema.properties.to.type === "string",
+    "it takes ONE recipient, not a list",
+    JSON.stringify(send.inputSchema.properties.to)
+  );
+  check(
+    /cannot be unsent|real message to a real person/i.test(send.description),
+    "and says that a sent message is real and not easily undone"
+  );
+  check(
+    /country code/i.test(send.description),
+    "and that a number without a country code is refused rather than guessed"
+  );
+
+  // Reading someone's chats is reading other people's words. It must not be
+  // available to a token that was only granted read of the site's content...
+  // but it IS a read, so read is correct — what matters is that writes are not.
+  const writers = wa.filter((t) => /send|mark_read/.test(t.name));
+  check(writers.every((t) => t.scope === "write"), "sending and marking read are writes",
+    String(writers.filter((t) => t.scope !== "write").map((t) => t.name)));
+  check(
+    wa.filter((t) => !writers.includes(t)).every((t) => t.scope === "read"),
+    "and everything else is a read",
+    String(wa.filter((t) => !writers.includes(t) && t.scope !== "read").map((t) => t.name))
+  );
+
+  // Marking read shows blue ticks to the other person. That is a visible act
+  // and the description has to say so.
+  const mark = TOOLS.find((t) => t.name === "whatsapp_mark_read");
+  check(/blue tick|visible/i.test(mark.description), "marking read admits it is visible to the other person");
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

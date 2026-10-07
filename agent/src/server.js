@@ -15,6 +15,7 @@ import { Approvals } from "./approvals.js";
 import { decide } from "./policy.js";
 import { listProfiles, pickProfile, ensureProfile, paths } from "./profiles.js";
 import { prepareWorkspace, startAgent, verify, cleanupWorkspace, run } from "./runner.js";
+import * as wa from "./whatsapp.js";
 import fs from "fs";
 
 const PORT = Number(process.env.AGENT_PORT || 7777);
@@ -127,6 +128,55 @@ async function finish(job, dir, branch, log) {
   return { kind: "branch", branch };
 }
 
+/* ---------------- whatsapp ---------------- */
+
+// One dispatcher, used by both the MCP tools (over HTTP) and the panel (over
+// the WebSocket), so a capability cannot exist in one and not the other.
+const WA_ACTIONS = new Set([
+  "status", "connect", "disconnect", "logout",
+  "chats", "read", "search", "send", "markRead", "exists",
+]);
+
+async function whatsappAction({ action, profile = process.env.AGENT_DEFAULT_PROFILE || "personal", ...args } = {}) {
+  if (!WA_ACTIONS.has(action)) {
+    throw new wa.WaError(`Unknown action "${action}". Known: ${[...WA_ACTIONS].join(", ")}.`);
+  }
+
+  if (action === "status") {
+    return {
+      installed: await wa.isInstalled(),
+      hasSession: wa.hasSession(profile),
+      sessions: wa.statusAll(),
+    };
+  }
+
+  if (action === "connect") {
+    const s = await wa.connect(profile, { onEvent: (e) => broadcast(e) });
+    return s.status();
+  }
+
+  if (action === "disconnect") return wa.disconnect(profile, { logout: false });
+  if (action === "logout") return wa.disconnect(profile, { logout: true });
+
+  const session = wa.get(profile);
+  switch (action) {
+    case "chats":
+      return { chats: session.listChats(args) };
+    case "read":
+      return session.readChat(args.jid, args);
+    case "search":
+      return { query: args.query, messages: session.search(args.query, args) };
+    case "send":
+      return session.send(args.to, args.text, { quoted: args.quoted });
+    case "markRead":
+      return session.markRead(args.jid);
+    case "exists":
+      return session.exists(args.number);
+    default:
+      throw new wa.WaError(`Unhandled action "${action}".`);
+  }
+}
+
 /* ---------------- http ---------------- */
 
 const server = http.createServer(async (req, res) => {
@@ -190,6 +240,37 @@ const server = http.createServer(async (req, res) => {
       broadcast({ type: "job", job });
     }
     return json(200, answer);
+  }
+
+  // WhatsApp, for the MCP tools.
+  //
+  // Authenticated with an ordinary Firebase ID token — the MCP server already
+  // holds the admin's refresh token and can mint one, so there is no new
+  // shared secret to store, rotate or leak. One identity, one allow-list, the
+  // same one the panel uses.
+  if (req.url === "/whatsapp" && req.method === "POST") {
+    try {
+      await verifyToken((req.headers.authorization || "").replace(/^Bearer\s+/i, ""));
+    } catch (e) {
+      return json(e.status || 401, { error: e.message });
+    }
+
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let payload;
+    try {
+      payload = JSON.parse(body || "{}");
+    } catch (_) {
+      return json(400, { error: "Unreadable request." });
+    }
+
+    try {
+      return json(200, await whatsappAction(payload));
+    } catch (e) {
+      // A WaError carries a sentence written for a human; anything else is a
+      // bug and says so rather than pretending to be advice.
+      return json(e instanceof wa.WaError ? 400 : 500, { error: e.message });
+    }
   }
 
   json(404, { error: "Not found." });
@@ -266,6 +347,9 @@ wss.on("connection", (ws) => {
         case "profile.add":
           ensureProfile(msg.name);
           return reply({ type: "profiles", profiles: listProfiles() });
+
+        case "whatsapp":
+          return reply({ type: "whatsapp", action: msg.action, result: await whatsappAction(msg) });
 
         case "transcript": {
           const file = `${paths.logs}/${msg.jobId}.ndjson`;

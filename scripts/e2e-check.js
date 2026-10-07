@@ -1081,6 +1081,95 @@ async function agentSuite(browser) {
   }
 }
 
+// The WhatsApp section.
+//
+// What is asserted here is mostly the WARNING, because it is the only unusual
+// fact about this feature: using it puts a real account at risk. A warning
+// shown once before connecting and then hidden is decoration — so it must be
+// present in every state, including the connected one.
+//
+// The rest is about not making bulk messaging easy by accident.
+async function whatsappSuite(browser) {
+  console.log("\nwhatsapp: the warning stays, and it sends one at a time");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    const states = ["warn", "connect", "qr", "live"];
+    for (const st of states) {
+      await page.goto(`${BASE}/__whatsapppreview?noload&state=${st}`, { waitUntil: "networkidle2", timeout: 45000 });
+      await page.waitForSelector(".wa-warn", { timeout: 20000 });
+      const seen = await page.evaluate(() => {
+        const w = document.querySelector(".wa-warn");
+        return { visible: !!w?.offsetHeight, text: w?.textContent || "" };
+      });
+      check(seen.visible, `the risk warning is visible in the "${st}" state`);
+      if (st === "live") {
+        // The one that matters: still there after connecting, because the risk
+        // is still there after connecting.
+        check(/banned/i.test(seen.text), "and still says accounts get banned once connected");
+        check(/no bulk send/i.test(seen.text), "and that there is no bulk send");
+      }
+    }
+
+    // --- the connected state ---
+    const live = await page.evaluate(() => ({
+      chats: document.querySelectorAll(".wa-chat").length,
+      msgs: document.querySelectorAll(".wa-msg").length,
+      mine: document.querySelectorAll(".wa-msg.mine").length,
+      unread: document.querySelectorAll(".wa-unread").length,
+      group: !!document.querySelector(".wa-chat-name i"),
+      compose: document.querySelectorAll(".wa-compose textarea").length,
+      sendButtons: document.querySelectorAll(".wa-compose button").length,
+      logout: !!document.querySelector(".wa-logout"),
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    check(live.chats === 3, "chats are listed", String(live.chats));
+    check(live.msgs === 4 && live.mine === 1, "a thread renders, with my own messages distinguished", `${live.msgs}/${live.mine}`);
+    check(live.unread === 1, "an unread count shows");
+    check(live.group, "a group is marked as one");
+
+    // ONE compose box, ONE send button, no recipient picker. A panel that can
+    // address several chats at once is a bulk sender with extra steps.
+    check(live.compose === 1 && live.sendButtons === 1, "there is exactly one compose box and one send button", `${live.compose}/${live.sendButtons}`);
+    const pickers = await page.evaluate(
+      () => document.querySelectorAll('.wa-compose select, .wa-compose input[type=checkbox], .wa select[multiple]').length
+    );
+    check(pickers === 0, "and no way to pick multiple recipients", String(pickers));
+    check(live.logout, "logging out is offered, not just disconnecting");
+    check(!live.overflow, "the panel does not overflow the page");
+
+    // --- hydration ---
+    // A locale-formatted timestamp is a different string on the server, and
+    // the mismatch used to bury the panel under an error overlay.
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.reload({ waitUntil: "networkidle2" });
+    await page.waitForSelector(".wa-msg", { timeout: 20000 });
+    check(
+      !errors.some((e) => /hydrat|does not match/i.test(e)),
+      "the panel hydrates without a mismatch",
+      errors.find((e) => /hydrat|does not match/i.test(e)) || ""
+    );
+
+    // --- the QR is drawn locally ---
+    await page.goto(`${BASE}/__whatsapppreview?noload&state=qr`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".wa-qr svg, .wa-qr-fallback", { timeout: 20000 });
+    const qr = await page.evaluate(() => ({
+      svg: !!document.querySelector(".wa-qr svg"),
+      remote: [...document.querySelectorAll(".wa img, .wa svg image")].map((n) => n.getAttribute("src") || n.getAttribute("href") || "").filter(Boolean),
+    }));
+    check(qr.svg, "the pairing code renders as an inline svg");
+    // A pairing code is a live credential while it is on screen. Handing it to
+    // an image service to draw would be handing out the session.
+    check(qr.remote.length === 0, "and is not fetched from an image service", JSON.stringify(qr.remote));
+  } catch (e) {
+    bad("whatsapp panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 async function tasksSuite(browser) {
   console.log("\ntasks board");
   const page = await browser.newPage();
@@ -1890,6 +1979,7 @@ async function resumeSuite() {
       await tasksSuite(browser);
       await notesSuite(browser);
       await agentSuite(browser);
+      await whatsappSuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
     } finally {
@@ -1898,6 +1988,14 @@ async function resumeSuite() {
   }
   if (which === "seo") {
     await seoSuite();
+  }
+  if (which === "whatsapp") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await whatsappSuite(browser);
+    } finally {
+      await browser.close();
+    }
   }
   if (which === "agent") {
     const browser = await launch({ headful: !!process.env.HEADFUL });

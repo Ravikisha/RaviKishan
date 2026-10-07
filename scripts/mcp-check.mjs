@@ -722,6 +722,12 @@ console.log("\nthe registry survived however it was last merged");
       "hf_add_to_collection", "hf_space_status", "hf_restart_space", "hf_set_space_secret", "hf_inference",
       "hf_jobs_hardware", "hf_run_job", "hf_list_jobs", "hf_get_job", "hf_job_logs", "hf_cancel_job", "hf_usage",
     ],
+    kaggle: [
+      "kaggle_whoami", "kaggle_search_datasets", "kaggle_search_competitions", "kaggle_search_notebooks", "kaggle_search_models",
+      "kaggle_get_dataset", "kaggle_list_dataset_files", "kaggle_get_competition", "kaggle_leaderboard", "kaggle_list_submissions",
+      "kaggle_push_kernel", "kaggle_kernel_status", "kaggle_kernel_output", "kaggle_get_kernel", "kaggle_cancel_kernel",
+      "kaggle_quota", "kaggle_create_dataset_version", "kaggle_submit",
+    ],
     env: [
       "get_env_status", "set_env_var", "import_env_vars", "delete_env_var",
       "get_runtime_config",

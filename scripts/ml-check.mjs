@@ -142,7 +142,54 @@ console.log("\nHugging Face client (stubbed network)");
   api.setFetch(null);
 }
 
-// (Tasks 5 and 6 append here.)
+const kg = await import("../lib/server/kaggleShape.js");
+
+console.log("\nKaggle: refs, accelerators, kernels");
+check(kg.splitRef("ravi/titanic-baseline").slug === "titanic-baseline", "owner/slug splits");
+throws(() => kg.splitRef("titanic"), "a bare slug is refused", /owner\/slug/);
+check(kg.machineShape("T4") === "NvidiaTeslaT4" && kg.machineShape("tpu") === "TpuV5E8", "aliases map to Kaggle's names");
+check(kg.machineShape("p100") === "NvidiaTeslaT4", "P100 is retired, so the alias asks for the T4 it would run on anyway");
+check(kg.machineShape(undefined) === null, "no accelerator is CPU");
+throws(() => kg.machineShape("RTX9000"), "an unknown accelerator names the real ones", /T4/);
+{
+  const r = kg.kernelRequest({ ref: "ravi/exp-1", title: "Exp 1", source: "print(1)", kind: "script", accelerator: "T4", datasets: ["owner/ds"] });
+  check(r.slug === "ravi/exp-1" && r.newTitle === "Exp 1" && r.text === "print(1)", "slug, title and text");
+  check(r.kernelType === "script" && r.language === "python", "script in python by default");
+  check(r.isPrivate === true && r.enableGpu === true && r.machineShape === "NvidiaTeslaT4", "private, GPU on, shape set");
+  check(r.datasetDataSources.join() === "owner/ds", "dataset sources pass through");
+  check(kg.kernelRequest({ ref: "ravi/x", title: "x", source: "1", kind: "script" }).enableGpu === false, "no accelerator, no GPU");
+  throws(() => kg.kernelRequest({ ref: "ravi/x", title: "x", source: "1", kind: "script", isPrivate: false }), "making a kernel public is refused", /private/);
+}
+{
+  const nb = JSON.parse(kg.notebookFromCells([{ type: "markdown", source: "# hi" }, { type: "code", source: "x = 1\nprint(x)" }]));
+  check(nb.nbformat === 4 && nb.cells.length === 2 && nb.cells[1].cell_type === "code", "cells build a v4 notebook");
+  check(nb.cells[1].source.join("") === "x = 1\nprint(x)", "source round-trips");
+}
+
+console.log("\nKaggle: status and quota");
+check(kg.normalizeStatus("COMPLETE") === "complete" && kg.normalizeStatus("CANCEL_ACKNOWLEDGED") === "cancelled", "statuses normalise");
+check(kg.normalizeStatus("kernelworkerstatus.running") === "running", "a prefixed enum still normalises");
+check(kg.normalizeStatus("WAT") === "unknown", "an unknown status is unknown, not an error");
+check(kg.seconds("3600s") === 3600 && kg.seconds(90) === 90 && kg.seconds({ seconds: 60, nanos: 5e8 }) === 60.5, "durations parse in every shape");
+{
+  const q = kg.shapeQuota({
+    quotaRefreshTime: "2026-10-10T00:00:00Z",
+    gpuQuota: { timeUsed: "36000s", totalTimeAllowed: "108000s" },
+    tpuQuota: { timeUsed: 0, totalTimeAllowed: "72000s" },
+  });
+  check(q.gpu.usedHours === 10 && q.gpu.limitHours === 30 && q.gpu.leftHours === 20, "GPU hours used/limit/left");
+  check(q.tpu.leftHours === 20 && q.refreshesAt === "2026-10-10T00:00:00Z", "TPU and refresh time");
+}
+
+console.log("\nKaggle: sorting, auth, errors");
+check(kg.sortFor("datasets", "votes") === "DATASET_SORT_BY_VOTES", "dataset sort maps");
+check(kg.sortFor("kernels", "votes") === "VOTE_COUNT", "kernel sort maps");
+throws(() => kg.sortFor("datasets", "stars"), "an unknown sort names the real ones", /hottest/);
+check(kg.authHeader("KGAT_abc") === "Bearer KGAT_abc", "a token is a bearer");
+check(kg.authHeader("Basic cmF2aTprZXk=") === "Basic cmF2aTprZXk=", "a legacy key stays basic");
+check(/paste/i.test(kg.kaggleError(401, {}).message), "401 says to paste a new token");
+
+// (Task 6 appends here.)
 
 console.log(`\n${pass} passed, ${fails.length} failed`);
 if (fails.length) {

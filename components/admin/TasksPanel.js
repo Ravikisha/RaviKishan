@@ -99,6 +99,11 @@ export default function TasksPanel({ user }) {
   const [groups, setGroups] = useState({}); // provider -> group[]
   const [tasks, setTasks] = useState({}); // `${provider}:${groupId}` -> task[]
   const [err, setErr] = useState("");
+  // The provider whose STORED connection the service has stopped accepting.
+  // Held separately from `err` because this one failure has an action, and a
+  // sentence telling you to go and press a button on the tab you are already
+  // looking at is not one.
+  const [dead, setDead] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
   const [showDone, setShowDone] = useState(false);
@@ -135,9 +140,18 @@ export default function TasksPanel({ user }) {
         const live = list.filter((p) => p.connected && (!only || p.provider === only));
         await Promise.all(
           live.map((p) =>
-            loadProvider(p.provider).catch((e) =>
-              setErr((prev) => prev || `${providerLabel(p.provider)}: ${e.message}`)
-            )
+            loadProvider(p.provider).catch((e) => {
+              // A connection the service no longer accepts is not the same
+              // kind of failure as a network blip: it cannot be retried, only
+              // re-granted. Say which account, and offer the one action.
+              if (String(e.code || "").startsWith("integration/")) {
+                setDead((prev) => prev || p.provider);
+                // A success line from the consent redirect would otherwise sit
+                // directly under the failure, which reads as contradicting it.
+                setMsg("");
+              }
+              setErr((prev) => prev || `${providerLabel(p.provider)}: ${e.message}`);
+            })
           )
         );
       } catch (e) {
@@ -193,6 +207,7 @@ export default function TasksPanel({ user }) {
 
   const connect = async (provider) => {
     setErr("");
+    setDead("");
     setBusy(`Opening ${providerLabel(provider)}…`);
     try {
       await beginConnect(provider);
@@ -216,6 +231,7 @@ export default function TasksPanel({ user }) {
 
   const run = async (label, fn) => {
     setErr("");
+    setDead("");
     setMsg("");
     setBusy(label);
     try {
@@ -379,7 +395,21 @@ export default function TasksPanel({ user }) {
       </div>
 
       {busy ? <p className="tk-busy">{busy}</p> : null}
-      {err ? <p className="admin-err">{err}</p> : null}
+      {err && !dead ? <p className="admin-err">{err}</p> : null}
+      {dead ? (
+        <div className="tk-dead">
+          {/* The panel writes this, not the server. The server's wording ends
+              "open the admin's Tasks tab and press Connect" — correct for an
+              MCP client, absurd on the tab itself, next to the button. */}
+          <p className="tk-dead-msg">
+            {providerLabel(dead)} stopped accepting the saved connection. The permission was
+            withdrawn, or it expired. Reconnecting is one consent screen and holds again.
+          </p>
+          <button type="button" className="admin-btn primary" onClick={() => connect(dead)}>
+            Reconnect {providerLabel(dead)}
+          </button>
+        </div>
+      ) : null}
       {msg ? <p className="tk-ok">{msg}</p> : null}
 
       {conns === null ? (
@@ -888,6 +918,31 @@ export function TasksStyles() {
         margin: 10px 0;
         font-size: 12.5px;
         color: var(--a-dim, #8b90a0);
+      }
+      /* A dead connection is the one failure on this panel with a fix, so it
+         gets the fix rather than a sentence pointing at one. Red left edge,
+         the same "state lives on the left edge" language as the rail and the
+         content editor. */
+      .tk-dead {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 10px 0;
+        padding: 12px 14px;
+        border: 1px solid rgba(220, 76, 70, 0.35);
+        border-left: 2px solid #dc4c46;
+        border-radius: 0 10px 10px 0;
+        background: rgba(220, 76, 70, 0.07);
+      }
+      .tk-dead-msg {
+        margin: 0;
+        flex: 1 1 320px;
+        min-width: 0;
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: #f0a9a5;
       }
       .tk-ok {
         margin: 10px 0;

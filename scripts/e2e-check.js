@@ -942,6 +942,8 @@ async function integrationsAuthSuite() {
     [{ action: "createIdentity", label: "intruder" }, "createIdentity"],
     [{ action: "saveLogin", provider: "google", accountId: "1", username: "a", password: "b" }, "saveLogin"],
     [{ action: "forgetLogin", provider: "google", accountId: "1" }, "forgetLogin"],
+    [{ action: "connectKey", provider: "huggingface", key: "hf_x" }, "connectKey"],
+    [{ action: "setAgentReadable", provider: "kaggle", accountId: "1", value: true }, "setAgentReadable"],
   ]) {
     try {
       const res = await fetch(`${BASE}/api/accounts`, {

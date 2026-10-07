@@ -18,8 +18,9 @@ import {
   patchDocument,
 } from "../../lib/server/firestoreRest";
 import * as dir from "../../lib/server/accountDirectory";
-import { accountPath } from "../../lib/server/connectedStore";
-import { PROVIDERS, providerConfig } from "../../lib/server/integrations";
+import { accountPath, connectedRecord } from "../../lib/server/connectedStore";
+import { PROVIDERS, providerConfig, getProvider, seal, isSealConfigured } from "../../lib/server/integrations";
+import { parseKey, identify, KeyError } from "../../lib/server/mlKeys";
 import * as secrets from "../../lib/server/secretStore";
 import { withEnv } from "../../lib/server/envStore";
 
@@ -45,6 +46,9 @@ const providerSummary = () =>
       borrowed: cfg.borrowed || "",
       services: dir.servicesFor(p.id).map((s) => s.id),
       scopes: p.scopes || [],
+      auth: p.auth || "oauth",
+      keyHint: p.keyHint || "",
+      tokenPage: p.tokenPage || "",
     };
   });
 
@@ -234,9 +238,69 @@ async function handler(req, res) {
       return res.status(200).json({ deleted: id });
     }
 
+    /*
+     * Pasted-token accounts (Hugging Face, Kaggle). The key is checked with
+     * the provider FIRST — the account id comes from the provider's answer,
+     * never from the form — then sealed and written as the admin. Nothing
+     * about the key is echoed back or written to the audit log.
+     */
+    if (action === "connectKey") {
+      const p = getProvider(req.body.provider);
+      if (p.auth !== "apiKey") {
+        return res.status(400).json({ error: `${p.label} connects through its consent screen, not a pasted token.` });
+      }
+      if (!isSealConfigured()) {
+        return res.status(503).json({
+          error: "Tokens cannot be stored until INTEGRATION_SECRET is set.",
+          code: "integrations/not-configured",
+        });
+      }
+      const cred = parseKey(p.id, req.body.key);
+      const who = await identify(p.id, cred);
+      const path = accountPath(p.id, who.accountId);
+      const existing = await getDocument(idToken, path).catch(() => null);
+      const record = connectedRecord({
+        provider: p.id,
+        accountId: who.accountId,
+        label: who.label,
+        sealed: seal({ accessToken: cred.accessToken }, "refresh"),
+        kind: "access",
+        expiresAt: "",
+        scope: who.scope,
+        email: who.email,
+        identityId: existing?.identityId || "",
+      });
+      // Re-pasting a token keeps the owner's export choice; a new account starts off.
+      record.agentReadable = existing?.agentReadable === true;
+      await patchDocument(idToken, path, record);
+      await audit(idToken, claims, "account.connectKey", `${p.id}:${who.accountId}`, existing ? "token replaced" : "connected");
+      return res.status(200).json({
+        connected: { provider: p.id, accountId: who.accountId, label: who.label, scope: who.scope },
+        warning: who.warning,
+      });
+    }
+
+    if (action === "setAgentReadable") {
+      const p = getProvider(req.body.provider);
+      if (p.auth !== "apiKey") {
+        return res.status(400).json({ error: "Only pasted-token accounts can be exported to an agent." });
+      }
+      const { accountId } = req.body;
+      if (!accountId) return res.status(400).json({ error: "Name the account." });
+      const value = req.body.value === true;
+      const path = accountPath(p.id, accountId);
+      if (!(await getDocument(idToken, path).catch(() => null))) {
+        return res.status(404).json({ error: `No ${p.label} account "${accountId}" is connected.` });
+      }
+      await patchDocument(idToken, path, { agentReadable: value });
+      await audit(idToken, claims, "account.agentReadable", `${p.id}:${accountId}`, value ? "on" : "off");
+      return res.status(200).json({ provider: p.id, accountId, agentReadable: value });
+    }
+
     return res.status(400).json({ error: `Unknown action "${action}".` });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
+    if (e instanceof KeyError) return res.status(e.status).json({ error: e.message, code: e.code });
     if (e instanceof dir.ConnectedAuthError) {
       return res.status(409).json({ error: e.message, code: e.code || "" });
     }

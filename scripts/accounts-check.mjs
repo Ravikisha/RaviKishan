@@ -242,6 +242,11 @@ check(servicesFor("huggingface").some((s) => s.id === "ml"), "huggingface is wir
   check(one.accountId === "ravi" && one.chosenBy === "only", "the only Kaggle account is chosen, and says why");
 }
 
+console.log("\nan exportable token says so, and only a real true does");
+check(accountShape({ provider: "kaggle", accountId: "r", agentReadable: true }).agentReadable === true, "agentReadable:true survives into the row");
+check(accountShape({ provider: "kaggle", accountId: "r", agentReadable: "true" }).agentReadable === false, "a truthy string is not true");
+check(accountShape({ provider: "kaggle", accountId: "r" }).agentReadable === false, "absent reads false");
+
 console.log("\nthe legacy token path returns the token, not undefined");
 {
   const src = (await import("node:fs")).readFileSync(new URL("../lib/server/accountDirectory.js", import.meta.url), "utf8");

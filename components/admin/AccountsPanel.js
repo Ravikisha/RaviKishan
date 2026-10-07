@@ -35,6 +35,8 @@ import {
   loadDirectory,
   saveLogin,
   setDefaultAccount,
+  connectKey,
+  setAgentReadable,
 } from "../../lib/accountsClient";
 
 const UNSORTED = "__unsorted";
@@ -260,6 +262,10 @@ export default function AccountsPanel() {
                   onForget={() =>
                     act("Disconnecting…", () => forgetAccount(a.provider, a.accountId))
                   }
+                  apiKey={providers.some((p) => p.id === a.provider && p.auth === "apiKey")}
+                  onAgentReadable={(value) =>
+                    act("Saving…", () => setAgentReadable(a.provider, a.accountId, value))
+                  }
                   onReconnect={() => connectProvider(a.provider, "accounts")}
                   onSaveLogin={(login) =>
                     act("Saving the sign-in…", () =>
@@ -373,6 +379,7 @@ export default function AccountsPanel() {
         <ul className="ac-providers">
           {providers.map((p) => {
             const held = accounts.filter((a) => a.provider === p.id).length;
+            if (p.auth === "apiKey") return <KeyConnect key={p.id} p={p} held={held} onDone={refresh} />;
             return (
               <li key={p.id} className={`ac-prov${p.configured ? "" : " off"}`}>
                 <button
@@ -403,6 +410,62 @@ export default function AccountsPanel() {
 
 /* ------------------------------------------------------------------ */
 
+// A pasted-token provider has no consent screen to send you to, so its row is
+// the form itself. The key leaves state the moment it is sent, and the server
+// checks it with the provider before anything is stored.
+function KeyConnect({ p, held, onDone }) {
+  const [key, setKey] = useState("");
+  const [state, setState] = useState({ busy: false, err: "", note: "" });
+  const submit = async (e) => {
+    e.preventDefault();
+    const sent = key;
+    setKey("");
+    setState({ busy: true, err: "", note: "" });
+    try {
+      const out = await connectKey(p.id, sent);
+      setState({
+        busy: false,
+        err: "",
+        note: `${out.connected.label} connected.${out.warning ? ` ${out.warning}` : ""}`,
+      });
+      onDone();
+    } catch (er) {
+      setState({ busy: false, err: er.message, note: "" });
+    }
+  };
+  return (
+    <li className={`ac-prov ac-key${p.configured ? "" : " off"}`}>
+      <form onSubmit={submit}>
+        <span className="ac-prov-name">{p.label}</span>
+        <span className="ac-prov-held">
+          {held ? `${held} connected` : p.configured ? "Paste a token" : `Needs ${p.missing.join(", ")}`}
+        </span>
+        <input
+          className="admin-input"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={p.keyHint}
+          value={key}
+          disabled={!p.configured || state.busy}
+          onChange={(e) => setKey(e.target.value)}
+          aria-label={`${p.label} token`}
+        />
+        <button type="submit" disabled={!p.configured || !key.trim() || state.busy}>
+          {state.busy ? "Checking…" : "Connect"}
+        </button>
+        {p.tokenPage ? (
+          <a href={p.tokenPage} target="_blank" rel="noreferrer" className="ac-key-link">
+            Get a token
+          </a>
+        ) : null}
+        {state.err ? <p className="ac-key-err">{state.err}</p> : null}
+        {state.note ? <p className="ac-key-note">{state.note}</p> : null}
+      </form>
+    </li>
+  );
+}
+
 function Row({
   account,
   chips,
@@ -414,6 +477,8 @@ function Row({
   onAssign,
   onForget,
   onReconnect,
+  apiKey,
+  onAgentReadable,
   onSaveLogin,
   onForgetLogin,
   secretsConfigured,
@@ -502,9 +567,20 @@ function Row({
                 ))}
               </select>
             </label>
-            <button type="button" className="ac-ghost" onClick={onReconnect}>
-              Reconnect
-            </button>
+            {apiKey ? (
+              <label className="ac-agent">
+                <input
+                  type="checkbox"
+                  checked={account.agentReadable === true}
+                  onChange={(e) => onAgentReadable(e.target.checked)}
+                />
+                Agent may read this token
+              </label>
+            ) : (
+              <button type="button" className="ac-ghost" onClick={onReconnect}>
+                Reconnect
+              </button>
+            )}
             <button type="button" className="ac-danger" onClick={onForget} disabled={account.legacy}>
               Disconnect
             </button>
@@ -896,6 +972,52 @@ function Styles() {
       }
       .ac-prov button:hover:not(:disabled) {
         border-color: #ffb020;
+      }
+      /* A pasted-token provider: the row is the form. Same hairline box as
+         the OAuth buttons beside it, so the grid still reads as one list. */
+      .ac-key form {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px 10px;
+        border: 1px solid var(--a-line, #2b3040);
+        border-radius: 10px;
+        padding: 11px 13px;
+      }
+      .ac-key .admin-input {
+        grid-column: 1 / -1;
+        font-family: "JetBrains Mono", monospace;
+      }
+      .ac-key button {
+        width: auto;
+        display: inline-block;
+        grid-column: 1;
+        justify-self: start;
+        padding: 6px 14px;
+      }
+      .ac-key-link {
+        grid-column: 2;
+        align-self: center;
+        font-size: 13px;
+        color: var(--a-dim, #8b90a0);
+      }
+      .ac-key-err {
+        grid-column: 1 / -1;
+        margin: 0;
+        font-size: 13px;
+        color: #ff6b6b;
+      }
+      .ac-key-note {
+        grid-column: 1 / -1;
+        margin: 0;
+        font-size: 13px;
+        color: var(--a-text, #e7e8ee);
+      }
+      .ac-agent {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 13px;
+        color: var(--a-text, #e7e8ee);
       }
       .ac-prov button:disabled {
         cursor: not-allowed;

@@ -92,6 +92,86 @@ export function shelfSummary(tasks) {
   return { tone: "clear", text: `${open.length} open, nothing due yet` };
 }
 
+/* ================= lenses ================= */
+
+// Two hundred tasks across fourteen lists is not something you look at, it is
+// something you search. A lens narrows the WHOLE board — both accounts, every
+// list — and the count beside each lens comes from the same predicate as the
+// rows under it, so the number cannot promise what the board then fails to show.
+export const LENSES = [
+  ["all", "Everything"],
+  ["overdue", "Overdue"],
+  ["week", "Due within 7 days"],
+];
+
+const daysFromToday = (due) =>
+  Math.round((Date.parse(`${due}T00:00:00Z`) - Date.parse(`${todayISO()}T00:00:00Z`)) / 86400000);
+
+export function matchesLens(task, lens, query = "") {
+  if (lens === "overdue" && dueState(task.due) !== "overdue") return false;
+  if (lens === "week") {
+    if (!task.due) return false;
+    const d = daysFromToday(task.due);
+    if (d < 0 || d > 7) return false;
+  }
+  // Every word must appear, so a second word narrows instead of widening.
+  const words = String(query).toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = `${task.title || ""} ${task.notes || ""}`.toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+export function lensCounts(tasks) {
+  const open = tasks.filter((t) => !t.completed && !t.isStep);
+  return Object.fromEntries(
+    LENSES.map(([k]) => [k, open.filter((t) => matchesLens(t, k)).length])
+  );
+}
+
+// The rows of one list that survive a lens. A parent stays when one of its
+// subtasks matched, so a hit is never shown orphaned from the task it belongs to.
+export function narrowRows(rows, { lens, query, showDone }) {
+  const hit = (t) => (showDone || !t.completed) && matchesLens(t, lens, query);
+  const keep = new Set(rows.filter(hit).map((t) => t.id));
+  for (const t of rows) if (t.parent && keep.has(t.id)) keep.add(t.parent);
+  return rows.filter((t) => keep.has(t.id));
+}
+
+export function LensBar({ lens, onLens, query, onQuery, counts }) {
+  return (
+    <div className="tk-lens" role="search">
+      <input
+        className="admin-input tk-find"
+        type="search"
+        placeholder="Find a task"
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onQuery("")}
+        aria-label="Find a task in every list"
+      />
+      <div className="tk-lens-set" role="group" aria-label="Show">
+        {LENSES.map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            className={`tk-lens-item${lens === k ? " on" : ""}`}
+            aria-pressed={lens === k}
+            onClick={() => onLens(k)}
+          >
+            {/* The blog rail's highlighter, reused: the one bold gesture in
+                this admin means "this is the one you are looking at". */}
+            <span className="tk-lens-mark" aria-hidden="true" />
+            <span className="tk-lens-text">{label}</span>
+            <span className={`tk-lens-n${k === "overdue" && counts[k] ? " late" : ""}`}>
+              {counts[k] ?? 0}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ================= the panel ================= */
 
 export default function TasksPanel({ user }) {
@@ -116,21 +196,32 @@ export default function TasksPanel({ user }) {
   // drop target — while one is in the air.
   const [dragging, setDragging] = useState(false);
   const dragged = useRef(null);
+  const [lens, setLens] = useState("all");
+  const [query, setQuery] = useState("");
+  const filtering = lens !== "all" || query.trim() !== "";
 
   const key = (provider, groupId) => `${provider}:${groupId}`;
+  const rowsOf = (provider, groupId) => {
+    const rows = tasks[key(provider, groupId)] || [];
+    return filtering ? narrowRows(rows, { lens, query, showDone }) : rows;
+  };
 
   // Does this list get a column? It does if it holds anything worth the space
   // — open work, or completed work while completed work is being shown — or if
   // it was opened by hand. A drag in progress opens every list, because you
-  // cannot drop a task onto a chip.
+  // cannot drop a task onto a chip. Under a lens, only lists with a match.
   const shown = (provider, group) => {
-    if (opened[key(provider, group.id)]) return true;
     // `dragged` is a ref, so it cannot drive this on its own — a ref change
     // renders nothing, and the chips would still be chips at the moment you
     // need them to be drop targets.
     if (dragging) return true;
-    const list = tasks[key(provider, group.id)] || [];
-    return showDone ? list.length > 0 : list.some((t) => !t.done);
+    const list = rowsOf(provider, group.id);
+    if (filtering) return list.length > 0;
+    if (opened[key(provider, group.id)]) return true;
+    // `completed`, not `done`: the rows have no `done` field, so the old
+    // check was true for every task and a list holding only finished work
+    // took a full column to say "Nothing here".
+    return showDone ? list.length > 0 : list.some((t) => !t.completed);
   };
 
   /* ---------------- connections ---------------- */
@@ -390,6 +481,7 @@ export default function TasksPanel({ user }) {
     () => PROVIDERS.filter((p) => conns?.[p.id]?.connected),
     [conns]
   );
+  const counts = useMemo(() => lensCounts(Object.values(tasks).flat()), [tasks]);
 
   return (
     <div className="tk-main">
@@ -400,8 +492,7 @@ export default function TasksPanel({ user }) {
               twice on one screen, the second time smaller and greyer — which
               reads as a subheading that forgot its content. */}
           <p className="tk-sub">
-            Your real Google Tasks and Microsoft To Do, side by side. Everything here saves
-            straight to the account it sits in.
+            Google Tasks and Microsoft To Do, read and written in place. Nothing here is a copy.
           </p>
         </div>
         <div className="tk-actions">
@@ -438,6 +529,10 @@ export default function TasksPanel({ user }) {
       {/* Not while something is loading: "Loading your tasks…" sitting above
           "Google Tasks connected…" is two states claiming the present tense. */}
       {msg && !busy ? <p className="tk-ok">{msg}</p> : null}
+
+      {connected.length ? (
+        <LensBar lens={lens} onLens={setLens} query={query} onQuery={setQuery} counts={counts} />
+      ) : null}
 
       {conns === null ? (
         <p className="tk-busy">Checking your accounts…</p>
@@ -516,8 +611,9 @@ export default function TasksPanel({ user }) {
                         key={g.id}
                         provider={p.id}
                         list={g}
-                        tasks={tasks[key(p.id, g.id)] || []}
-                        showDone={showDone}
+                        tasks={rowsOf(p.id, g.id)}
+                        showDone={showDone || filtering}
+                        limit={filtering ? 0 : COLUMN_LIMIT}
                         busy={!!busy}
                         dropState={
                           dragOver === `${p.id}:${g.id}`
@@ -546,10 +642,16 @@ export default function TasksPanel({ user }) {
                       with the word "nothing" and pushed eighteen real tasks in
                       the other account below the fold. Clicking one opens it
                       where it stands. */}
-                  <QuietLists
-                    lists={gs.filter((g) => !shown(p.id, g))}
-                    onOpen={(g) => setOpened((m) => ({ ...m, [key(p.id, g.id)]: true }))}
-                  />
+                  {filtering ? (
+                    gs.some((g) => shown(p.id, g)) ? null : (
+                      <p className="tk-empty">Nothing in {p.label} matches.</p>
+                    )
+                  ) : (
+                    <QuietLists
+                      lists={gs.filter((g) => !shown(p.id, g))}
+                      onOpen={(g) => setOpened((m) => ({ ...m, [key(p.id, g.id)]: true }))}
+                    />
+                  )}
                   </>
                 ) : failed ? (
                   <p className="tk-empty tk-empty-unread">
@@ -612,11 +714,18 @@ export function QuietLists({ lists, onOpen }) {
   );
 }
 
+// A list of sixty tasks rendered whole is a scroll box inside a scroll box,
+// eight times over. A column shows the first few in the list's own order and
+// says how many more there are; a lens lifts the cap, because then every row
+// on screen is one you asked for.
+export const COLUMN_LIMIT = 8;
+
 export function GroupColumn({
   provider = "google",
   list,
   tasks,
   showDone,
+  limit = COLUMN_LIMIT,
   busy,
   dropState,
   onDragStateChange,
@@ -636,6 +745,7 @@ export function GroupColumn({
   const [notes, setNotes] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [more, setMore] = useState(false);
 
   const open = tasks.filter((t) => !t.completed);
   const done = tasks.filter((t) => t.completed);
@@ -643,7 +753,9 @@ export function GroupColumn({
 
   // Subtasks and steps hang off a parent id; render them under their parent
   // rather than as orphan rows, which is how both apps show them.
-  const roots = shown.filter((t) => !t.parent);
+  const allRoots = shown.filter((t) => !t.parent);
+  const capped = limit > 0 && !more && allRoots.length > limit;
+  const roots = capped ? allRoots.slice(0, limit) : allRoots;
   const childrenOf = (id) => shown.filter((t) => t.parent === id);
 
   const submit = (e) => {
@@ -774,12 +886,17 @@ export function GroupColumn({
             </React.Fragment>
           ))
         )}
+        {limit > 0 && allRoots.length > limit ? (
+          <button type="button" className="tk-more" onClick={() => setMore((v) => !v)}>
+            {more ? "Show fewer" : `Show ${allRoots.length - limit} more`}
+          </button>
+        ) : null}
       </div>
 
       <form className={`tk-add${expanded ? " is-open" : ""}`} onSubmit={submit}>
         <input
           className="admin-input tk-add-title"
-          placeholder="Add a task"
+          placeholder="+ Add a task"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onFocus={() => setExpanded(true)}
@@ -1034,6 +1151,81 @@ export function TasksStyles() {
         max-width: 72ch;
       }
 
+      /* ---- the lens: find, and narrow the whole board ---- */
+      .tk-lens {
+        display: flex;
+        align-items: center;
+        gap: 10px 22px;
+        flex-wrap: wrap;
+        margin: 16px 0 4px;
+      }
+      .tk-find {
+        flex: 0 1 300px;
+        min-width: 200px;
+      }
+      .tk-lens-set {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 18px;
+      }
+      .tk-lens-item {
+        position: relative;
+        display: inline-flex;
+        align-items: baseline;
+        gap: 7px;
+        padding: 4px 2px;
+        background: none;
+        border: 0;
+        font: inherit;
+        font-size: 13px;
+        color: var(--a-dim, #8b90a0);
+        cursor: pointer;
+      }
+      .tk-lens-item:hover {
+        color: var(--a-text, #e7e8ee);
+      }
+      .tk-lens-item.on {
+        color: var(--a-text, #e7e8ee);
+        font-weight: 600;
+      }
+      .tk-lens-text,
+      .tk-lens-n {
+        position: relative;
+        z-index: 1;
+      }
+      .tk-lens-n {
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--a-dim, #7d8496);
+        font-variant-numeric: tabular-nums;
+      }
+      .tk-lens-n.late {
+        color: #ff9a9a;
+      }
+      /* The marker-pen swipe from the blog's contents rail, skewed and
+         overrunning the words the way a real highlighter does. */
+      .tk-lens-mark {
+        position: absolute;
+        left: -3px;
+        right: -3px;
+        top: 50%;
+        height: 1.15em;
+        transform: translateY(-50%) skewX(-9deg) scaleX(0);
+        transform-origin: left center;
+        background: var(--a-amber, #ffb020);
+        opacity: 0.3;
+        border-radius: 2px;
+        transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+      }
+      .tk-lens-item.on .tk-lens-mark {
+        transform: translateY(-50%) skewX(-9deg) scaleX(1);
+      }
+      .tk-lens-item:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: 3px;
+        border-radius: 4px;
+      }
+
       /* ---- the shelf: which account you are inside ---- */
       .tk-shelf {
         margin: 22px 0 0;
@@ -1233,12 +1425,12 @@ export function TasksStyles() {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      /* A number, not a pill: the circle around it was chrome that said
+         "badge" and nothing about the count. */
       .tk-count {
-        font-size: 11px;
+        font-size: 12px;
         color: var(--a-dim, #7d8496);
-        border: 1px solid var(--a-line, #2a2e38);
-        border-radius: 999px;
-        padding: 1px 7px;
+        font-variant-numeric: tabular-nums;
       }
       .tk-menu-wrap {
         position: relative;
@@ -1402,13 +1594,39 @@ export function TasksStyles() {
 
       .tk-add {
         border-top: 1px solid var(--a-line, #23262f);
-        padding: 8px;
+        padding: 6px;
         display: flex;
         flex-direction: column;
         gap: 7px;
       }
       .tk-add-title {
         font-size: 13px;
+      }
+      /* At rest the add field is a line of text, not a boxed input repeated
+         under every column; it becomes a field when you go to use it. */
+      .tk-add:not(.is-open) .tk-add-title {
+        background: transparent;
+        border-color: transparent;
+      }
+      .tk-add:not(.is-open) .tk-add-title:hover {
+        border-color: var(--a-line, #2a2e38);
+      }
+      .tk-more {
+        align-self: flex-start;
+        margin: 4px 0 2px 9px;
+        padding: 3px 0;
+        background: none;
+        border: 0;
+        border-bottom: 1px dashed var(--a-line, #3a3f4d);
+        color: var(--a-dim, #8b90a0);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .tk-more:hover,
+      .tk-more:focus-visible {
+        color: var(--a-text, #e7e8ee);
+        border-bottom-color: var(--a-amber, #ffb020);
       }
       .tk-add-notes {
         font-family: inherit;
@@ -1485,6 +1703,7 @@ export function TasksStyles() {
         }
       }
       @media (prefers-reduced-motion: reduce) {
+        .tk-lens-mark,
         .tk-col,
         .tk-row .tk-del {
           transition: none;

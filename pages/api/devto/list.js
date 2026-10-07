@@ -7,8 +7,9 @@
 // way it does).
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
 import { listMine, toPost, isDevtoConfigured } from "../../../lib/server/devto";
+import { withEnv } from "../../../lib/server/envStore";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -41,3 +42,6 @@ export default async function handler(req, res) {
 
 // 27 articles with full markdown bodies is comfortably over the default limit.
 export const config = { api: { responseLimit: "8mb" } };
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

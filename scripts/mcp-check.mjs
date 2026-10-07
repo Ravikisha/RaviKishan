@@ -268,6 +268,33 @@ console.log("\ncapabilities that must stay absent");
     String(has(/refresh_token|oauth_google|google_credential|set_integration/))
   );
 
+  // The account directory makes "which account" answerable, and that raises
+  // two new ways to get it wrong. Both are checked rather than trusted.
+  check(
+    has(/^(forget_account|remove_account|delete_account)$/).length === 0,
+    "no tool deletes a connected account",
+    String(has(/^(forget_account|remove_account|delete_account)$/))
+  );
+  // A sign-in is the one thing here that is not an API credential, and it is
+  // the one a leak would hurt most, so it sits behind `secrets` like every
+  // other plaintext value and is never offered to a read or write token.
+  const loginTool = TOOLS.find((t) => t.name === "get_account_login");
+  check(!!loginTool && loginTool.scope === "secrets", "a saved sign-in is behind the secrets scope");
+  check(
+    /do not echo/i.test(loginTool?.description || ""),
+    "and its description tells the model how to handle the value"
+  );
+  // Reading the roster must not be a way to read credentials: the list tool is
+  // `read` scope, so it must never return a secret, a token or a password.
+  const listTool = TOOLS.find((t) => t.name === "list_accounts");
+  check(listTool?.scope === "read", "listing accounts is a read");
+  check(
+    !/password|secret|token/i.test(
+      JSON.stringify(listTool?.inputSchema || {})
+    ),
+    "and it takes no credential of any kind"
+  );
+
   // Vault tools never hand back bytes.
   const vaultTools = TOOLS.filter((t) => /vault/.test(t.name));
   check(
@@ -356,6 +383,59 @@ console.log("\nLinkedIn promises only what LinkedIn actually offers");
   check(!!post?.inputSchema?.properties?.dryRun, "create_linkedin_post can be rehearsed with dryRun");
   const del = TOOLS.find((t) => t.name === "delete_linkedin_post");
   check(!!del?.inputSchema?.properties?.confirm, "delete_linkedin_post asks for confirmation");
+
+  // Edit, comment and react are real (w_member_social) and public, so each is
+  // write-scoped, the irreversible one confirms, and the public ones rehearse.
+  const social = [
+    "edit_linkedin_post", "comment_on_linkedin_post", "edit_linkedin_comment",
+    "delete_linkedin_comment", "react_on_linkedin", "remove_linkedin_reaction",
+  ].map((n) => TOOLS.find((t) => t.name === n));
+  check(social.every((t) => t && t.scope === "write"), "every LinkedIn write tool needs the write scope");
+  check(
+    !!TOOLS.find((t) => t.name === "delete_linkedin_comment")?.inputSchema?.properties?.confirm,
+    "delete_linkedin_comment asks for confirmation"
+  );
+  check(
+    ["edit_linkedin_post", "comment_on_linkedin_post"].every(
+      (n) => !!TOOLS.find((t) => t.name === n)?.inputSchema?.properties?.dryRun
+    ),
+    "editing a post and commenting can both be rehearsed with dryRun"
+  );
+  // The guards refuse before any credential is touched.
+  const refuses = async (name, args, re) => {
+    try {
+      await TOOLS.find((t) => t.name === name).handler(args, { idToken: "x" });
+      return false;
+    } catch (e) {
+      return re.test(e.message);
+    }
+  };
+  check(
+    await refuses("comment_on_linkedin_post", { post: "https://example.com/not-a-post", text: "hi" }, /not a LinkedIn post URN/),
+    "a comment on something that is not a post is refused before any I/O"
+  );
+  check(
+    await refuses("comment_on_linkedin_post", { post: "urn:li:share:1", text: "x".repeat(1251) }, /1250/),
+    "an over-long comment is refused before any I/O"
+  );
+  check(
+    await refuses("delete_linkedin_comment", { commentUrn: "urn:li:share:1", confirm: true }, /not a LinkedIn comment URN/),
+    "a post URN passed as a comment is refused before any I/O"
+  );
+  check(
+    await refuses("react_on_linkedin", { target: "urn:li:share:1", reaction: "curious" }, /Unknown reaction|curious/i)
+      || !TOOLS.find((t) => t.name === "react_on_linkedin").inputSchema.properties.reaction.enum.includes("curious"),
+    "the deprecated Curious reaction is not offered"
+  );
+  const dry = await TOOLS.find((t) => t.name === "edit_linkedin_post").handler(
+    { urn: "urn:li:share:1", text: "Shipped (finally) a #rust tool_name", dryRun: true },
+    { idToken: "x" }
+  );
+  check(
+    dry.dryRun && dry.commentary === "Shipped \\(finally\\) a #rust tool\\_name",
+    "an edit's dry run shows the text escaped for LinkedIn, hashtags kept",
+    dry.commentary
+  );
 }
 
 console.log("\nGitHub tools curate, and cannot destroy");
@@ -365,6 +445,12 @@ console.log("\nGitHub tools curate, and cannot destroy");
   const names = gh.map((t) => t.name);
 
   check(gh.length >= 10, "the github tools exist", String(gh.length));
+
+  // Several GitHub accounts can be connected. A tool without accountId can
+  // only ever act as "the only one", and with two connected it is refused as
+  // ambiguous — so every one of them must be able to name the account.
+  const blind = gh.filter((t) => !t.inputSchema?.properties?.accountId).map((t) => t.name);
+  check(blind.length === 0, "every github tool can name which account acts", blind.join(", "));
 
   // Deleting a repository is irreversible and GitHub gates it behind a scope
   // this app never requests (see integrations-check). There must be no tool
@@ -574,6 +660,21 @@ console.log("\nthe registry survived however it was last merged");
   // One line per family, so a merge that drops a whole block is as loud as one
   // that drops a single tool.
   const EXPECTED = {
+    // The authentication centre. Every other family that touches an outside
+    // account depends on these being callable first, so losing one silently
+    // would leave a model guessing which handle it is posting as.
+    accounts: [
+      "list_accounts", "whoami_for", "get_account_services", "set_default_account",
+      "get_account_login",
+    ],
+    // Two of the five services genuinely cannot report, and list_insights is
+    // what tells a model that in one call instead of leaving it to hunt.
+    insights: [
+      "list_insights", "get_youtube_insights", "get_instagram_insights", "get_github_traffic",
+    ],
+    // The channel's own description is a WRITE that replaces the whole record;
+    // losing the read half would leave only the destructive one registered.
+    youtube: ["get_youtube_channel_config", "update_youtube_channel"],
     tasks: [
       "list_task_providers", "list_task_groups", "create_task_group", "rename_task_group",
       "delete_task_group", "list_tasks", "create_task", "update_task", "move_task",
@@ -583,6 +684,7 @@ console.log("\nthe registry survived however it was last merged");
       "get_github_profile", "update_github_profile", "list_github_repos", "get_github_repo",
       "update_github_repo", "create_github_repo", "get_github_readme", "update_github_readme",
       "get_github_file", "update_github_file", "list_github_pinned", "audit_github_repos",
+      "get_github_analytics", "list_github_top_repos",
     ],
     notes: [
       "list_note_sources", "list_notebooks", "list_notes", "get_note", "create_note",
@@ -592,6 +694,8 @@ console.log("\nthe registry survived however it was last merged");
       "get_linkedin_capabilities", "get_linkedin_profile", "create_linkedin_post",
       "list_linkedin_posts", "delete_linkedin_post", "draft_linkedin_post",
       "get_linkedin_drift", "linkedin_job_search_url",
+      "edit_linkedin_post", "comment_on_linkedin_post", "edit_linkedin_comment",
+      "delete_linkedin_comment", "react_on_linkedin", "remove_linkedin_reaction",
     ],
     social: [
       "list_social_accounts", "get_social_capabilities",
@@ -610,7 +714,7 @@ console.log("\nthe registry survived however it was last merged");
       "get_analytics_realtime",
     ],
     env: [
-      "get_env_status", "list_env_vars", "set_env_var", "delete_env_var",
+      "get_env_status", "set_env_var", "import_env_vars", "delete_env_var",
       "get_runtime_config",
     ],
   };
@@ -760,20 +864,45 @@ console.log("\nenvironment tools cannot reach the keys that decrypt everything")
     check(offered.length === 0, `a token with ${combo.join("+")} is offered no env tool`, String(offered.map((t) => t.name)));
   }
 
-  // THE containment claim: the keys that decrypt everything else, or that
-  // could mint credentials, are refused before any I/O — and the refusal
-  // explains itself rather than reading as an arbitrary denylist.
-  for (const key of ["SECRETS_KEY", "MCP_TOKEN_SECRET", "INTEGRATION_SECRET", "B2_APP_KEY", "VERCEL_TOKEN"]) {
-    let msg = "";
+  // THE containment claim, now that every variable lives in the database:
+  // ENV_KEY is refused everywhere, and the keyring keys (which seal other data
+  // or decide where the vault's files go) are refused to an MCP token through
+  // the ACTUAL tool handlers, before any I/O — a token able to set
+  // MCP_TOKEN_SECRET could mint itself any scope.
+  {
     let status = 0;
     try {
-      reg.assertManageable(key);
+      reg.assertManageable("ENV_KEY");
     } catch (e) {
-      msg = e.message;
       status = e.status;
     }
-    check(!!msg && status === 403, `${key} is refused with 403 before any I/O`, `${status} ${msg.slice(0, 50)}`);
+    check(status === 403, "ENV_KEY is refused with 403 before any I/O", String(status));
   }
+  const setTool = TOOLS.find((t) => t.name === "set_env_var");
+  const delTool = TOOLS.find((t) => t.name === "delete_env_var");
+  for (const key of ["ENV_KEY", "SECRETS_KEY", "MCP_TOKEN_SECRET", "INTEGRATION_SECRET", "B2_APP_KEY", "B2_ENDPOINT"]) {
+    let msg = "";
+    try {
+      await setTool.handler({ key, value: "attacker-chosen" }, { idToken: "x" });
+    } catch (e) {
+      msg = e.message;
+    }
+    check(/admin's Environment tab|opens the store|cannot be/.test(msg), `set_env_var refuses ${key} before any I/O`, msg.slice(0, 60));
+  }
+  {
+    let msg = "";
+    try {
+      await delTool.handler({ key: "MCP_TOKEN_SECRET", confirm: true }, { idToken: "x" });
+    } catch (e) {
+      msg = e.message;
+    }
+    check(/admin's Environment tab/.test(msg), "delete_env_var refuses a keyring key too", msg.slice(0, 60));
+  }
+  {
+    const imp = TOOLS.find((t) => t.name === "import_env_vars");
+    check(!!imp && imp.scope === "secrets", "bulk import exists and sits behind the secrets scope");
+  }
+  check(!TOOLS.some((t) => /vercel/i.test(t.name)), "no tool talks to Vercel any more");
 
   // No tool may return a value. Presence is the whole contract.
   const reader = TOOLS.filter((t) => /^get_env|^list_env/.test(t.name));

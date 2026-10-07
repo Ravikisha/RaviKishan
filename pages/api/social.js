@@ -17,10 +17,13 @@ import {
 import * as yt from "../../lib/server/youtube";
 import * as ig from "../../lib/server/instagram";
 import * as xapi from "../../lib/server/xapi";
+import * as insights from "../../lib/server/socialInsights";
+import * as directory from "../../lib/server/accountDirectory";
+import { withEnv } from "../../lib/server/envStore";
 
 const PROVIDERS = ["youtube", "instagram", "x"];
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST." });
@@ -48,6 +51,63 @@ export default async function handler(req, res) {
       );
       return res.status(200).json({ providers: all });
     }
+    // How did it do. Kept beside the posting actions rather than in a route of
+    // its own because it is the same three accounts and the same credential —
+    // a second route would mean a second allow-list to keep in step.
+    if (action === "insights") {
+      const service = String(req.body.service || "");
+      const entry = Object.values(insights.INSIGHTS).find((i) => i.service === service);
+      if (!entry) {
+        return res.status(400).json({
+          error: `Unknown service "${service}". Known: ${Object.values(insights.INSIGHTS)
+            .map((i) => i.service)
+            .join(", ")}.`,
+        });
+      }
+      if (!entry.available) {
+        // Not an error: a real answer about a real limitation, and the panel
+        // renders it as a note rather than as a failure.
+        return res.status(200).json({ available: false, ...entry });
+      }
+      try {
+        const { token, account } = await directory.tokenFor(idToken, {
+          service,
+          accountId: req.body.accountId,
+        });
+        const who = { provider: account.provider, accountId: account.accountId, label: account.label };
+        if (service === "video") {
+          return res.status(200).json({
+            available: true,
+            account: who,
+            ...(await insights.youtubeSummary(token, { range: req.body.range })),
+          });
+        }
+        if (service === "photos") {
+          return res.status(200).json({
+            available: true,
+            account: who,
+            ...(await insights.instagramSummary(token, account.accountId, {
+              range: req.body.range || "28d",
+            })),
+          });
+        }
+        if (service === "code") {
+          if (!req.body.repo) return res.status(400).json({ error: "Name a repository." });
+          return res.status(200).json({
+            available: true,
+            account: who,
+            ...(await insights.githubTraffic(token, req.body.owner || account.accountId, req.body.repo)),
+          });
+        }
+        return res.status(400).json({ error: `"${service}" is reported elsewhere.` });
+      } catch (e) {
+        if (e instanceof insights.InsightsError || e instanceof directory.ConnectedAuthError) {
+          return res.status(200).json({ available: true, problem: e.message, code: e.code || "" });
+        }
+        throw e;
+      }
+    }
+
     if (action === "capabilities") {
       return res.status(200).json({ instagram: ig.CAPABILITIES, x: xapi.CAPABILITIES });
     }
@@ -55,7 +115,13 @@ export default async function handler(req, res) {
     if (!PROVIDERS.includes(provider)) {
       return res.status(400).json({ error: `Unknown provider "${provider}".` });
     }
-    const { token } = await connectedToken(idToken, provider, accountId);
+    // Same resolution as the MCP tools: an explicit account wins, then the
+    // default saved in Accounts, then the only one connected.
+    const { token } = await directory.tokenFor(idToken, {
+      provider,
+      accountId,
+      service: { youtube: "video", instagram: "photos", x: "posts" }[provider] || "",
+    });
 
     /* ---- YouTube ---- */
     if (provider === "youtube") {
@@ -69,6 +135,75 @@ export default async function handler(req, res) {
         delete patch.accountId;
         return res.status(200).json(await yt.updateVideo(token, videoId, patch));
       }
+      // Channel configuration — the title, description and keywords a
+      // visitor reads before watching anything. Read-modify-write, like
+      // videos.update, because channels.update replaces the whole part.
+      if (action === "channelConfig") {
+        return res.status(200).json(await yt.getChannelConfig(token));
+      }
+      if (action === "updateChannel") {
+        return res.status(200).json(
+          await yt.updateChannel(token, {
+            title: req.body.title,
+            description: req.body.description,
+            keywords: req.body.keywords,
+          })
+        );
+      }
+
+      // Growth. A separate API, a separate scope, and a connection made
+      // before that scope was added 403s here and nowhere else — which is
+      // why the error says "reconnect" rather than repeating Google's.
+      if (action === "growth") {
+        try {
+          return res.status(200).json({
+            available: true,
+            ...(await insights.youtubeSummary(token, { range: req.body.range })),
+          });
+        } catch (e) {
+          if (e instanceof insights.InsightsError) {
+            return res.status(200).json({ available: false, why: e.message, code: e.code || "" });
+          }
+          throw e;
+        }
+      }
+      // Per-video numbers, which the Data API does not carry: views there are
+      // lifetime, and the question on a growth page is always "in this window".
+      if (action === "videoGrowth") {
+        try {
+          const report = await insights.youtubeReport(token, {
+            range: req.body.range || "28d",
+            metrics: ["views", "estimatedMinutesWatched", "averageViewDuration"],
+            dimensions: ["video"],
+            limit: req.body.limit || 10,
+          });
+          return res.status(200).json({ available: true, ...report });
+        } catch (e) {
+          if (e instanceof insights.InsightsError) {
+            return res.status(200).json({ available: false, why: e.message, code: e.code || "" });
+          }
+          throw e;
+        }
+      }
+      // The trend line: one row per day, so a sparkline is honest rather than
+      // interpolated between two endpoints.
+      if (action === "dailyGrowth") {
+        try {
+          const report = await insights.youtubeReport(token, {
+            range: req.body.range || "28d",
+            metrics: ["views", "subscribersGained"],
+            dimensions: ["day"],
+            limit: 400,
+          });
+          return res.status(200).json({ available: true, ...report });
+        } catch (e) {
+          if (e instanceof insights.InsightsError) {
+            return res.status(200).json({ available: false, why: e.message, code: e.code || "" });
+          }
+          throw e;
+        }
+      }
+
       if (action === "playlists") return res.status(200).json({ playlists: await yt.listPlaylists(token) });
       if (action === "comments")
         return res.status(200).json({ comments: await yt.listComments(token, req.body.videoId) });
@@ -146,3 +281,6 @@ export default async function handler(req, res) {
     return res.status(e.status || 400).json({ error: e.message || "That did not work." });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

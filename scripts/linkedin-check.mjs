@@ -15,6 +15,10 @@ const {
   buildPostBody,
   postUrl,
   jobSearchUrl,
+  canonicalHeadline,
+  headlineDrift,
+  MAX_HEADLINE_CHARS,
+  RETIRED_PHRASES,
   profileDrift,
   draftFromPost,
   deletePost,
@@ -261,6 +265,159 @@ console.log("\na blog post becomes a draft, not a published post");
     "a draft with no title or URL is refused",
     /title and a URL/
   );
+}
+
+/* ---- the composer's feed fold and the setup panel's redirect URLs ---- */
+{
+  const { feedOpening, FEED_FOLD, linkedinRedirectUris, LINKEDIN_CALLBACK_PATH } = await import(
+    "../lib/server/linkedinText.js"
+  );
+  console.log("\nfeed fold");
+  check(feedOpening("").shown === "" && !feedOpening("").cut, "an empty post shows nothing and is not cut");
+  check(!feedOpening("A short post.").cut, "a short post shows whole");
+  const long = "word ".repeat(100);
+  const o = feedOpening(long);
+  check(o.cut && o.shown.length <= FEED_FOLD, "a long post is cut at the fold", String(o.shown.length));
+  check(!/\bwor$/.test(o.shown) && o.shown.endsWith("word"), "on a word boundary, never mid-word", o.shown.slice(-8));
+  // A blank line costs a line: three short lines fold long before 210 chars.
+  const lines = feedOpening("Hook.\n\nSecond paragraph.\n\nThird.");
+  check(lines.cut && lines.shown === "Hook.\n\nSecond paragraph.", "the fold also counts lines, blank ones included", JSON.stringify(lines.shown));
+  check(!feedOpening("one\ntwo\nthree").cut, "exactly three lines is not cut");
+
+  console.log("\nredirect URLs");
+  const prod = linkedinRedirectUris("");
+  // The apex 308s to www, so the URL the app actually sends on production is
+  // the www one. Listing only the apex is how the first click fails.
+  check(prod.includes(`https://www.ravikishan.me${LINKEDIN_CALLBACK_PATH}`), "the www production URL is listed");
+  check(prod.includes(`https://ravikishan.me${LINKEDIN_CALLBACK_PATH}`), "and the apex");
+  check(prod.includes(`http://localhost:3000${LINKEDIN_CALLBACK_PATH}`), "and local dev");
+  const local = linkedinRedirectUris("http://localhost:3001");
+  check(local.includes(`http://localhost:3001${LINKEDIN_CALLBACK_PATH}`), "the origin it is running on is added");
+  check(
+    linkedinRedirectUris("https://www.ravikishan.me").length === prod.length,
+    "but never twice"
+  );
+  check(
+    linkedinRedirectUris("javascript:alert(1)").length === prod.length,
+    "and an origin that is not http(s) is ignored"
+  );
+}
+
+/* ---- edit, comment, react ---- */
+{
+  const T = await import("../lib/server/linkedinText.js");
+  console.log("\nlittle escaping");
+  check(T.escapeLittle("(see below)") === "\\(see below\\)", "parentheses are escaped", T.escapeLittle("(see below)"));
+  check(
+    T.escapeLittle("a|b{c}@d[e]<f>\\g*h_i~j") === "a\\|b\\{c\\}\\@d\\[e\\]\\<f\\>\\\\g\\*h\\_i\\~j",
+    "every reserved character is escaped, the backslash included",
+    T.escapeLittle("a|b{c}@d[e]<f>\\g*h_i~j")
+  );
+  check(T.escapeLittle("#rust and #Go") === "#rust and #Go", "a #word stays a hashtag");
+  check(T.escapeLittle("C# and # alone") === "C\\# and \\# alone", "a # that starts no word is escaped");
+  check(T.escapeLittle("plain words, 100%!") === "plain words, 100%!", "ordinary text is untouched");
+  check(T.buildPostEdit("Hi (there)").patch.$set.commentary === "Hi \\(there\\)", "an edit sends escaped commentary");
+  await throws(() => T.buildPostEdit("x".repeat(3001)), "an edit over the post cap is refused", /3000/);
+
+  console.log("\nURNs");
+  check(T.assertPostUrn("urn:li:share:123") === "urn:li:share:123", "a share URN is a post");
+  check(T.assertPostUrn("urn:li:ugcPost:9") === "urn:li:ugcPost:9", "so is a ugcPost");
+  await throws(() => T.assertPostUrn("urn:li:person:abc"), "a person URN is not a post", /not a LinkedIn post URN/);
+  check(
+    T.postUrnFrom("https://www.linkedin.com/feed/update/urn:li:activity:7381234567890/") === "urn:li:activity:7381234567890",
+    "a pasted feed link yields its URN"
+  );
+  check(
+    T.postUrnFrom("https://www.linkedin.com/feed/update/urn%3Ali%3Ashare%3A55/") === "urn:li:share:55",
+    "even percent-encoded"
+  );
+  const c = T.parseCommentUrn("urn:li:comment:(urn:li:activity:111,222)");
+  check(c.thread === "urn:li:activity:111" && c.id === "222", "a comment URN splits into thread and id");
+  await throws(() => T.parseCommentUrn("urn:li:share:1"), "a post URN is not a comment", /not a LinkedIn comment URN/);
+
+  console.log("\ncomments and reactions");
+  const body = T.buildComment({ actorUrn: "urn:li:person:me", postUrn: "urn:li:share:1", text: " Nice " });
+  check(body.object === "urn:li:share:1" && body.message.text === "Nice" && !body.parentComment, "a comment names its post and trims");
+  const reply = T.buildComment({
+    actorUrn: "urn:li:person:me",
+    postUrn: "urn:li:share:1",
+    text: "Agreed",
+    parentCommentUrn: "urn:li:comment:(urn:li:activity:111,222)",
+  });
+  check(reply.parentComment === "urn:li:comment:(urn:li:activity:111,222)", "a reply carries its parent");
+  await throws(() => T.assertCommentText("x".repeat(T.MAX_COMMENT_CHARS + 1)), "a comment over the cap is refused", /1250/);
+  await throws(() => T.assertCommentText("   "), "an empty comment is refused", /needs some text/);
+  check(T.reactionType("celebrate") === "PRAISE" && T.reactionType("love") === "EMPATHY", "friendly reaction names map to LinkedIn's enum");
+  await throws(() => T.reactionType("curious"), "the deprecated Curious is refused", /Unknown reaction/);
+  check(/^\d{6}$/.test(T.LINKEDIN_API_VERSION) && T.LINKEDIN_API_VERSION >= "202510", "the API version is a live YYYYMM", T.LINKEDIN_API_VERSION);
+  check(
+    ["editPost", "comment", "react"].every((k) => T.CAPABILITIES[k]?.available) && !T.CAPABILITIES.readComments.available,
+    "capabilities: edit, comment and react are on; reading comments is not"
+  );
+  check(
+    Object.keys(T.CAPABILITIES).every((k) => T.CAPABILITY_LABELS[k]),
+    "every capability has a label"
+  );
+}
+
+
+// The headline is the one field LinkedIn will not let software write, and the
+// one most people read. So the only thing that can go wrong here is the
+// detector itself being wrong -- saying a headline agrees when it does not,
+// or crying drift on a headline nobody can read.
+console.log("\nthe headline comparison");
+{
+  const canonical = canonicalHeadline({
+    role: "Software Engineer",
+    focus: ["Distributed Systems", "Systems Programming", "Applied AI"],
+    now: "Agentic AI Engineer @ Zimyo",
+  });
+  check(canonical.startsWith("Software Engineer |"), "the canonical headline leads with the role", canonical);
+  check(
+    canonicalHeadline({ role: "Software Engineer" }) === "Software Engineer",
+    "and omits the parts that are not set"
+  );
+
+  // The real one, as it stands on the account.
+  const live =
+    "AI Engineer @ Zimyo | Full Stack Developer | Cloud-Native & Scalable Systems Architect | Multi-Paradigm Programming Expert | Freelancer | VIT'26 MCA";
+  const d = headlineDrift(live, canonical);
+  check(d.state === "drift", "a headline carrying a retired title is drift", d.state);
+  check(
+    d.retired.map((r) => r.says).join(",") === "Full Stack Developer,Freelancer",
+    "and both retired phrases are named",
+    d.retired.map((r) => r.says).join(", ")
+  );
+  check(d.retired.every((r) => r.why && r.why.length > 20), "each one says WHY it was retired");
+  check(d.leadsRight === false, "and it does not lead with the canonical role");
+
+  // The quiet case.
+  const ok = headlineDrift(canonical, canonical);
+  check(ok.state === "match", "an identical headline matches", ok.state);
+  // Extra clauses after the role are fine -- what matters is what it opens with.
+  const extra = headlineDrift(canonical + " | VIT'26 MCA", canonical);
+  check(extra.state === "match", "extra clauses after the role still match", extra.state);
+
+  // THE one that must not lie: an unread headline is unknown, never a match.
+  // Reporting "agrees" about something nobody fetched is how a drift detector
+  // becomes a thing you stop believing.
+  for (const empty of ["", null, undefined, "   "]) {
+    const u = headlineDrift(empty, canonical);
+    check(u.state === "unknown", `an unreadable headline is unknown, not a match (${JSON.stringify(empty)})`, u.state);
+  }
+  check(/linkedin:snapshot/.test(headlineDrift("", canonical).note), "and it says how to make it readable");
+
+  // Case and spacing must not change the verdict.
+  check(headlineDrift("FULL-STACK DEVELOPER", canonical).retired.length === 1, "the match is case- and hyphen-insensitive");
+  check(headlineDrift("I am a fullstack developer", canonical).retired.length === 1, "and catches the unspaced spelling");
+  // A word that merely CONTAINS a retired phrase as a substring of something
+  // else must not trip it -- "freelancers" is fine, "Freelancer" is not.
+  check(headlineDrift("Built for freelancersonline", canonical).retired.length === 0, "but does not fire on a longer word");
+
+  check(MAX_HEADLINE_CHARS === 220, "the cap is LinkedIn's", String(MAX_HEADLINE_CHARS));
+  const long = headlineDrift("x".repeat(260), canonical);
+  check(long.overLength === true, "an over-long headline is flagged rather than truncated silently");
+  check(RETIRED_PHRASES.every((r) => r.match instanceof RegExp && r.says && r.why), "every retired phrase carries its reason");
 }
 
 console.log(`\n${pass} passed, ${fails.length} failed`);

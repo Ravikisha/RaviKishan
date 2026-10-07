@@ -13,8 +13,9 @@ import {
   providerConfig,
   redirectUriFor,
 } from "../../../../lib/server/integrations";
+import { withEnv } from "../../../../lib/server/envStore";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST." });
@@ -52,6 +53,10 @@ export default async function handler(req, res) {
         uid: claims.user_id || claims.sub,
         redirectUri,
         verifier,
+        // Which panel started this, so consent returns to it. A GitHub
+        // connection begun from the account list belongs back in the account
+        // list, not on the GitHub tab.
+        from: String(req.body?.from || "").slice(0, 24),
       }),
     });
 
@@ -61,3 +66,6 @@ export default async function handler(req, res) {
     return res.status(e.status || 500).json({ error: e.message || "Could not start the connection." });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

@@ -8,6 +8,7 @@
 // the URL this returns. That keeps uploads off the serverless body-size limit.
 import { presign, assertVaultKey, b2Config } from "../../../lib/server/b2";
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
+import { withEnv } from "../../../lib/server/envStore";
 
 const OPS = {
   put: { method: "PUT", ttl: 300 },
@@ -15,7 +16,7 @@ const OPS = {
   delete: { method: "DELETE", ttl: 120 },
 };
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed." });
@@ -45,3 +46,6 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   return res.status(200).json({ url, expiresIn: spec.ttl });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

@@ -15,6 +15,7 @@
 //   IG_USER_ID        optional — IG user/business id; skips resolution
 //
 // No token → { configured: false }; any failure → { configured: true, error }.
+import { withEnv } from "../../lib/server/envStore";
 
 const IG_USERNAME = "ravikishan.404";
 const FIELDS =
@@ -78,7 +79,7 @@ async function resolveBase(token) {
   return { base: `https://graph.facebook.com/v21.0/${page.instagram_business_account.id}/media` };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   const token = cleanToken(process.env.IG_ACCESS_TOKEN);
 
   if (!token) {
@@ -118,3 +119,6 @@ export default async function handler(req, res) {
     return fail("Could not reach Instagram. Try again shortly.");
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

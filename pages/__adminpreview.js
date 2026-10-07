@@ -8,6 +8,7 @@ import AdminShell from "../components/admin/AdminShell";
 import PostBodyStyles from "../components/blog/PostBodyStyles";
 import EditorStyles from "../components/admin/EditorStyles";
 import { Styles, TABS } from "./admin";
+import useTabInUrl from "../lib/useTabInUrl";
 import ImageField from "../components/admin/ImageField";
 import ContentSection from "../components/admin/ContentEditor";
 import ContentEditorStyles from "../components/admin/ContentEditorStyles";
@@ -53,7 +54,9 @@ const SAMPLE = [
 ].join("\n");
 
 export default function AdminPreview() {
-  const [view, setView] = useState("posts");
+  // The same hook the real admin uses, so e2e can prove a refresh keeps the
+  // section without needing a signed-in session.
+  const [view, setView] = useTabInUrl(TABS, "posts");
   const [poster, setPoster] = useState("gitasaar.jpg");
   const [org, setOrg] = useState("microsoft");
   const [projects, setProjects] = useState([

@@ -12,10 +12,11 @@ import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
 // Listing lives in lib/server/objects so the MCP tools answer "what is in
 // the bucket" with the same code this route does.
 import { PREFIXES, inOwnedPrefix, listPrefix } from "../../../lib/server/objects";
+import { withEnv } from "../../../lib/server/envStore";
 
 export { PREFIXES };
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -74,3 +75,6 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: e.message });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

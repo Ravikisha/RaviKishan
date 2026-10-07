@@ -186,6 +186,10 @@ against LinkedIn's own documentation, not assumed:
 | | |
 |---|---|
 | Publish a post | **yes** — `w_member_social`, self-serve, 150 requests/day |
+| Edit a post | **yes, the text only** — Posts API `PARTIAL_UPDATE`; visibility, link and media are fixed once published |
+| Comment, reply, edit/delete own comment | **yes** — `w_member_social` (see note below) |
+| React (like, celebrate, support, love, insightful, funny) | **yes** — `w_member_social` (see note below) |
+| Read comments / reactions | **no** — `r_member_social`, partner-only |
 | Read name + email | **yes** — OIDC `/v2/userinfo` |
 | Read headline / positions / skills | **no** — `r_fullprofile` is partner-only |
 | Change the profile | **no API at any tier** |
@@ -193,8 +197,16 @@ against LinkedIn's own documentation, not assumed:
 | Apply to a job | **no API at any tier** |
 | List your own posts | **no** — `r_member_social` is restricted |
 
-So the panel publishes posts for real, and for the rest it gives the route that
-works rather than a button that fails.
+So posting, editing, commenting and reacting are real; for the rest the panel
+gives the route that works rather than a button that fails.
+
+> **Comments and reactions — one documented conflict.** LinkedIn's permissions
+> page says `w_member_social` is *"Post, comment and like posts on behalf of an
+> authenticated member"*, but its Comments and Reactions pages name
+> `w_member_social_feed` (the **Community Management API** product, which
+> LinkedIn reviews). The tools use `w_member_social`. If a comment or reaction
+> answers 403 while posting works, add *Community Management API* on the
+> Products tab and reconnect; the error message says exactly this.
 
 **LinkedIn Developer portal** → <https://www.linkedin.com/developers/apps>
 
@@ -204,11 +216,17 @@ works rather than a button that fails.
 2. **Products tab — add both**, each self-serve and usually instant:
    - *Sign In with LinkedIn using OpenID Connect* → `openid`, `profile`, `email`
    - *Share on LinkedIn* → `w_member_social`
-3. **Auth tab → Authorized redirect URLs**, add both exactly:
+3. **Auth tab → Authorized redirect URLs**, add each exactly. LinkedIn
+   matches character for character, and the site answers on **www** (the apex
+   308-redirects there), so the www URL is the one production actually sends —
+   registering only the apex fails on the first click:
    ```
+   https://www.ravikishan.me/api/integrations/linkedin/callback
    https://ravikishan.me/api/integrations/linkedin/callback
    http://localhost:3000/api/integrations/linkedin/callback
    ```
+   Running dev on another port (e.g. 3001)? Add that one too. The LinkedIn tab
+   lists every URL with a Copy button, including the one it is running on.
 4. Copy the Client ID and Client Secret.
 
 ```
@@ -342,16 +360,33 @@ account, because one account commonly owns several.
    Missing either produces a 403 that names the API, and the error says so.
 2. OAuth consent screen: add the scope
    `https://www.googleapis.com/auth/analytics.readonly`
-3. Credentials → OAuth client ID → Web application → redirect URIs:
+3. Credentials → OAuth client ID → Web application → **Authorised redirect
+   URIs**. Add all three — Google compares them character for character, and
+   ravikishan.me answers on www (the apex 308s there):
    ```
+   https://www.ravikishan.me/api/integrations/analytics/callback
    https://ravikishan.me/api/integrations/analytics/callback
    http://localhost:3000/api/integrations/analytics/callback
    ```
+   The unconnected panel lists exactly these with Copy buttons, so there is
+   nothing to retype.
 
 ```
 ANALYTICS_CLIENT_ID=
 ANALYTICS_CLIENT_SECRET=
 ```
+
+**Both of those are optional.** With neither set, Analytics borrows the Google
+client already configured for Tasks (`GOOGLE_TASKS_CLIENT_ID` /
+`GOOGLE_TASKS_CLIENT_SECRET`) — one OAuth client serves several Google APIs, so
+a second one would be a copy of the first. The panel says which client it is
+using. Set these only to put Analytics on a client of its own.
+
+> **Borrowing the client does not borrow its redirect URI.** The shared client
+> starts out carrying only the Tasks callback, so the connection reads as fully
+> configured and the consent URL reaches Google's sign-in screen — then fails
+> with `Error 400: redirect_uri_mismatch` *after* you sign in, because Google
+> validates the redirect late. Step 3 is not optional, whichever client is used.
 
 Then open **/admin → Analytics**. Google Analytics sits below the first-party
 counters in the same tab — the counters are about the work (résumé opened, PDF

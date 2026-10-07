@@ -17,8 +17,74 @@ import {
   AuditLine,
   RepoRow,
   GithubStyles,
+  HubStyles,
+  Lane,
+  Overview,
+  Repositories,
 } from "../components/admin/GithubPanel";
 import { auditRepos } from "../lib/github";
+import { shapeAnalytics } from "../lib/server/githubInsights";
+
+// A year of contributions, deterministic so screenshots compare: a busy
+// account with a quiet summer and a fresh streak, and a nearly dormant one.
+// The lanes share ONE scale, so the second must visibly read as quiet.
+function fakeViewer(login, intensity, seed) {
+  let s = seed;
+  const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  const today = new Date("2026-10-07T00:00:00Z");
+  const start = new Date(today.getTime() - 364 * 86400000);
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  const weeks = [];
+  for (let w = 0; w < 53; w++) {
+    const contributionDays = [];
+    for (let d = 0; d < 7; d++) {
+      const t = new Date(start.getTime() + (w * 7 + d) * 86400000);
+      if (t > today) break;
+      const summer = w > 30 && w < 38 ? 0.15 : 1;
+      const weekend = d === 0 || d === 6 ? 0.4 : 1;
+      const n = rnd() < 0.62 * intensity * summer ? Math.round(rnd() * 9 * intensity * weekend) : 0;
+      contributionDays.push({ date: t.toISOString().slice(0, 10), contributionCount: w > 50 ? n + 1 : n });
+    }
+    weeks.push({ contributionDays });
+  }
+  return shapeAnalytics(
+    {
+      login,
+      followers: { totalCount: 48 },
+      following: { totalCount: 31 },
+      starredRepositories: { totalCount: 212 },
+      gists: { totalCount: 6 },
+      organizations: { nodes: [] },
+      repositories: {
+        totalCount: 61,
+        nodes: [
+          { name: "Pixa", isFork: false, languages: { edges: [{ size: 412000, node: { name: "Rust", color: "#dea584" } }, { size: 40000, node: { name: "TypeScript", color: "#3178c6" } }] } },
+          { name: "kontainer", isFork: false, languages: { edges: [{ size: 220000, node: { name: "Go", color: "#00ADD8" } }] } },
+          { name: "lispy", isFork: false, languages: { edges: [{ size: 98000, node: { name: "C", color: "#555555" } }] } },
+          { name: "site", isFork: false, languages: { edges: [{ size: 160000, node: { name: "JavaScript", color: "#f1e05a" } }, { size: 30000, node: { name: "SCSS", color: "#c6538c" } }] } },
+          { name: "agents", isFork: false, languages: { edges: [{ size: 120000, node: { name: "Python", color: "#3572A5" } }] } },
+        ],
+      },
+      contributionsCollection: {
+        totalCommitContributions: Math.round(900 * intensity),
+        totalPullRequestContributions: Math.round(64 * intensity),
+        totalPullRequestReviewContributions: Math.round(22 * intensity),
+        totalIssueContributions: Math.round(18 * intensity),
+        totalRepositoryContributions: Math.round(9 * intensity),
+        restrictedContributionsCount: Math.round(140 * intensity),
+        contributionCalendar: { weeks },
+      },
+    },
+    "2026-10-07"
+  );
+}
+
+const ACCOUNTS = [
+  { accountId: "Ravikisha", label: "Ravikisha" },
+  { accountId: "godasap7", label: "godasap7" },
+  { accountId: "old-handle", label: "old-handle" },
+];
+
 
 const PROFILE = {
   login: "Ravikisha",
@@ -104,6 +170,35 @@ const REPOS = [
   },
 ];
 
+const PROFILE_FULL = {
+  ...PROFILE,
+  email: "ravikishan63392@gmail.com",
+  company: "Zimyo",
+  following: 31,
+  privateRepos: 12,
+  publicGists: 6,
+  privateGists: 2,
+  createdAt: "2019-03-14T00:00:00Z",
+  plan: "free",
+  twoFactor: true,
+  diskUsageKb: 512000,
+  hireable: true,
+};
+
+const day = (n) => new Date(Date.parse("2026-10-07T00:00:00Z") - n * 86400000).toISOString();
+const HUB_REPOS = [
+  ...REPOS.map((r, i) => ({ ...r, pushedAt: day([2, 40, 120, 700][i]), createdAt: day([400, 900, 1200, 1500][i]) })),
+  { ...REPOS[0], name: "agents", description: "Production agentic-AI tooling.", language: "Python", stars: 9, forks: 1, private: true, pushedAt: day(0.2), createdAt: day(20), url: "https://github.com/Ravikisha/agents" },
+  { ...REPOS[0], name: "react", description: "Fork kept for a patch.", language: "JavaScript", stars: 0, forks: 0, isFork: true, pushedAt: day(5), createdAt: day(300), url: "https://github.com/Ravikisha/react" },
+];
+
+const TRAFFIC = [
+  { repo: "agents", views: 0, uniques: 0, clones: 4, cloners: 2, daily: [] },
+  { repo: "Pixa", views: 412, uniques: 96, clones: 31, cloners: 12, daily: [12, 30, 22, 41, 18, 60, 33, 25, 19, 44, 52, 28, 16, 12].map((count, i) => ({ date: String(i), count })) },
+  { repo: "kontainer", views: 88, uniques: 30, clones: 6, cloners: 4, daily: [2, 4, 9, 3, 8, 6, 12, 5, 7, 4, 6, 9, 8, 5].map((count, i) => ({ date: String(i), count })) },
+  { repo: "lispy", error: "GitHub refused that." },
+];
+
 export default function GithubPreview() {
   const [repos, setRepos] = useState(REPOS);
   const [open, setOpen] = useState("kontainer");
@@ -124,11 +219,73 @@ export default function GithubPreview() {
     return [...list].sort((a, b) => b.stars - a.stars);
   }, [repos, filter, audit]);
 
+  const [sel, setSel] = useState("Ravikisha");
+  const [view, setView] = useState("overview");
+  const hub = useMemo(() => {
+    const full = PROFILE_FULL;
+    const repoList = HUB_REPOS;
+    return {
+      Ravikisha: { profile: full, analytics: fakeViewer("Ravikisha", 1, 7), repos: repoList },
+      godasap7: {
+        profile: { ...full, login: "godasap7", name: "", bio: "", twoFactor: false, url: "https://github.com/godasap7" },
+        analytics: fakeViewer("godasap7", 0.18, 3),
+        repos: repoList.slice(0, 2).map((r) => ({ ...r, owner: "godasap7", stars: 0, url: `https://github.com/godasap7/${r.name}` })),
+      },
+      // A revoked token: its lane must say so without blanking the others.
+      "old-handle": { error: "GitHub refused the connection. Reconnect this account." },
+    };
+  }, []);
+  const laneMax = Math.max(1, ...Object.values(hub).flatMap((d) => d.analytics?.calendar?.weekly || [0]));
+  const cur = hub[sel];
+
   return (
     <main
       className="admin-main gh-main"
       style={{ background: "#08090d", minHeight: "100vh", padding: "88px 24px 24px" }}
     >
+      <div className="gx" data-preview="hub">
+        <section className="gx-lanes" aria-label="GitHub accounts">
+          {ACCOUNTS.map((a) => (
+            <Lane
+              key={a.accountId}
+              account={a}
+              data={hub[a.accountId]}
+              max={laneMax}
+              selected={sel === a.accountId}
+              onSelect={() => setSel(a.accountId)}
+            />
+          ))}
+          <button className="gx-add" type="button">
+            <span aria-hidden="true">+</span>
+            Connect another GitHub account
+          </button>
+        </section>
+        <nav className="gx-views" aria-label="Account views">
+          {[
+            ["overview", "Overview"],
+            ["repos", "Repositories"],
+          ].map(([k, l]) => (
+            <button key={k} type="button" className={`gx-view${view === k ? " on" : ""}`} onClick={() => setView(k)}>
+              {l}
+            </button>
+          ))}
+        </nav>
+        {cur?.error ? <p className="admin-err">{cur.error}</p> : null}
+        {view === "overview" && cur?.profile ? (
+          <Overview
+            key={sel}
+            accountId={sel}
+            profile={cur.profile}
+            analytics={cur.analytics}
+            repos={cur.repos}
+            trafficRows={TRAFFIC}
+          />
+        ) : null}
+        {view === "repos" ? <Repositories data={hub} accounts={ACCOUNTS.slice(0, 2)} sel={sel === "old-handle" ? "Ravikisha" : sel} /> : null}
+        <HubStyles />
+      </div>
+
+      <h2 style={{ color: "#8b90a0", font: "500 13px Inter", margin: "48px 0 16px" }}>Fix up</h2>
       <div className="ops-head gh-head">
         <div>
           <h3>GitHub</h3>

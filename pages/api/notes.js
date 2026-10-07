@@ -19,6 +19,7 @@
 import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
 import * as notes from "../../lib/server/noteBoard";
 import { NoteError } from "../../lib/server/noteShape";
+import { withEnv } from "../../lib/server/envStore";
 
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
 
@@ -33,7 +34,7 @@ const ACTIONS = new Set([
   "search",
 ]);
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST." });
@@ -101,3 +102,6 @@ export default async function handler(req, res) {
       .json({ error: e.message || "That did not work.", code: e.code || "" });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

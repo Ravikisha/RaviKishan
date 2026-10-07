@@ -220,6 +220,14 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Identities — the PEOPLE the connected accounts belong to. No credential
+    // and no grant: a label, an address and a note, so fourteen connections
+    // read as two people. Admin-only all the same, because the grouping names
+    // the owner's own addresses.
+    match /identities/{identityId} {
+      allow read, write: if isAdmin();
+    }
+
     // Runtime settings — the handful of variables the app reads per request
     // instead of from process.env, so they can change without a deployment.
     //
@@ -230,6 +238,21 @@ service cloud.firestore {
     // written to this document by mistake.
     match /config/{docId} {
       allow read, write: if isAdmin();
+    }
+
+    // EVERY ENVIRONMENT VARIABLE, as one blob sealed under ENV_KEY (the one
+    // variable the deployment holds). See lib/server/envStore.js.
+    //
+    // `get` is public on purpose: the OAuth callback, MCP authentication, the
+    // public gallery and the feed all run with nobody signed in and still need
+    // their secrets. The CONTENT is the protection — one AES-256-GCM blob with
+    // even the key names inside it, unreadable without ENV_KEY. Only this one
+    // document, only `get`: `list` is refused, so nothing else under the
+    // collection is discoverable, and only the admin can write.
+    match /envStore/current {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin();
     }
 
     // PASSWORDS AND API KEYS. Admin-only in both directions, and the single

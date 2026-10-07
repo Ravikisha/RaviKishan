@@ -15,6 +15,7 @@
 
 import dns from "dns";
 import net from "net";
+import { withEnv } from "../../lib/server/envStore";
 
 const MAX_BYTES = 6 * 1024 * 1024; // 6 MB cap
 const TIMEOUT_MS = 12000;
@@ -117,7 +118,7 @@ function rewriteHtml(html, base) {
   );
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   const raw = req.query.url;
   const target = Array.isArray(raw) ? raw[0] : raw;
 
@@ -189,3 +190,6 @@ export default async function handler(req, res) {
 
 // allow larger proxied bodies to flow back through the API route
 export const config = { api: { responseLimit: false } };
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

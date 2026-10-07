@@ -34,6 +34,8 @@ import PostsPanel from "../components/admin/PostsPanel";
 import DriftPanel from "../components/admin/DriftPanel";
 import LinkedInPanel from "../components/admin/LinkedInPanel";
 import SocialPanel from "../components/admin/SocialPanel";
+import AccountsPanel from "../components/admin/AccountsPanel";
+import YouTubePanel from "../components/admin/YouTubePanel";
 import SecretsPanel from "../components/admin/SecretsPanel";
 import EnvPanel from "../components/admin/EnvPanel";
 import ContactsPanel from "../components/admin/ContactsPanel";
@@ -55,6 +57,7 @@ import {
   BUNDLED_LOGOS,
 } from "../lib/assetUrl";
 import AdminShell from "../components/admin/AdminShell";
+import useTabInUrl from "../lib/useTabInUrl";
 import { logAdminAction } from "../lib/auditLog";
 
 // How many published snapshots to keep for rollback.
@@ -78,6 +81,7 @@ export const TABS = [
   ["links", "Short links", "Publish"],
   ["linkedin", "LinkedIn", "Publish"],
   ["social", "Social", "Publish"],
+  ["youtube", "YouTube", "Publish"],
 
   ["inbox", "Inbox", "Waiting on you"],
   ["jobs", "Jobs", "Waiting on you"],
@@ -95,6 +99,7 @@ export const TABS = [
   ["notes", "Notes", "Publish"],
   ["github", "GitHub", "Signals"],
 
+  ["accounts", "Accounts", "Access"],
   ["mcp", "MCP", "Access"],
 ];
 
@@ -525,17 +530,12 @@ function Editor({ user }) {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
-  // content | vault | links | jobs | posts | drift | contacts | ops | inbox
-  // Seeded from ?tab=… so the installed PWA's home-screen shortcuts (see
-  // public/admin.webmanifest) can open straight into Vault, Jobs or Writing.
-  const [view, setView] = useState("content");
+  // The open section lives in ?tab=, so a refresh lands where you were, Back
+  // steps between sections, and the PWA's home-screen shortcuts (see
+  // public/admin.webmanifest) open straight into Vault, Jobs or Writing.
+  const [view, setView] = useTabInUrl(TABS);
   const badges = useBadges();
   const imageSpecFor = useImageSpecFor();
-
-  useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab && TABS.some(([k]) => k === tab)) setView(tab);
-  }, []);
 
   // load current content (Firestore doc, or seed from defaults if none)
   useEffect(() => {
@@ -764,6 +764,10 @@ function Editor({ user }) {
         <EnvPanel />
       ) : view === "secrets" ? (
         <SecretsPanel user={user} />
+      ) : view === "accounts" ? (
+        <AccountsPanel />
+      ) : view === "youtube" ? (
+        <YouTubePanel />
       ) : view === "social" ? (
         <SocialPanel user={user} />
       ) : view === "linkedin" ? (

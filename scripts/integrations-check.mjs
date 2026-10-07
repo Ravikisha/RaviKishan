@@ -35,7 +35,7 @@ const {
   readStepId,
 } = await import("../lib/server/msTodo.js");
 
-const { adapterFor, DEFAULT_PROVIDER } = await import("../lib/server/taskBoard.js");
+const { adapterFor, taskProviderIds, DEFAULT_PROVIDER } = await import("../lib/server/taskBoard.js");
 
 let pass = 0;
 const fails = [];
@@ -65,10 +65,13 @@ check(
   "all nine providers are registered, in order",
   providerIds().join(", ")
 );
-// Multi-account providers are the ones whose connections live per account.
+// EVERY provider is multi-account. The four-and-five split was real while
+// there was one Google account and one GitHub; the moment the point became
+// holding several of each, a provider that is not multi is one whose second
+// connection silently overwrites its first.
 check(
-  providerIds().filter((id) => PROVIDERS[id].multi).join(",") === "youtube,instagram,x,analytics",
-  "and exactly the four multi-account providers allow several",
+  providerIds().every((id) => PROVIDERS[id].multi === true),
+  "and every one of them allows several accounts",
   providerIds().filter((id) => PROVIDERS[id].multi).join(", ")
 );
 check(
@@ -94,6 +97,54 @@ check(
   "and it names both halves it is missing",
   m.missing.join(", ")
 );
+
+// Google issues ONE OAuth client that can serve several of its APIs, so a
+// provider backed by Google reuses the client already configured here rather
+// than demanding a second one that would be a copy of the first. The fallback
+// is reported as `borrowed`, because a variable that works without being set
+// is otherwise indistinguishable from a bug.
+console.log("\na Google-backed provider borrows the Google client");
+{
+  const ID = "ANALYTICS_CLIENT_ID";
+  const SECRET = "ANALYTICS_CLIENT_SECRET";
+  const keep = [process.env[ID], process.env[SECRET]];
+  delete process.env[ID];
+  delete process.env[SECRET];
+  try {
+    const a = providerConfig("analytics");
+    check(a.configured, "analytics is usable with no analytics client of its own");
+    check(
+      a.borrowed === "GOOGLE_TASKS_CLIENT_ID",
+      "and says which client it borrowed",
+      a.borrowed || "(none)"
+    );
+    check(a.clientId === providerConfig("google").clientId, "which really is the Google one");
+    check(providerConfig("youtube").borrowed === "GOOGLE_TASKS_CLIENT_ID", "youtube borrows it too");
+
+    // Its own credentials still win, or setting them would do nothing.
+    process.env[ID] = "own-id";
+    process.env[SECRET] = "own-secret";
+    const own = providerConfig("analytics");
+    check(own.clientId === "own-id", "its own client id takes precedence");
+    check(own.borrowed === "", "and nothing is reported as borrowed then");
+
+    // Half a pair is not a configuration. Borrowing fills the gap rather than
+    // leaving a provider with an id and no secret, which fails at the token
+    // exchange - long after the consent screen said it worked.
+    delete process.env[SECRET];
+    const half = providerConfig("analytics");
+    check(half.configured, "an id with no secret still borrows the missing half");
+    check(half.clientSecret === providerConfig("google").clientSecret, "from Google");
+  } finally {
+    for (const [k, v] of [[ID, keep[0]], [SECRET, keep[1]]]) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+// A provider that borrows nothing must still report honestly.
+check(providerConfig("x").borrowed === "", "a provider that borrows nothing reports no borrow");
 
 console.log("\nsealing");
 const sealed = seal({ refreshToken: "1//abc.refresh" }, "refresh");
@@ -153,7 +204,10 @@ const url = new URL(
   })
 );
 check(url.origin === "https://accounts.google.com", "the consent URL points at Google", url.origin);
-check(url.searchParams.get("login_hint") === PINNED_EMAIL, "it offers the pinned account");
+// No login_hint any more, and that is the change: a pinned address is what
+// made a second Google account impossible to connect. The chooser is the
+// feature; the account is confirmed afterwards from the id token instead.
+check(!url.searchParams.get("login_hint"), "it lets you choose which Google account");
 // Without these two Google returns an access token and no refresh token, and
 // the connection silently becomes an hour long.
 check(url.searchParams.get("access_type") === "offline", "it asks for offline access");
@@ -233,6 +287,22 @@ check(
 );
 check(adapterFor().id === "google", "no provider means google");
 
+// list_task_providers iterated every connected account and crashed on
+// `undefined.can` the moment GitHub joined the provider table.
+check(
+  taskProviderIds().join(",") === "google,microsoft",
+  "task providers are exactly google and microsoft",
+  taskProviderIds().join(",")
+);
+check(
+  providerIds().filter((id) => !taskProviderIds().includes(id)).length > 0,
+  "and the connected-account table holds more than them"
+);
+check(
+  (() => { try { adapterFor("github"); return false; } catch (e) { return /not a task service/.test(e.message); } })(),
+  "adapterFor refuses a non-task account by name instead of returning undefined"
+);
+
 console.log("\nGitHub is a different shape of grant, and the registry says so");
 {
   const gh = getProvider("github");
@@ -253,16 +323,30 @@ console.log("\nGitHub is a different shape of grant, and the registry says so");
     authorizeUrl({ provider: "github", clientId: "cid", redirectUri: "https://x/cb", state: "ST" })
   );
   check(u.origin === "https://github.com", "the consent URL points at GitHub", u.origin);
-  // GitHub pins the account with `login` and a handle; it ignores login_hint.
+  // GitHub pins with `login` and a handle rather than login_hint — and the pin
+  // is OFF, like every other provider's, because a consent screen that always
+  // offers one handle cannot connect the second.
   check(
-    u.searchParams.get("login") === "Ravikisha",
-    "it offers the pinned handle",
+    !u.searchParams.get("login"),
+    "it lets you choose which GitHub account",
     String(u.searchParams.get("login"))
   );
   check(!u.searchParams.has("login_hint"), "and not login_hint, which GitHub ignores");
+  const ghScopes = u.searchParams.get("scope").split(" ");
   check(
-    u.searchParams.get("scope").includes("public_repo"),
-    "it asks for public_repo",
+    ghScopes.includes("repo"),
+    "it asks for repo, which reaches private repositories and their traffic",
+    u.searchParams.get("scope")
+  );
+  check(ghScopes.includes("workflow"), "and workflow, without which a write under .github/workflows is refused");
+  check(
+    u.searchParams.get("prompt") === "select_account",
+    "and shows GitHub's account chooser, so a second account can be connected",
+    String(u.searchParams.get("prompt"))
+  );
+  check(
+    !ghScopes.includes("admin:org"),
+    "and never admin:org",
     u.searchParams.get("scope")
   );
   check(

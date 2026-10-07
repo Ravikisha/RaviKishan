@@ -12,8 +12,9 @@
 // the canonical URL back to this site.
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
 import { fetchMediumPosts, mediumProfileUrl } from "../../../lib/server/medium";
+import { withEnv } from "../../../lib/server/envStore";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -40,3 +41,6 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: e.message });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

@@ -824,6 +824,7 @@ async function integrationsAuthSuite() {
     [{ action: "capabilities" }, "capabilities"],
     [{ action: "publish", text: "hello" }, "publish"],
     [{ action: "delete", urn: "urn:li:share:1" }, "delete"],
+    [{ action: "edit", urn: "urn:li:share:1", text: "changed" }, "edit"],
   ]) {
     try {
       const res = await fetch(`${BASE}/api/linkedin`, {
@@ -927,6 +928,56 @@ async function integrationsAuthSuite() {
     check(res.status === 405, "/api/secrets refuses a GET outright", String(res.status));
   } catch (e) {
     bad("secrets GET", e.message);
+  }
+
+  // The account directory is the key ring for everything else: a single
+  // unauthenticated success here would list every account the deployment can
+  // act as, and `saveLogin` would write a password into the store.
+  for (const [body, name] of [
+    [{ action: "list" }, "list"],
+    [{ action: "resolve", service: "photos" }, "resolve"],
+    [{ action: "setDefault", service: "photos", key: "instagram__1" }, "setDefault"],
+    [{ action: "assign", provider: "google", accountId: "1", identityId: "x" }, "assign"],
+    [{ action: "forget", provider: "google", accountId: "1" }, "forget"],
+    [{ action: "createIdentity", label: "intruder" }, "createIdentity"],
+    [{ action: "saveLogin", provider: "google", accountId: "1", username: "a", password: "b" }, "saveLogin"],
+    [{ action: "forgetLogin", provider: "google", accountId: "1" }, "forgetLogin"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}/api/accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      check(res.status === 401, `/api/accounts ${name} refuses an anonymous caller`, String(res.status));
+      const text = await res.text();
+      // A refusal must not name a single real account either: the list of who
+      // this deployment can act as is itself worth protecting.
+      check(
+        !/gmail\.com|accountId"\s*:\s*"[^"]/i.test(text),
+        `and its ${name} refusal names no account`,
+        text.slice(0, 80)
+      );
+    } catch (e) {
+      bad(`accounts ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/accounts`, { method: "GET" });
+    check(res.status === 405, "/api/accounts refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("accounts GET", e.message);
+  }
+  // A forged bearer token must fail the same way as none at all.
+  try {
+    const res = await fetch(`${BASE}/api/accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer not-a-real-token" },
+      body: JSON.stringify({ action: "list" }),
+    });
+    check(res.status === 401, "/api/accounts refuses a forged bearer token", String(res.status));
+  } catch (e) {
+    bad("accounts forged token", e.message);
   }
 
   // Google Analytics reads traffic for every property the account can see.
@@ -1313,8 +1364,332 @@ async function tasksSuite(browser) {
     check(afterOpen.titles.includes(chipName), `opening "${chipName}" gives it a column`);
     check(!afterOpen.chips.includes(chipName), "and takes it out of the empty strip");
 
+    // ---- the column cap. A real list holds sixty tasks; rendered whole
+    // that is a scroll box inside a scroll box, eight times over.
+    const capped = await page.evaluate(() => {
+      const col = [...document.querySelectorAll(".tk-col")].find((c) => c.querySelector(".tk-more"));
+      if (!col) return null;
+      return {
+        roots: col.querySelectorAll(".tk-row:not(.is-child)").length,
+        label: col.querySelector(".tk-more").textContent.trim(),
+        list: col.dataset.list,
+      };
+    });
+    check(!!capped, "a long list is capped and says how many more");
+    if (capped) {
+      check(capped.roots === 8, "at eight tasks", String(capped.roots));
+      check(/^Show \d+ more$/.test(capped.label), "with a count in the button", capped.label);
+      await page.click(`.tk-col[data-list="${capped.list}"] .tk-more`);
+      const expanded = await page.evaluate(
+        (id) => document.querySelectorAll(`.tk-col[data-list="${id}"] .tk-row:not(.is-child)`).length,
+        capped.list
+      );
+      const more = Number(capped.label.match(/\d+/)[0]);
+      check(expanded === 8 + more, "and Show more reveals exactly that many", `${expanded} vs ${8 + more}`);
+      await page.click(`.tk-col[data-list="${capped.list}"] .tk-more`);
+    }
+
+    // ---- the lens. Every count must equal what the board then shows.
+    const lensCount = async (label) =>
+      page.evaluate((l) => {
+        const b = [...document.querySelectorAll(".tk-lens-item")].find((n) =>
+          n.querySelector(".tk-lens-text").textContent.trim() === l
+        );
+        return Number(b.querySelector(".tk-lens-n").textContent);
+      }, label);
+    const pressLens = (label) =>
+      page.evaluate((l) => {
+        [...document.querySelectorAll(".tk-lens-item")]
+          .find((n) => n.querySelector(".tk-lens-text").textContent.trim() === l)
+          .click();
+      }, label);
+    const visibleOpen = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll(".tk-row:not(.is-done)")]
+          .filter((r) => !r.classList.contains("is-child") || r.querySelector(".tk-due"))
+          .map((r) => ({
+            title: r.querySelector(".tk-title").textContent,
+            due: r.querySelector(".tk-due")?.className || "",
+          }))
+      );
+
+    const overdueN = await lensCount("Overdue");
+    await pressLens("Overdue");
+    await new Promise((r) => setTimeout(r, 150));
+    const overdueRows = await visibleOpen();
+    check(
+      overdueRows.length === overdueN && overdueRows.every((r) => /overdue/.test(r.due)),
+      "the Overdue lens shows exactly its count, all overdue",
+      `${overdueRows.length} rows vs ${overdueN}`
+    );
+    const pressed = await page.evaluate(
+      () => document.querySelector(".tk-lens-item.on .tk-lens-text").textContent
+    );
+    check(pressed === "Overdue", "and is the one marked as on");
+    check(
+      (await page.$$(".tk-chip")).length === 0,
+      "a lens hides the empty-list strip — it is not what you asked to see"
+    );
+
+    await pressLens("Everything");
+    await page.type(".tk-find", "study");
+    await new Promise((r) => setTimeout(r, 150));
+    const found = await page.evaluate(() =>
+      [...document.querySelectorAll(".tk-row .tk-title")].map((n) => n.textContent)
+    );
+    check(
+      found.length > 0 && found.every((t) => /study/i.test(t)),
+      "search narrows every list to matching tasks",
+      JSON.stringify(found)
+    );
+    check(
+      !(await page.$(".tk-more")),
+      "and lifts the column cap, since every row shown was asked for"
+    );
+    await page.type(".tk-find", " os");
+    await new Promise((r) => setTimeout(r, 150));
+    const narrowed = await page.evaluate(() =>
+      [...document.querySelectorAll(".tk-row .tk-title")].map((n) => n.textContent)
+    );
+    check(
+      narrowed.length > 0 && narrowed.length < found.length,
+      "a second word narrows rather than widens",
+      `${found.length} → ${narrowed.length}`
+    );
+    await page.focus(".tk-find");
+    await page.keyboard.press("Escape");
+    await new Promise((r) => setTimeout(r, 150));
+    check(
+      (await page.$eval(".tk-find", (n) => n.value)) === "" && !!(await page.$(".tk-chip")),
+      "Escape clears the search and the board comes back"
+    );
   } catch (e) {
     bad("tasks board", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------------- LinkedIn panel ---------------- */
+
+// /__linkedinpreview renders the panel's REAL exported parts at every state
+// that has its own design — a fresh install can reach none of them, because
+// they need a LinkedIn app, credentials and a connected account.
+async function linkedinSuite(browser) {
+  console.log("\nlinkedin panel");
+  const page = await browser.newPage();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__linkedinpreview?noload`, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.waitForSelector(".li-steps", { timeout: 30000 });
+
+    const setup = await page.evaluate(() => {
+      const frame = document.querySelector('[data-state="setup"]');
+      const steps = [...frame.querySelectorAll(".li-step")];
+      return {
+        steps: steps.length,
+        done: steps.filter((s) => s.classList.contains("is-done")).length,
+        uris: [...frame.querySelectorAll(".li-uris code")].map((c) => c.textContent),
+        links: [...frame.querySelectorAll("a[href]")].map((a) => a.href),
+        connectDisabled: frame.querySelector(".li-step:last-child .admin-primary").disabled,
+      };
+    });
+    check(setup.steps === 5 && setup.done === 0, "not set up: five steps, none ticked", `${setup.steps}/${setup.done}`);
+    check(
+      setup.uris.includes("https://www.ravikishan.me/api/integrations/linkedin/callback"),
+      "the www redirect URL is listed (the apex redirects there)"
+    );
+    check(
+      setup.uris.some((u) => u.startsWith(new URL(BASE).origin)),
+      "and the one this copy is running on"
+    );
+    check(
+      setup.uris.includes("LINKEDIN_CLIENT_ID") && setup.uris.includes("LINKEDIN_CLIENT_SECRET"),
+      "the two variables to set are named"
+    );
+    check(
+      setup.links.some((h) => h.startsWith("https://www.linkedin.com/developers/apps")),
+      "and the developer portal is one click away"
+    );
+    check(setup.connectDisabled, "Connect cannot be pressed before the credentials exist");
+
+    const ready = await page.evaluate(() => {
+      const frame = document.querySelector('[data-state="ready"]');
+      const steps = [...frame.querySelectorAll(".li-step")];
+      return {
+        done: steps.filter((s) => s.classList.contains("is-done")).length,
+        // A finished step folds to its title — its instructions are noise.
+        doneBodies: steps
+          .filter((s) => s.classList.contains("is-done"))
+          .filter((s) => s.querySelector(".li-step-body p, .li-uris")).length,
+        connectEnabled: !frame.querySelector(".li-step:last-child .admin-primary").disabled,
+      };
+    });
+    check(ready.done === 4, "credentials in place: four steps tick themselves", String(ready.done));
+    check(ready.doneBodies === 0, "and fold to their titles", String(ready.doneBodies));
+    check(ready.connectEnabled, "leaving Connect as the one thing to press");
+
+    // A copy button is only real if the clipboard receives the value.
+    const ctx = browser.defaultBrowserContext();
+    await ctx.overridePermissions(new URL(BASE).origin, ["clipboard-read", "clipboard-write"]);
+    await page.click('[data-state="setup"] .li-uris .li-copy');
+    await new Promise((r) => setTimeout(r, 200));
+    const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+    check(clip === "https://www.ravikishan.me/api/integrations/linkedin/callback", "Copy puts the exact URL on the clipboard", clip);
+
+    const life = await page.evaluate(() =>
+      ["conn-fine", "conn-soon"].map((id) => {
+        const f = document.querySelector(`[data-state="${id}"]`);
+        const m = f.querySelector(".li-life");
+        return {
+          text: f.querySelector(".li-left").textContent,
+          now: Number(m.getAttribute("aria-valuenow")),
+          primary: !!f.querySelector(".li-conn .admin-primary"),
+        };
+      })
+    );
+    check(/41 days/.test(life[0].text) && life[0].now === 41, "a connection says how long it has left", life[0].text);
+    check(!life[0].primary && life[1].primary, "and Reconnect turns primary in the last fortnight");
+
+    const feed = await page.evaluate(() => {
+      const f = document.querySelector('[data-state="compose-hook"]');
+      return {
+        shown: f.querySelector(".li-feed-text").textContent,
+        more: !!f.querySelector(".li-feed-more"),
+        full: f.querySelector(".li-text").value,
+      };
+    });
+    check(feed.more, "a long opening shows where the feed folds it");
+    check(feed.shown.length < feed.full.length, "and only the part above the fold");
+
+    // The fold follows typing, not just the initial value.
+    await page.click('[data-state="compose-hook"] .li-text', { clickCount: 3 });
+    await page.keyboard.down("Control");
+    await page.keyboard.press("A");
+    await page.keyboard.up("Control");
+    await page.keyboard.type("A short post.");
+    const short = await page.evaluate(() => {
+      const f = document.querySelector('[data-state="compose-hook"]');
+      return { more: !!f.querySelector(".li-feed-more"), text: f.querySelector(".li-feed-text").textContent };
+    });
+    check(!short.more && short.text === "A short post.", "and a short one shows whole as you type", short.text);
+
+    const over = await page.evaluate(() => {
+      const f = document.querySelector('[data-state="compose-over"]');
+      return {
+        tone: f.querySelector(".li-compose").className,
+        disabled: f.querySelector(".li-send .admin-primary").disabled,
+      };
+    });
+    check(/\bover\b/.test(over.tone) && over.disabled, "over the cap the edge is red and Publish refuses");
+
+    const ledger = await page.evaluate(() => {
+      const d = document.querySelector(".li-ledger-card");
+      return { open: d.open, summary: d.querySelector("summary").textContent };
+    });
+    check(!ledger.open && /\d+ of \d+/.test(ledger.summary), "the ledger is folded with its score showing", ledger.summary);
+
+    // Editing a published post happens in its row. A deleted post, or one
+    // with no URN, has nothing to edit.
+    const editable = await page.evaluate(() =>
+      [...document.querySelectorAll(".li-post")].map((li) => ({
+        gone: li.classList.contains("is-gone"),
+        edit: [...li.querySelectorAll("button")].some((b) => b.textContent.trim() === "Edit"),
+      }))
+    );
+    check(
+      editable.filter((r) => !r.gone).every((r) => r.edit) && editable.filter((r) => r.gone).every((r) => !r.edit),
+      "every live post offers Edit, a deleted one does not",
+      JSON.stringify(editable)
+    );
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll(".li-post button")].find((n) => n.textContent.trim() === "Edit");
+      b.click();
+    });
+    const editState = await page.evaluate(() => {
+      const row = document.querySelector(".li-post.is-editing");
+      const save = row && [...row.querySelectorAll("button")].find((b) => b.textContent.trim() === "Save edit");
+      return { open: !!row, prefilled: !!row?.querySelector("textarea")?.value, saveDisabled: save?.disabled };
+    });
+    check(editState.open && editState.prefilled, "Edit opens the post's own text in place");
+    check(editState.saveDisabled === true, "and Save stays off until the text actually changes");
+
+    // Headings on a dark surface: globals.scss pins h1–h4 to a light-theme
+    // colour, and a heading that inherits it vanishes. Every one must be light.
+    const dark = await page.evaluate(() =>
+      [...document.querySelectorAll(".li-main h4, .li-main h5")]
+        .map((h) => getComputedStyle(h).color)
+        .filter((c) => {
+          const [r, g, b] = c.match(/\d+/g).map(Number);
+          return (r + g + b) / 3 < 110;
+        }).length
+    );
+    check(dark === 0, "no heading is dark-on-dark", String(dark));
+
+    for (const width of [1440, 420]) {
+      await page.setViewport({ width, height: 900 });
+      await new Promise((r) => setTimeout(r, 150));
+      const sideways = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+      );
+      check(!sideways, `nothing overflows sideways at ${width}px`);
+    }
+  } catch (e) {
+    bad("linkedin panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------------- admin: the open section survives a refresh ---------------- */
+
+// /__adminpreview runs the same useTabInUrl hook as /admin, which needs a
+// signed-in session this suite does not have.
+async function adminTabsSuite(browser) {
+  console.log("\nadmin tabs");
+  const page = await browser.newPage();
+  // Desktop width: below 720px the rail is a sheet you open, not a list.
+  await page.setViewport({ width: 1280, height: 900 });
+  try {
+    await page.goto(`${BASE}/__adminpreview`, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.waitForSelector(".ad-list button, .ad-list a", { timeout: 30000 });
+    const current = () =>
+      page.evaluate(() => {
+        const on = document.querySelector('.ad-list [aria-current="page"], .ad-list .on, .ad-list .is-on');
+        return { tab: new URLSearchParams(location.search).get("tab"), label: on ? on.textContent.trim() : "" };
+      });
+    const click = (label) =>
+      page.evaluate((l) => {
+        const b = [...document.querySelectorAll(".ad-list button, .ad-list a")].find((n) =>
+          n.textContent.trim().startsWith(l)
+        );
+        b.click();
+      }, label);
+
+    await click("Tasks");
+    await new Promise((r) => setTimeout(r, 200));
+    const a = await current();
+    check(a.tab === "tasks", "switching section writes it into the URL", JSON.stringify(a));
+
+    await page.reload({ waitUntil: "networkidle2" });
+    await page.waitForSelector(".ad-list button, .ad-list a", { timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 300));
+    const b = await current();
+    check(b.tab === "tasks" && /^Tasks/.test(b.label), "a refresh opens the same section", JSON.stringify(b));
+
+    await click("LinkedIn");
+    await new Promise((r) => setTimeout(r, 200));
+    await page.goBack({ waitUntil: "networkidle2" }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 300));
+    const c = await current();
+    check(c.tab === "tasks" && /^Tasks/.test(c.label), "Back returns to the previous section", JSON.stringify(c));
+
+    await page.goto(`${BASE}/__adminpreview?tab=not-a-tab`, { waitUntil: "networkidle2" });
+    await new Promise((r) => setTimeout(r, 300));
+    const d = await current();
+    check(d.tab === "not-a-tab" && !/^not/i.test(d.label), "an unknown ?tab= falls back instead of breaking", JSON.stringify(d));
+  } catch (e) {
+    bad("admin tabs", e.message);
   } finally {
     await page.close();
   }
@@ -1926,6 +2301,8 @@ async function resumeSuite() {
       await searchSuite(browser);
       await exportSuite(browser);
       await tasksSuite(browser);
+      await linkedinSuite(browser);
+      await adminTabsSuite(browser);
       await notesSuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
@@ -1935,6 +2312,15 @@ async function resumeSuite() {
   }
   if (which === "seo") {
     await seoSuite();
+  }
+  if (which === "linkedin") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await linkedinSuite(browser);
+      await adminTabsSuite(browser);
+    } finally {
+      await browser.close();
+    }
   }
   if (which === "notes") {
     const browser = await launch({ headful: !!process.env.HEADFUL });

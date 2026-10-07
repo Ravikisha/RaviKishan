@@ -8,6 +8,7 @@
 import { verifyAdmin, AuthError } from "../../../../lib/server/verifyAdmin";
 import { getProvider } from "../../../../lib/server/integrations";
 import { COOKIE_PREFIX } from "./callback";
+import { withEnv } from "../../../../lib/server/envStore";
 
 function readCookie(req, name) {
   const raw = req.headers.cookie || "";
@@ -18,7 +19,7 @@ function readCookie(req, name) {
   return "";
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST." });
@@ -62,3 +63,6 @@ export default async function handler(req, res) {
     return res.status(e.status || 500).json({ error: e.message || "Could not save the connection." });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

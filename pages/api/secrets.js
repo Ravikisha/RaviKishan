@@ -17,8 +17,9 @@ import {
   deleteDocument,
 } from "../../lib/server/firestoreRest";
 import * as store from "../../lib/server/secretStore";
+import { withEnv } from "../../lib/server/envStore";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST." });
@@ -131,3 +132,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message || "That did not work." });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

@@ -20,6 +20,7 @@
 // because a percentage of zero is infinity and reads as a bug.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { auth } from "../../lib/firebase";
+import { beginConnect, finishConnect } from "../../lib/socialClient";
 
 const RANGES = [
   ["7d", "7 days"],
@@ -59,7 +60,25 @@ async function call(body) {
 // tab is the kind of friction that stops a dashboard being read.
 const REMEMBER = "rk-ga-property";
 
+// Google matches a redirect URI EXACTLY — scheme, host, port and path — and
+// ravikishan.me answers on www (the apex 308s there). Registering only one of
+// them is the classic way to meet redirect_uri_mismatch on the first click,
+// which is what happened here: the Google client already carried the tasks
+// callback, so everything LOOKED configured right up to the consent screen.
+const CALLBACK_PATH = "/api/integrations/analytics/callback";
+const PROD_ORIGINS = ["https://www.ravikishan.me", "https://ravikishan.me"];
+
+export function callbacksFor(currentOrigin = "") {
+  const origins = [...PROD_ORIGINS, "http://localhost:3000"];
+  const here = String(currentOrigin || "").replace(/\/+$/, "");
+  if (/^https?:\/\/[^/]+$/.test(here) && !origins.includes(here)) origins.push(here);
+  return origins.map((o) => o + CALLBACK_PATH);
+}
+
 export default function GaPanel() {
+  // Shown so the redirect URI can be copied for whichever host this is served
+  // from — Google compares it character for character.
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
   const [status, setStatus] = useState(null);
   const [properties, setProperties] = useState([]);
   const [property, setProperty] = useState("");
@@ -67,9 +86,51 @@ export default function GaPanel() {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const [copied, setCopied] = useState("");
+
+  const copy = (text) => {
+    const done = () => {
+      setCopied(text);
+      setTimeout(() => setCopied((c) => (c === text ? "" : c)), 1400);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, () => {});
+    } catch (_) {}
+  };
 
   useEffect(() => {
     (async () => {
+      // The server holds nothing: the callback seals the credential into a
+      // short-lived httpOnly cookie and the signed-in browser writes it under
+      // the admin-only rules. So the claim is OURS to make, and skipping it
+      // loses a consent that has already happened.
+      try {
+        const q = new URLSearchParams(window.location.search);
+        const connected = q.get("connected");
+        const failed = q.get("connectError");
+        if (connected === "analytics") {
+          setBusy("Saving the Google Analytics connection…");
+          try {
+            await finishConnect("analytics");
+          } catch (e) {
+            setErr(e.message || "The connection could not be saved.");
+          }
+        } else if (failed) {
+          setErr(failed);
+        }
+        if (connected || failed) {
+          q.delete("connected");
+          q.delete("connectError");
+          q.delete("account");
+          const rest = q.toString();
+          window.history.replaceState(
+            {},
+            "",
+            window.location.pathname + (rest ? `?${rest}` : "")
+          );
+        }
+      } catch (_) {}
+
       setBusy("Checking Google Analytics…");
       try {
         const st = await call({ action: "accounts" });
@@ -121,14 +182,7 @@ export default function GaPanel() {
   const connect = async () => {
     setErr("");
     try {
-      const user = auth.currentUser;
-      const res = await fetch("/api/integrations/analytics/start", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${await user.getIdToken()}` },
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Could not start the connection.");
-      window.location.assign(j.url);
+      await beginConnect("analytics");
     } catch (e) {
       setErr(e.message);
     }
@@ -158,6 +212,41 @@ export default function GaPanel() {
           Connect a Google account to report on any GA4 property it can see. Read-only — this can
           never change a property or a data stream.
         </p>
+        <details className="ga-setup" open>
+          <summary>
+            Before Connect will work{status.borrowed ? ` — using ${status.borrowed}` : ""}
+          </summary>
+          <p>
+            {status.borrowed
+              ? "One Google OAuth client can serve several Google APIs, so there is no second client to create. That client does need three things it has no reason to have yet:"
+              : "The Google OAuth client needs three things before Google will show a consent screen:"}
+          </p>
+          <ol className="ga-steps">
+            <li>
+              Enable the <strong>Google Analytics Data API</strong> and the{" "}
+              <strong>Google Analytics Admin API</strong>. The first reads reports, the second lists
+              which properties the account can see.
+            </li>
+            <li>
+              Add the scope <code>analytics.readonly</code> to the consent screen. Read-only is the
+              whole grant — nothing here can change a property or a data stream.
+            </li>
+            <li>
+              Add every one of these to <strong>Authorised redirect URIs</strong>. Google compares
+              them character for character, so the one the app is running on is not optional:
+            </li>
+          </ol>
+          <ul className="ga-uris">
+            {callbacksFor(origin).map((u) => (
+              <li key={u}>
+                <code>{u}</code>
+                <button type="button" className="ga-copy" onClick={() => copy(u)}>
+                  {copied === u ? "Copied" : "Copy"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
         <button className="admin-primary" type="button" onClick={connect}>
           Connect Google Analytics
         </button>
@@ -373,6 +462,68 @@ export function GaStyles() {
         color: var(--a-amber, #ffb020);
       }
       .ga-busy,
+      .ga-setup {
+        margin: 12px 0 16px;
+        max-width: 78ch;
+        padding: 12px 14px 14px;
+        border: 1px dashed var(--a-line, #2b3040);
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.65;
+        color: var(--a-dim, #8b90a0);
+      }
+      .ga-setup summary {
+        cursor: pointer;
+        color: var(--a-text, #e7e8ee);
+        font-size: 12.5px;
+      }
+      .ga-setup p {
+        margin: 10px 0 0;
+      }
+      .ga-steps {
+        /* The markers are information: this is a sequence, and a global
+           list-style reset elsewhere in the admin would otherwise hide it. */
+        list-style: decimal;
+        margin: 8px 0 0;
+        padding-left: 20px;
+      }
+      .ga-steps li {
+        margin-top: 6px;
+      }
+      .ga-setup code {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--a-text, #e7e8ee);
+      }
+      .ga-uris {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+      }
+      .ga-uris li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 5px 0;
+        border-top: 1px solid var(--a-line, #2b3040);
+        overflow-wrap: anywhere;
+      }
+      .ga-copy {
+        margin-left: auto;
+        flex: none;
+        background: none;
+        border: 1px solid var(--a-line, #2b3040);
+        border-radius: 6px;
+        color: var(--a-dim, #8b90a0);
+        font: inherit;
+        font-size: 11px;
+        padding: 2px 9px;
+        cursor: pointer;
+      }
+      .ga-copy:hover {
+        color: var(--a-text, #e7e8ee);
+        border-color: var(--a-accent, #ffb020);
+      }
       .ga-off {
         font-size: 12.5px;
         color: var(--a-dim, #8b90a0);

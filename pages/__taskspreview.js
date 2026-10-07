@@ -11,7 +11,15 @@
 //
 // 404s in production: it is a design tool, not a page.
 import React, { useRef, useState } from "react";
-import { GroupColumn, QuietLists, TasksStyles, shelfSummary } from "../components/admin/TasksPanel";
+import {
+  GroupColumn,
+  LensBar,
+  QuietLists,
+  TasksStyles,
+  lensCounts,
+  narrowRows,
+  shelfSummary,
+} from "../components/admin/TasksPanel";
 
 const iso = (days) => {
   const d = new Date();
@@ -72,6 +80,19 @@ const SEED = {
     { id: "x1", title: "Renew the domain", completed: false, due: iso(3) },
     { id: "x2", title: "Check the backup ran", completed: false },
     { id: "x3", title: "Open the dashboard", completed: false, parent: "x2", isStep: true },
+    // Long enough to pass the column cap: the real "Tasks" list holds 18, and
+    // a reference made only of short lists never shows "Show N more".
+    ...[
+      "Build a Linux distro",
+      "Distributed computing",
+      "Testing study",
+      "Mongo db theory study",
+      "Os study",
+      "Computer architecture and organization",
+      "ICPC",
+      "12 Factor application",
+      "Theory of computation",
+    ].map((title, i) => ({ id: `xl${i}`, title, completed: false })),
   ],
   m2: [{ id: "x4", title: "Send the invoice", completed: false, due: iso(-1) }],
 };
@@ -81,10 +102,16 @@ export default function TasksPreview() {
   // Which empty lists have been opened by hand. Real state, not a stub: a
   // reference whose one interaction does nothing cannot show what it does.
   const [opened, setOpened] = useState({});
-  const isShown = (l) => (byList[l.id] || []).length > 0 || !!opened[l.id];
+  const isShown = (l) =>
+    filtering ? rowsOf(l).length > 0 : (byList[l.id] || []).length > 0 || !!opened[l.id];
   const [showDone, setShowDone] = useState(true);
   const [dragOver, setDragOver] = useState(null);
   const dragged = useRef(null);
+  const [lens, setLens] = useState("all");
+  const [query, setQuery] = useState("");
+  const filtering = lens !== "all" || query.trim() !== "";
+  const rowsOf = (l) =>
+    filtering ? narrowRows(byList[l.id] || [], { lens, query, showDone }) : byList[l.id] || [];
 
   const listsOf = (p) => SHELVES.find((s) => s.provider === p).lists;
   const providerOfList = (listId) =>
@@ -136,8 +163,7 @@ export default function TasksPreview() {
         <div>
           <h3>Tasks</h3>
           <p className="admin-sub tk-sub">
-            Your real Google Tasks and Microsoft To Do, side by side. Everything here saves
-            straight to the account it sits in.
+            Google Tasks and Microsoft To Do, read and written in place. Nothing here is a copy.
           </p>
         </div>
         <span className="tk-actions">
@@ -154,6 +180,14 @@ export default function TasksPreview() {
           </button>
         </span>
       </div>
+
+      <LensBar
+        lens={lens}
+        onLens={setLens}
+        query={query}
+        onQuery={setQuery}
+        counts={lensCounts(Object.values(byList).flat())}
+      />
 
       {SHELVES.map((shelf) => {
         const all = shelf.lists.flatMap((l) => byList[l.id] || []);
@@ -185,8 +219,9 @@ export default function TasksPreview() {
                   key={list.id}
                   provider={shelf.provider}
                   list={list}
-                  tasks={byList[list.id] || []}
-                  showDone={showDone}
+                  tasks={rowsOf(list)}
+                  showDone={showDone || filtering}
+                  limit={filtering ? 0 : undefined}
                   busy={false}
                   dropState={
                     dragOver === `${shelf.provider}:${list.id}`
@@ -210,10 +245,12 @@ export default function TasksPreview() {
             </div>
             {/* The other half of the board, and the commoner one: lists that
                 hold nothing yet. */}
-            <QuietLists
-              lists={shelf.lists.filter((l) => !isShown(l))}
-              onOpen={(g) => setOpened((m) => ({ ...m, [g.id]: true }))}
-            />
+            {filtering ? null : (
+              <QuietLists
+                lists={shelf.lists.filter((l) => !isShown(l))}
+                onOpen={(g) => setOpened((m) => ({ ...m, [g.id]: true }))}
+              />
+            )}
           </section>
         );
       })}

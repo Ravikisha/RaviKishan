@@ -41,14 +41,43 @@ console.log("\nthe three social providers are multi-account");
 for (const id of ["youtube", "instagram", "x"]) {
   check(PROVIDERS[id]?.multi === true, `${id} allows several accounts`);
 }
-for (const id of ["google", "microsoft", "github", "linkedin"]) {
-  check(!PROVIDERS[id]?.multi, `${id} does not`);
+// Every provider is multi-account now. The split used to be real -- there was
+// one Google Tasks account and one GitHub -- and it stopped being real the
+// moment the point became holding several of each. What matters instead is
+// that each one can SAY WHICH account consented, because a provider that
+// cannot is a provider whose second connection silently overwrites its first.
+for (const id of ["google", "microsoft", "github", "linkedin", "notion"]) {
+  check(PROVIDERS[id]?.multi === true, `${id} allows several too`);
 }
-await throws(
-  () => assertMulti("github"),
-  "a single-account provider is refused by the multi store",
-  /single connection/
-);
+await // assertMulti used to refuse the four single-account providers. There are
+// none left to refuse, so what is checked now is that it ACCEPTS every one --
+// a provider that slipped back to single-account would break its own panel
+// with a message about a store it no longer uses.
+check(
+  Object.keys(PROVIDERS).every((id) => {
+    try {
+      return assertMulti(id).id === id;
+    } catch (_) {
+      return false;
+    }
+  }),
+  "the multi store accepts every provider"
+)
+
+// Identity is what makes a multi-account provider possible at all: without an
+// id there is nothing to key the document on, and the callback refuses the
+// connection rather than storing it over the previous one.
+console.log("\nevery provider can say which account consented");
+for (const id of Object.keys(PROVIDERS)) {
+  const p = PROVIDERS[id];
+  const named = p.identityFromIdToken || ["youtube", "instagram", "x", "github", "linkedin", "notion"].includes(id);
+  check(named, `${id} identifies the account it just connected`);
+}
+// And none of them pins a single account on the consent screen any more -- a
+// pinned hint is exactly what makes connecting the second account impossible.
+for (const id of Object.keys(PROVIDERS)) {
+  check(PROVIDERS[id].noAccountHint === true, `${id} lets you choose which account`);
+}
 
 console.log("\naccount documents are keyed so a reconnect updates in place");
 {

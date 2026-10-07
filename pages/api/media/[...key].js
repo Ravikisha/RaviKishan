@@ -11,6 +11,7 @@
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { presign, assertMediaKey, isVaultConfigured } from "../../../lib/server/b2";
+import { withEnv } from "../../../lib/server/envStore";
 
 const TYPES = {
   png: "image/png",
@@ -22,7 +23,7 @@ const TYPES = {
   svg: "image/svg+xml",
 };
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.setHeader("Allow", "GET, HEAD");
     return res.status(405).end();
@@ -70,3 +71,6 @@ export default async function handler(req, res) {
     return res.status(502).end();
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

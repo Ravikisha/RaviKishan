@@ -19,6 +19,7 @@ import {
   seal,
 } from "../../../../lib/server/integrations";
 import { connectedRecord } from "../../../../lib/server/connectedStore";
+import { withEnv } from "../../../../lib/server/envStore";
 
 export const COOKIE_PREFIX = "rk_conn_";
 const COOKIE_MAX_AGE = 300;
@@ -27,24 +28,31 @@ const COOKIE_MAX_AGE = 300;
 // Tasks was the only thing connected; now a YouTube consent that returns to
 // the Tasks board looks like it did nothing.
 const TAB_FOR = {
-  google: "tasks",
-  microsoft: "tasks",
+  google: "accounts",
+  microsoft: "accounts",
   github: "github",
   linkedin: "linkedin",
   youtube: "social",
   instagram: "social",
   x: "social",
+  analytics: "analytics",
+  notion: "notes",
 };
 
-const back = (res, query, provider) => {
-  const tab = TAB_FOR[provider] || "tasks";
+// A connection started from the Accounts panel comes back to it, whatever the
+// provider — otherwise connecting a second GitHub handle from the account
+// list drops you on the GitHub tab with no idea whether it worked.
+const tabFor = (provider, from) => (from && /^[a-z]+$/.test(from) ? from : TAB_FOR[provider] || "accounts");
+
+const back = (res, query, provider, from = "") => {
+  const tab = tabFor(provider, from);
   res.writeHead(302, {
     Location: `/admin?tab=${tab}&${new URLSearchParams(query).toString()}`,
   });
   res.end();
 };
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   const provider = String(req.query.provider || "");
 
   // The provider reports a refusal here too — a declined consent screen is not
@@ -57,9 +65,15 @@ export default async function handler(req, res) {
     );
   }
 
+  // Declared out here because the catch below reports back to the SAME panel,
+  // and a failure that lands on a different tab than the attempt is how a
+  // failed connection looks like nothing happening at all.
+  let from = "";
+
   try {
     const p = getProvider(provider);
     const state = readState(String(req.query.state || ""));
+    from = state.from || "";
     if (state.provider !== p.id) throw new Error("This sign-in was started for a different account.");
 
     const redirectUri = redirectUriFor(req, p.id);
@@ -112,6 +126,7 @@ export default async function handler(req, res) {
           kind,
           expiresAt: usingRefresh ? "" : expiresAt || "",
           scope,
+          email,
         })
       : connectionRecord({
           provider: p.id,
@@ -135,8 +150,16 @@ export default async function handler(req, res) {
       ].join("; ")
     );
 
-    return back(res, { connected: p.id, account: accountLabel || email || "" }, p.id);
+    return back(res, { connected: p.id, account: accountLabel || email || "" }, p.id, state.from);
   } catch (e) {
-    return back(res, { connectError: String(e.message || "The connection failed.").slice(0, 300) }, provider);
+    return back(
+      res,
+      { connectError: String(e.message || "The connection failed.").slice(0, 300) },
+      provider,
+      from
+    );
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

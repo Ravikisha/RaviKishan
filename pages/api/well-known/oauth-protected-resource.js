@@ -8,7 +8,8 @@
 // empty and the documentation URL says where to get one. Publishing accurate
 // metadata that says "no AS" is better than publishing none, and better than
 // advertising an endpoint that does not exist.
-export default function handler(req, res) {
+import { withEnv } from "../../../lib/server/envStore";
+function handler(req, res) {
   const host = req.headers.host || "";
   const proto =
     req.headers["x-forwarded-proto"] ||
@@ -33,3 +34,6 @@ export default function handler(req, res) {
     },
   });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

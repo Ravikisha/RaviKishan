@@ -6,8 +6,9 @@
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
 import { readClient, issueCode } from "../../../lib/server/oauth";
 import { ALL_SCOPES, isMcpConfigured } from "../../../lib/server/mcpToken";
+import { withEnv } from "../../../lib/server/envStore";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -50,3 +51,6 @@ export default async function handler(req, res) {
   });
   return res.status(200).json({ code });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

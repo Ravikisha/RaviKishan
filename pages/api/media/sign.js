@@ -1,8 +1,9 @@
 // Presigns an upload for blog media. Admin only — same gate as the vault.
 import { presign, assertMediaKey, isVaultConfigured } from "../../../lib/server/b2";
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
+import { withEnv } from "../../../lib/server/envStore";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -27,3 +28,6 @@ export default async function handler(req, res) {
     publicUrl: `/api/media/${key.slice("media/".length)}`,
   });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

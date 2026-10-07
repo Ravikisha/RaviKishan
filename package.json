@@ -14,6 +14,7 @@
     "test:markdown": "node scripts/markdown-check.mjs",
     "test:posttext": "node scripts/posttext-check.mjs",
     "e2e:tasks": "node scripts/e2e-check.js tasks",
+    "e2e:linkedin": "node scripts/e2e-check.js linkedin",
     "e2e:seo": "node scripts/e2e-check.js seo",
     "e2e:blog": "node scripts/e2e-check.js blog",
     "e2e:export": "node scripts/e2e-check.js export",
@@ -38,13 +39,16 @@
     "rules:deploy": "firebase deploy --only firestore:rules",
     "rules:check": "node scripts/rules-check.mjs",
     "test:linkedin": "node scripts/linkedin-check.mjs",
+    "linkedin:creds": "node scripts/linkedin-creds-check.mjs",
     "test:github": "node scripts/github-check.mjs",
     "test:notes": "node scripts/notes-check.mjs",
     "e2e:notes": "node scripts/e2e-check.js notes",
     "test:social": "node scripts/social-check.mjs",
     "test:analytics": "node scripts/analytics-check.mjs",
     "test:secrets": "node scripts/secrets-check.mjs",
-    "test:env": "node scripts/env-check.mjs"
+    "test:env": "node scripts/env-check.mjs",
+    "test:accounts": "node scripts/accounts-check.mjs",
+    "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

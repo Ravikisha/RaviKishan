@@ -14,9 +14,12 @@ const {
   RANGES,
   UA_RE,
   previousRange,
+  concreteRange,
   propertyPath,
   resolveRange,
+  runReport,
   shapeReport,
+  summary,
 } = await import("../lib/server/googleAnalytics.js");
 
 let pass = 0;
@@ -149,6 +152,123 @@ console.log("\nreport shaping");
   );
   check(thresholded.thresholded === true, "a thresholded report says so rather than looking empty");
   check(shapeReport({ rows: [] }, { metrics: ["activeUsers"] }).thresholded === false, "and a genuinely empty one does not");
+}
+
+// summary() resolves a named range and then passes it BACK through
+// runReport(), whose resolveRange() accepts only YYYY-MM-DD once a startDate
+// is present. So a named range has to become explicit dates in between, or
+// every window the panel offers fails with "startDate and endDate must both be
+// YYYY-MM-DD" - which is exactly what happened, unseen, because the two
+// functions were only ever tested apart.
+console.log("\na named range survives being resolved twice");
+{
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  for (const name of ["today", "yesterday", "7d", "28d", "90d", "365d"]) {
+    const once = resolveRange(name);
+    const twice = concreteRange(once);
+    check(
+      ISO.test(twice.startDate) && ISO.test(twice.endDate),
+      `${name} resolves to explicit dates`,
+      `${twice.startDate} to ${twice.endDate}`
+    );
+    // The round trip is what runReport does with it.
+    const again = resolveRange(undefined, twice.startDate, twice.endDate);
+    check(
+      again.startDate === twice.startDate && again.endDate === twice.endDate,
+      `and ${name} is accepted again unchanged`
+    );
+  }
+  check(
+    concreteRange({ startDate: "2026-02-01", endDate: "2026-02-28" }).startDate === "2026-02-01",
+    "an already-explicit range is left alone"
+  );
+  const r = concreteRange(resolveRange("28d"));
+  check(r.startDate < r.endDate, "and the window still runs forwards", `${r.startDate} to ${r.endDate}`);
+}
+
+// And the wiring itself, because the helper being right says nothing about
+// whether summary() uses it. fetch is stubbed, so this stays a no-network
+// check: it records what summary() would have SENT.
+console.log("\nsummary sends explicit dates for both windows");
+{
+  const realFetch = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    sent.push(JSON.parse(init.body));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ rows: [], metricHeaders: [], dimensionHeaders: [] }),
+      text: async () => "",
+    };
+  };
+  try {
+    await summary("fake-token", "548131604", { range: "28d" });
+    const ISO = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+    check(sent.length === 2, "it asks for two windows", String(sent.length));
+    const dates = sent.flatMap((b) => [b.dateRanges[0].startDate, b.dateRanges[0].endDate]);
+    check(
+      dates.every((d) => ISO.test(d)),
+      "every date it sends is YYYY-MM-DD",
+      dates.join(" ")
+    );
+    const [aStart, aEnd, bStart, bEnd] = dates;
+    check(bEnd < aStart, "and the comparison window sits before the one asked for", `${bStart}..${bEnd} then ${aStart}..${aEnd}`);
+  } catch (e) {
+    check(false, "summary runs a named range without throwing", e.message.slice(0, 120));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+// A total GA4 was never asked for comes back as nothing, and nothing read as
+// a number is 0 — so the headline cards said a site with 71 page views had
+// none. Both halves are pinned: the request asks, and the shaper copes when
+// the answer has rows but no aggregation.
+console.log("\ntotals are asked for, not assumed");
+{
+  const realFetch = globalThis.fetch;
+  let body = null;
+  globalThis.fetch = async (url, init) => {
+    body = JSON.parse(init.body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ rows: [], metricHeaders: [], dimensionHeaders: [] }),
+      text: async () => "",
+    };
+  };
+  try {
+    await runReport("fake-token", "470599279", {
+      metrics: ["screenPageViews"],
+      dimensions: ["pagePath"],
+      range: "28d",
+    });
+    check(
+      JSON.stringify(body?.metricAggregations || []) === JSON.stringify(["TOTAL"]),
+      "the request asks GA4 for the total",
+      JSON.stringify(body?.metricAggregations)
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  // Dimensionless: the one row IS the total.
+  const noAgg = shapeReport(
+    { rows: [{ metricValues: [{ value: "71" }, { value: "0.62" }] }] },
+    { metrics: ["screenPageViews", "engagementRate"], dimensions: [] }
+  );
+  check(noAgg.totals.screenPageViews === 71, "a dimensionless row stands in for a missing total", String(noAgg.totals.screenPageViews));
+
+  // With an aggregation, the aggregation wins — it counts beyond `limit`.
+  const withAgg = shapeReport(
+    {
+      rows: [{ dimensionValues: [{ value: "/" }], metricValues: [{ value: "71" }] }],
+      totals: [{ metricValues: [{ value: "151" }] }],
+    },
+    { metrics: ["screenPageViews"], dimensions: ["pagePath"] }
+  );
+  check(withAgg.totals.screenPageViews === 151, "and the reported total is not just the rows on this page", String(withAgg.totals.screenPageViews));
 }
 
 console.log("\nerrors are typed");

@@ -5,8 +5,9 @@
 // a reader keeps the items it already has; dead links it would keep.
 
 import { fetchPublishedPostsServer } from "../../../lib/server/publicPosts";
+import { withEnv } from "../../../lib/server/envStore";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://ravikishan.me";
+const site = () => process.env.NEXT_PUBLIC_SITE_URL || "https://ravikishan.me";
 
 const escapeXml = (input) =>
   String(input || "")
@@ -16,7 +17,7 @@ const escapeXml = (input) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   let posts = [];
   let degraded = false;
   try {
@@ -30,8 +31,8 @@ export default async function handler(req, res) {
     .map(
       (post) => `<item>
         <title>${escapeXml(post.title)}</title>
-        <link>${escapeXml(`${SITE}/blog/${post.slug}`)}</link>
-        <guid isPermaLink="true">${escapeXml(`${SITE}/blog/${post.slug}`)}</guid>
+        <link>${escapeXml(`${site()}/blog/${post.slug}`)}</link>
+        <guid isPermaLink="true">${escapeXml(`${site()}/blog/${post.slug}`)}</guid>
         <description>${escapeXml(post.excerpt)}</description>
         ${post.publishedAt ? `<pubDate>${escapeXml(new Date(post.publishedAt).toUTCString())}</pubDate>` : ""}
       </item>`
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
 <rss version="2.0">
   <channel>
     <title>Ravi Kishan — Writing</title>
-    <link>${SITE}/blog</link>
+    <link>${site()}/blog</link>
     <description>Essays on distributed systems, systems programming and applied AI.</description>
     <language>en</language>
     ${items}
@@ -59,3 +60,6 @@ export default async function handler(req, res) {
   );
   res.status(200).send(xml);
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

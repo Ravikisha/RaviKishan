@@ -2,50 +2,70 @@
 //
 // DESIGN
 //
-// The honest shape of this screen is a CHECKLIST, not a form. The question
-// anyone actually opens it with is "what is missing and what breaks because of
-// it" — not "let me browse my credentials" — so the first thing on the page is
-// the count of required variables that are not set, and the rows are grouped
-// by what you can do about them rather than alphabetically.
+// Every variable lives in the database now; the deployment keeps ENV_KEY and
+// nothing else. So the question this screen answers changed from "what is
+// missing" to "what is missing, and what is still being read from the
+// deployment" — the second list is what moving fully into the database is
+// waiting on, and it gets a one-click answer (paste the .env, import it).
 //
-// Three groups, because a variable's class decides what is even possible:
+// Groups follow what you may do with a variable:
 //
-//   Live now        runtime settings, stored in Firestore, editable inline and
-//                   effective immediately. The only ones where Save means the
-//                   change has happened.
-//   Next deployment platform variables. Editable when Vercel is configured,
-//                   and every save says plainly that the running site keeps the
-//                   old value until it is redeployed. Getting this wrong costs
-//                   an afternoon of wondering why nothing changed.
-//   Locked          the keys that decrypt everything else. Shown — because
-//                   knowing they are set is the point of a checklist — with
-//                   the reason they cannot be touched, and no input at all.
+//   In the database      Save is live on the next request. New keys land here.
+//   Keys that protect    SECRETS_KEY, MCP_TOKEN_SECRET, INTEGRATION_SECRET and
+//   other data           the vault's B2 keys. Editable HERE only — never over
+//                        MCP — after a sign-in from the last 30 minutes, with
+//                        what changing each one breaks stated on the row.
+//   Settings             non-secret runtime settings.
+//   In the deployment    ENV_KEY alone, with why it cannot move.
 //
-// No value is ever rendered. A masked hint distinguishes two entries; anything
-// more is a credential on a screen that might be shared.
+// The add form says where a key will go before it is saved, from the same
+// registry the server routes by. No value is ever rendered: a masked hint
+// distinguishes two entries, and anything more is a credential on a screen
+// that might be shared.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { auth } from "../../lib/firebase";
+import { withFreshAuth } from "../../lib/reauth";
+import { KEY_RE, classify, known, isKeyring } from "../../lib/server/envRegistry";
 
 const GROUPS = [
   {
-    cls: "runtime",
-    title: "Live now",
-    blurb:
-      "Stored in the database and read on every request. Saving one takes effect immediately — no deployment.",
+    id: "stored",
+    title: "In the database",
+    blurb: "Sealed and read on every request. Saving one is live on the next request. New keys you add land here.",
+    match: (r) => r.cls === "stored" && !r.keyring,
   },
   {
-    cls: "deploy",
-    title: "Next deployment",
+    id: "keyring",
+    title: "Keys that protect other data",
     blurb:
-      "Platform variables. Vercel bakes the environment at build time, so a change here takes effect when the project is next deployed, not now.",
+      "These seal your passwords, MCP tokens and connected accounts, or decide where the vault's files go. Changed here only, never over MCP, and only after a recent sign-in. Read what each one breaks before changing it.",
+    match: (r) => r.keyring,
   },
   {
-    cls: "critical",
-    title: "Locked",
-    blurb:
-      "These decrypt everything else, so they can never be read or written from inside the app. Set them in the Vercel dashboard or .env.local.",
+    id: "runtime",
+    title: "Settings",
+    blurb: "Non-secret settings, live on the next request.",
+    match: (r) => r.cls === "runtime",
+  },
+  {
+    id: "bootstrap",
+    title: "In the deployment",
+    blurb: "The one variable that cannot live in the database, because it is the key that opens it.",
+    match: (r) => r.cls === "bootstrap",
   },
 ];
+
+// Where a key will go, in words, before anything is saved.
+export function destinationOf(key) {
+  const k = String(key || "").trim();
+  if (!k) return null;
+  if (!KEY_RE.test(k)) return { tone: "bad", text: "Capitals, digits and underscores, starting with a letter." };
+  const cls = classify(k);
+  if (cls === "bootstrap") return { tone: "bad", text: known(k)?.why || "This one stays in the deployment." };
+  if (cls === "runtime") return { tone: "ok", text: "A setting. Live on the next request." };
+  if (isKeyring(k)) return { tone: "warn", text: `Protects other data. ${known(k)?.why || ""} Needs a recent sign-in.` };
+  return { tone: "ok", text: `${known(k) ? "" : "New key. "}Sealed into the database. Live on the next request.` };
+}
 
 async function call(body) {
   const user = auth.currentUser;
@@ -60,6 +80,11 @@ async function call(body) {
   return json;
 }
 
+// Keyring keys need a sign-in from the last 30 minutes; the browser asks for
+// one first instead of letting the server refuse.
+const guarded = (key, action) =>
+  isKeyring(key) ? withFreshAuth(`change ${key}`, action) : action();
+
 export default function EnvPanel() {
   const [state, setState] = useState(null);
   const [editing, setEditing] = useState(null); // key
@@ -67,6 +92,10 @@ export default function EnvPanel() {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [dotenv, setDotenv] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     setBusy("Reading…");
@@ -83,19 +112,12 @@ export default function EnvPanel() {
     load();
   }, [load]);
 
-  const save = async (row) => {
+  const run = async (label, fn) => {
     setErr("");
     setMsg("");
-    setBusy("Saving…");
+    setBusy(label);
     try {
-      const out = await call({ action: "set", key: row.key, value: draft });
-      setMsg(
-        out.effectiveOn === "immediately"
-          ? `${row.key} saved — live now.`
-          : `${row.key} saved on Vercel. The running site keeps the old value until it is redeployed.`
-      );
-      setEditing(null);
-      setDraft("");
+      await fn();
       await load();
     } catch (e) {
       setErr(e.message);
@@ -104,31 +126,57 @@ export default function EnvPanel() {
     }
   };
 
-  const clear = async (row) => {
+  const save = (key, value, after) =>
+    run("Saving…", async () => {
+      const out = await guarded(key, () => call({ action: "set", key, value }));
+      setMsg(`${out.key} ${out.created === false ? "updated" : "saved"}. Live on the next request.`);
+      after?.();
+    });
+
+  const remove = (row) => {
     if (
       !window.confirm(
         row.cls === "runtime"
-          ? `Clear ${row.key}? It will fall back to its default.`
-          : `Delete ${row.key} from Vercel? The next build will not have it.`
+          ? `Clear ${row.key}? It falls back to its default.`
+          : `Delete ${row.key}? Anything using it stops seeing it on the next request.${
+              row.keyring ? `\n\n${row.why}` : ""
+            }`
       )
     )
       return;
-    setErr("");
-    try {
-      await call({ action: "delete", key: row.key, confirm: true });
+    run("Deleting…", async () => {
+      await guarded(row.key, () => call({ action: "delete", key: row.key }));
       setMsg(`${row.key} removed.`);
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    }
+    });
   };
 
-  const grouped = useMemo(() => {
-    if (!state) return [];
-    return GROUPS.map((g) => ({ ...g, rows: state.rows.filter((r) => r.cls === g.cls) }));
-  }, [state]);
+  const doImport = () =>
+    run("Importing…", async () => {
+      const keys = dotenv
+        .split(/\r?\n/)
+        .map((l) => /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(l)?.[1]?.toUpperCase())
+        .filter(Boolean);
+      const action = () => call({ action: "import", text: dotenv });
+      const out = keys.some(isKeyring)
+        ? await withFreshAuth("import keys that protect other data", action)
+        : await action();
+      setMsg(
+        `Imported ${out.imported}: ${out.created.length} new, ${out.updated.length} updated` +
+          (out.settings.length ? `, ${out.settings.length} settings` : "") +
+          (out.refused.length ? `. Skipped ${out.refused.map((r) => r.key).join(", ")}.` : ".") +
+          " Live on the next request."
+      );
+      setDotenv("");
+      setImporting(false);
+    });
 
+  const grouped = useMemo(
+    () => (state ? GROUPS.map((g) => ({ ...g, rows: state.rows.filter(g.match) })) : []),
+    [state]
+  );
   const missing = state?.missingRequired || [];
+  const notMoved = state?.notMoved || [];
+  const dest = destinationOf(newKey);
 
   return (
     <main className="admin-main ev-main">
@@ -136,8 +184,8 @@ export default function EnvPanel() {
         <div>
           <h3>Environment</h3>
           <p className="admin-sub ev-sub">
-            Every variable this deployment knows about, what it is for, and whether it is set.
-            Values are never shown — only whether something is there.
+            Every variable this site uses, kept in the database. Add, change or delete any of them
+            here or over MCP, and the change is live on the next request. Values are never shown.
           </p>
         </div>
         <span>
@@ -147,21 +195,32 @@ export default function EnvPanel() {
         </span>
       </div>
 
-      {/* The question anyone opens this screen with. */}
       {state ? (
-        <div className={`ev-status ${missing.length ? "bad" : "ok"}`}>
+        <div className={`ev-status ${missing.length || !state.store.configured || state.store.error ? "bad" : "ok"}`}>
           <strong>
-            {missing.length
+            {!state.store.configured
+              ? "ENV_KEY is not set on this deployment"
+              : missing.length
               ? `${missing.length} required variable${missing.length === 1 ? "" : "s"} not set`
               : "Everything required is set"}
           </strong>
-          <span>
-            {missing.length
-              ? missing.join(", ")
-              : state.vercel.configured
-              ? "Deployment variables can be changed from here."
-              : "Set VERCEL_TOKEN and VERCEL_PROJECT_ID to manage deployment variables from here."}
-          </span>
+          <span>{missing.length ? missing.join(", ") : state.store.note}</span>
+        </div>
+      ) : null}
+
+      {/* What moving fully into the database is still waiting on. */}
+      {notMoved.length ? (
+        <div className="ev-moving">
+          <p>
+            <strong>
+              {notMoved.length} still read from the deployment, not the database:
+            </strong>{" "}
+            {notMoved.join(", ")}. Paste your .env below to move them in one go, then remove them
+            from Vercel.
+          </p>
+          <button className="admin-ghost ev-sm" type="button" onClick={() => setImporting(true)}>
+            Import a .env
+          </button>
         </div>
       ) : null}
 
@@ -169,106 +228,191 @@ export default function EnvPanel() {
       {err ? <p className="admin-err">{err}</p> : null}
       {msg ? <p className="ev-ok">{msg}</p> : null}
 
-      {grouped.map((g) => (
-        <section className="ev-group" key={g.cls} data-cls={g.cls}>
-          <header>
-            <h4>{g.title}</h4>
-            <p>{g.blurb}</p>
-          </header>
+      <form
+        className="ev-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save(newKey.trim(), newValue, () => {
+            setNewKey("");
+            setNewValue("");
+          });
+        }}
+        aria-labelledby="ev-add-h"
+      >
+        <div className="ev-add-head">
+          <h4 id="ev-add-h">Add a variable</h4>
+          <button className="ev-link" type="button" onClick={() => setImporting((v) => !v)}>
+            {importing ? "Add one instead" : "Import a .env file"}
+          </button>
+        </div>
 
-          <ul className="ev-list">
-            {g.rows.map((r) => (
-              <li key={r.key} className={`ev-row ${r.present ? "set" : "unset"}${r.missing ? " missing" : ""}`}>
-                <div className="ev-id">
-                  <p className="ev-key">
-                    {r.key}
-                    {r.required ? <em title="Required">required</em> : null}
-                  </p>
-                  <p className="ev-what">{r.what || "Not in the catalogue."}</p>
-                  {r.cls === "critical" && r.why ? <p className="ev-why">{r.why}</p> : null}
-                </div>
+        {importing ? (
+          <>
+            <textarea
+              className="admin-input ev-dotenv"
+              rows={8}
+              value={dotenv}
+              onChange={(e) => setDotenv(e.target.value)}
+              placeholder={"# Paste a .env file\nLINKEDIN_CLIENT_ID=...\nLINKEDIN_CLIENT_SECRET=..."}
+              spellCheck={false}
+              aria-label=".env file contents"
+            />
+            <div className="ev-add-row">
+              <p className="ev-dest">
+                Every line is checked before anything is saved. ENV_KEY is skipped; existing keys are
+                replaced.
+              </p>
+              <button className="admin-primary ev-sm" type="button" disabled={!!busy || !dotenv.trim()} onClick={doImport}>
+                Import
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="ev-add-row">
+              <input
+                className="admin-input ev-add-key"
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))}
+                placeholder="KEY_NAME"
+                aria-label="Variable name"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <input
+                className="admin-input ev-add-value"
+                type="password"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                placeholder="Value, never shown again"
+                aria-label="Value"
+                autoComplete="new-password"
+              />
+              <button
+                className="admin-primary ev-sm"
+                type="submit"
+                disabled={!!busy || !newKey.trim() || !newValue.trim() || dest?.tone === "bad"}
+              >
+                Save
+              </button>
+            </div>
+            <p className={`ev-dest ${dest?.tone || ""}`}>
+              {dest ? dest.text : "Typing an existing name replaces its value."}
+            </p>
+          </>
+        )}
+      </form>
 
-                <div className="ev-state">
-                  {r.present ? (
-                    <span className="ev-hint" title={r.public ? "" : "Masked — values are never shown"}>
-                      {r.hint || "set"}
-                    </span>
-                  ) : (
-                    <span className="ev-no">not set</span>
-                  )}
-                  {r.cls === "runtime" && r.source ? <span className="ev-src">{r.source}</span> : null}
-                </div>
+      {grouped.map((g) =>
+        g.rows.length ? (
+          <section className="ev-group" key={g.id} data-group={g.id}>
+            <header>
+              <h4>{g.title}</h4>
+              <p>{g.blurb}</p>
+            </header>
 
-                <div className="ev-actions">
-                  {!r.manageable ? (
-                    <span className="ev-locked">locked</span>
-                  ) : editing === r.key ? null : (
-                    <>
+            <ul className="ev-list">
+              {g.rows.map((r) => (
+                <li key={r.key} className={`ev-row ${r.present ? "set" : "unset"}${r.missing ? " missing" : ""}`}>
+                  <div className="ev-id">
+                    <p className="ev-key">
+                      {r.key}
+                      {r.required ? <em title="Required">required</em> : null}
+                    </p>
+                    <p className="ev-what">{r.what || "Added by you."}</p>
+                    {(r.keyring || r.cls === "bootstrap") && r.why ? <p className="ev-why">{r.why}</p> : null}
+                  </div>
+
+                  <div className="ev-state">
+                    {r.present ? (
+                      <span className="ev-hint" title={r.public ? "" : "Masked: values are never shown"}>
+                        {r.hint || "set"}
+                      </span>
+                    ) : (
+                      <span className="ev-no">not set</span>
+                    )}
+                    {r.present && r.source && r.source !== "unset" && r.cls !== "bootstrap" ? (
+                      <span className={`ev-src ${r.source}`} title="Where the value is coming from right now">
+                        {r.source}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="ev-actions">
+                    {!r.manageable ? (
+                      <span className="ev-locked">deployment only</span>
+                    ) : editing === r.key ? null : (
+                      <>
+                        <button
+                          className="admin-ghost ev-sm"
+                          type="button"
+                          disabled={!state.store.configured}
+                          onClick={() => {
+                            setEditing(r.key);
+                            setDraft("");
+                          }}
+                        >
+                          {r.present ? "Change" : "Set"}
+                        </button>
+                        {r.source === "database" ? (
+                          <button className="admin-ghost ev-sm" type="button" onClick={() => remove(r)}>
+                            {r.cls === "runtime" ? "Clear" : "Delete"}
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+
+                  {editing === r.key ? (
+                    <form
+                      className="ev-edit"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        save(r.key, draft, () => {
+                          setEditing(null);
+                          setDraft("");
+                        });
+                      }}
+                    >
+                      <input
+                        className="admin-input"
+                        type={r.public ? "text" : "password"}
+                        value={draft}
+                        autoFocus
+                        onChange={(e) => setDraft(e.target.value)}
+                        placeholder={r.public ? "Value" : "New value, never shown again"}
+                        autoComplete="new-password"
+                      />
+                      <button className="admin-primary ev-sm" type="submit" disabled={!draft || !!busy}>
+                        Save
+                      </button>
                       <button
                         className="admin-ghost ev-sm"
                         type="button"
-                        disabled={r.cls === "deploy" && !state.vercel.configured}
-                        title={
-                          r.cls === "deploy" && !state.vercel.configured
-                            ? "Needs VERCEL_TOKEN and VERCEL_PROJECT_ID"
-                            : undefined
-                        }
                         onClick={() => {
-                          setEditing(r.key);
+                          setEditing(null);
                           setDraft("");
                         }}
                       >
-                        {r.present ? "Replace" : "Set"}
+                        Cancel
                       </button>
-                      {r.present && r.cls === "runtime" ? (
-                        <button className="admin-ghost ev-sm" type="button" onClick={() => clear(r)}>
-                          Clear
-                        </button>
-                      ) : null}
-                    </>
-                  )}
-                </div>
+                      <span className={r.keyring ? "ev-warn" : "ev-live"}>
+                        {r.keyring ? "Needs a recent sign-in. Live on the next request." : "Live on the next request."}
+                      </span>
+                    </form>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null
+      )}
 
-                {editing === r.key ? (
-                  <form
-                    className="ev-edit"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      save(r);
-                    }}
-                  >
-                    <input
-                      className="admin-input"
-                      value={draft}
-                      autoFocus
-                      onChange={(e) => setDraft(e.target.value)}
-                      placeholder={r.public ? "Value" : "New value — it will not be shown again"}
-                    />
-                    <button className="admin-primary ev-sm" type="submit" disabled={!draft}>
-                      Save
-                    </button>
-                    <button
-                      className="admin-ghost ev-sm"
-                      type="button"
-                      onClick={() => {
-                        setEditing(null);
-                        setDraft("");
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    {r.cls === "deploy" ? (
-                      <span className="ev-warn">Takes effect on the next deployment.</span>
-                    ) : null}
-                  </form>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-
-      {state?.redeployNote ? <p className="ev-foot">{state.redeployNote}</p> : null}
+      <p className="ev-foot">
+        Everything here is stored as one blob sealed with ENV_KEY. Even the names are inside it, and
+        nothing is ever sent back to this page. A value stored here wins over the same key in the
+        deployment; deleting it lets the deployment&apos;s value apply again.
+      </p>
       <EnvStyles />
     </main>
   );
@@ -335,10 +479,10 @@ export function EnvStyles() {
         border-left: 3px solid var(--a-line, #23262f);
         margin-bottom: 10px;
       }
-      .ev-group[data-cls="runtime"] header {
+      .ev-group[data-group="runtime"] header {
         border-left-color: var(--a-amber, #ffb020);
       }
-      .ev-group[data-cls="critical"] header {
+      .ev-group[data-group="bootstrap"] header {
         border-left-color: #4a5060;
       }
       .ev-group h4 {
@@ -463,6 +607,127 @@ export function EnvStyles() {
       .ev-warn {
         font-size: 11px;
         color: #ffd27a;
+      }
+      .ev-live {
+        font-size: 11px;
+        color: var(--a-amber, #ffb020);
+      }
+
+      /* Insert or update. The destination line under the key is the point:
+         it says where the value will live before anything is saved. */
+      .ev-add {
+        margin: 18px 0 4px;
+        padding: 14px 16px;
+        border: 1px solid var(--a-line, #23262f);
+        border-left: 3px solid var(--a-amber, #ffb020);
+        border-radius: 11px;
+        background: var(--a-raise, #15171d);
+      }
+      /* Keyring: the left edge says "careful" before the words do. */
+      .ev-group[data-group="keyring"] header {
+        border-left-color: #c9822c;
+      }
+      .ev-add-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .ev-link {
+        background: none;
+        border: 0;
+        padding: 0;
+        font: inherit;
+        font-size: 12px;
+        color: var(--a-dim, #8b90a0);
+        border-bottom: 1px dashed var(--a-line, #3a3f4d);
+        cursor: pointer;
+      }
+      .ev-link:hover,
+      .ev-link:focus-visible {
+        color: var(--a-text, #e7e8ee);
+        border-bottom-color: var(--a-amber, #ffb020);
+      }
+      .ev-dotenv {
+        width: 100%;
+        margin-bottom: 8px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 12.5px;
+        line-height: 1.55;
+        resize: vertical;
+      }
+      .ev-add-row .ev-dest {
+        flex: 1;
+        margin: 0;
+      }
+      /* What moving fully into the database is still waiting on. */
+      .ev-moving {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 10px 0 0;
+        padding: 10px 14px;
+        border: 1px dashed rgba(255, 176, 32, 0.45);
+        border-radius: 11px;
+      }
+      .ev-moving p {
+        margin: 0;
+        flex: 1 1 320px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--a-dim, #8b90a0);
+      }
+      .ev-moving strong {
+        color: var(--a-text, #e7e8ee);
+        font-weight: 600;
+      }
+      .ev-add h4 {
+        margin: 0 0 10px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 14px;
+        color: var(--a-text, #e7e8ee);
+      }
+      .ev-add-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .ev-add-key {
+        flex: 0 1 280px;
+        min-width: 200px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 12.5px;
+      }
+      .ev-add-value {
+        flex: 1 1 260px;
+        min-width: 200px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 12.5px;
+      }
+      .ev-dest {
+        margin: 8px 0 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--a-dim, #8b90a0);
+      }
+      .ev-dest.ok {
+        color: var(--a-amber, #ffb020);
+      }
+      .ev-dest.warn {
+        color: #ffd27a;
+      }
+      .ev-dest.bad {
+        color: #ff9a9a;
+      }
+      .ev-src.database {
+        color: var(--a-amber, #ffb020);
+        border-color: rgba(255, 176, 32, 0.45);
+      }
+      .ev-group[data-group="stored"] header {
+        border-left-color: var(--a-amber, #ffb020);
       }
       .ev-foot {
         margin-top: 22px;

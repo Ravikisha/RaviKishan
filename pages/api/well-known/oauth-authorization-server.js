@@ -4,7 +4,8 @@
 // This server is deliberately minimal: authorization_code + PKCE (S256 only)
 // and refresh_token, public clients, dynamic registration. No implicit grant,
 // no password grant, no client secrets — all of which OAuth 2.1 removes.
-export default function handler(req, res) {
+import { withEnv } from "../../../lib/server/envStore";
+function handler(req, res) {
   const host = req.headers.host || "";
   const proto =
     req.headers["x-forwarded-proto"] ||
@@ -25,3 +26,6 @@ export default function handler(req, res) {
     service_documentation: `${base}/admin`,
   });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

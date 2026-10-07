@@ -68,7 +68,8 @@ const PRIVATE = [
   ["jobs", "the job tracker"],
   ["postVersions", "post snapshots, which include draft bodies"],
   ["linkedinPosts", "what this app published to LinkedIn"],
-  ["connectedAccounts", "sealed YouTube, Instagram, X and Google Analytics credentials"],
+  ["connectedAccounts", "sealed credentials for every connected account"],
+  ["identities", "the owner's own addresses, grouping the connected accounts"],
   ["notes", "note bodies, including unfinished ones"],
   ["secrets", "sealed passwords and API keys"],
   ["config", "runtime settings"],
@@ -121,6 +122,36 @@ console.log("\nposts are per-document, so an unconstrained list must be refused"
   const found = Array.isArray(rows) ? rows.filter((r) => r.document).length : 0;
   check(res.status === 200, "the constrained published-only query is allowed", `HTTP ${res.status}`);
   check(found > 0, "and it returns published posts", `${found} rows`);
+}
+
+console.log("\nthe env store: one sealed document, readable, not listable or writable");
+{
+  // `get` is public by design (session-less routes need it); a 404 before the
+  // first save is fine. What must never happen is a list, or an anonymous write.
+  const g = await status("envStore/current");
+  check(g === 200 || g === 404, "envStore/current can be fetched by the server with no session", `HTTP ${g}`);
+  const l = await status("envStore?pageSize=1");
+  check(l === 403, "the envStore collection cannot be listed", `HTTP ${l}`);
+  const w = await fetch(`${BASE}/envStore/current?key=${KEY}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { blob: { stringValue: "anonymous-overwrite" } } }),
+  });
+  check(w.status === 403, "and an anonymous caller cannot overwrite it", `HTTP ${w.status}`);
+  if (g === 200) {
+    const body = await (await fetch(`${BASE}/envStore/current?key=${KEY}`)).json();
+    const blob = body?.fields?.blob?.stringValue || "";
+    // Specific names and prefixes, not a pattern: base64url itself contains
+    // capitals and underscores, so "looks like KEY_NAME" would fire on noise.
+    const leaks = ["LINKEDIN", "CLIENT_SECRET", "SECRETS_KEY", "MCP_TOKEN", "WPL_AP1", "AIzaSy", "ghp_"].filter((t) =>
+      blob.includes(t)
+    );
+    check(
+      /^[A-Za-z0-9_-]+$/.test(blob) && leaks.length === 0,
+      "what it serves is ciphertext: no key names, no recognisable secret",
+      leaks.join(",")
+    );
+  }
 }
 
 console.log(`\n${pass} passed, ${fails.length} failed`);

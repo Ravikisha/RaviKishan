@@ -16,6 +16,7 @@
 import { verifyToken, hasScope, isMcpConfigured } from "../../../lib/server/mcpToken";
 import { idTokenFor, isRevoked } from "../../../lib/server/firestoreRest";
 import { toolByName, listToolsFor } from "../../../lib/server/mcpTools";
+import { withEnv } from "../../../lib/server/envStore";
 
 const PROTOCOL_VERSION = "2025-06-18";
 const SERVER_INFO = { name: "ravikishan-identity", version: "1.0.0" };
@@ -54,7 +55,7 @@ function unauthorized(req, res, message) {
   return res.json({ error: "unauthorized", message });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
 
   // A GET on the endpoint would be the SSE upgrade. This server never pushes
@@ -190,3 +191,6 @@ export default async function handler(req, res) {
 // advertise 3 MB and point anything larger at their sourceUrl path,
 // which is fetched server-side and never touches this body.
 export const config = { api: { bodyParser: { sizeLimit: "4mb" } } };
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

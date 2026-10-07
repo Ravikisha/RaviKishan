@@ -5,10 +5,11 @@
 // for a post written here we are the original.
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
 import { crossPost, isDevtoConfigured } from "../../../lib/server/devto";
+import { withEnv } from "../../../lib/server/envStore";
 
 const SITE = "https://www.ravikishan.me";
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -42,3 +43,6 @@ export default async function handler(req, res) {
     return res.status(e.status === 401 ? 401 : 502).json({ error: e.message });
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

@@ -14,6 +14,7 @@
 import { verifyToken, hasScope, isMcpConfigured } from "../../../lib/server/mcpToken";
 import { idTokenFor, isRevoked, listDocuments, getDocument } from "../../../lib/server/firestoreRest";
 import { presign, isVaultConfigured, b2Config } from "../../../lib/server/b2";
+import { withEnv } from "../../../lib/server/envStore";
 
 // Everything except `stats`, which is high-volume and reconstructible.
 const COLLECTIONS = [
@@ -30,7 +31,7 @@ const COLLECTIONS = [
   "auditLog",
 ];
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -115,3 +116,6 @@ export default async function handler(req, res) {
     failures: Object.keys(failures).length ? failures : undefined,
   });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

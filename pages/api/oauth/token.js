@@ -12,11 +12,12 @@
 import { readCode, verifyPkce, readClient, ACCESS_TOKEN_TTL } from "../../../lib/server/oauth";
 import { mintToken, isMcpConfigured, ALL_SCOPES } from "../../../lib/server/mcpToken";
 import { idTokenFor, getDocument, createDocument } from "../../../lib/server/firestoreRest";
+import { withEnv } from "../../../lib/server/envStore";
 
 const bad = (res, status, error, description) =>
   res.status(status).json({ error, error_description: description });
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Pragma", "no-cache");
   if (req.method !== "POST") {
@@ -128,3 +129,6 @@ function readClientName(clientId) {
     return "oauth client";
   }
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

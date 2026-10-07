@@ -1,8 +1,9 @@
 // Validates an authorization request before the consent screen renders
 // anything. An invalid request must never show an "Approve" button.
 import { readClient } from "../../../lib/server/oauth";
+import { withEnv } from "../../../lib/server/envStore";
 
-export default function handler(req, res) {
+function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -39,3 +40,6 @@ export default function handler(req, res) {
 
   return res.status(200).json({ client_name: client.name, redirect_uri });
 }
+
+// Every variable is read from the database first (lib/server/envStore.js).
+export default withEnv(handler);

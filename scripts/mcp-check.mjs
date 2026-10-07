@@ -766,6 +766,30 @@ console.log("\nthe registry survived however it was last merged");
   check(dupes.length === 0, "and no tool was duplicated by one", dupes.join(", "));
 }
 
+console.log("\nML lab: what must stay absent");
+{
+  const { TOOLS, listToolsFor } = await import("../lib/server/mcpTools.js");
+  const ml = TOOLS.filter((t) => /^(hf|kaggle)_/.test(t.name) || t.name === "get_ml_credentials");
+  check(
+    !ml.some((t) => /delete_(repo|dataset|kernel)|make_public|set_visibility/.test(t.name)),
+    "no ML tool deletes a repo/dataset/kernel or flips visibility"
+  );
+  const cred = TOOLS.find((t) => t.name === "get_ml_credentials");
+  check(cred?.scope === "secrets", "get_ml_credentials needs the secrets scope", String(cred?.scope));
+  check(/HANDLING/.test(cred?.description || ""), "and carries the handling rule");
+  const offered = listToolsFor(["read", "write", "vault"]).map((t) => t.name);
+  check(!offered.includes("get_ml_credentials"), "read+write+vault tokens are not offered it");
+  const create = TOOLS.find((t) => t.name === "hf_create_repo");
+  check(/PRIVATE by default/.test(create?.description || ""), "hf_create_repo says private by default");
+  for (const n of ["hf_delete_file", "kaggle_submit"]) {
+    const out = await TOOLS.find((t) => t.name === n).handler(
+      { id: "a/b", paths: ["x"], competition: "c", fileName: "f" },
+      { idToken: "" }
+    );
+    check(out?.isError === true && /confirm/.test(out.error), `${n} refuses without confirm, before any I/O`);
+  }
+}
+
 console.log("\nGoogle Analytics is read-only by construction");
 {
   const { TOOLS } = await import("../lib/server/mcpTools.js");

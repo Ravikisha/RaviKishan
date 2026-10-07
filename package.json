@@ -42,7 +42,8 @@
     "test:notes": "node scripts/notes-check.mjs",
     "e2e:notes": "node scripts/e2e-check.js notes",
     "test:social": "node scripts/social-check.mjs",
-    "test:analytics": "node scripts/analytics-check.mjs"
+    "test:analytics": "node scripts/analytics-check.mjs",
+    "test:secrets": "node scripts/secrets-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

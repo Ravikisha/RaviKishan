@@ -182,7 +182,9 @@ console.log("\ntool registry contract");
     String(names.filter((n) => !/^[a-z][a-z0-9_]*$/.test(n)))
   );
 
-  const SCOPES = ["read", "write", "vault"];
+  // From the source of truth, not a literal. This list was hardcoded as
+  // read/write/vault and went stale the moment `secrets` was added.
+  const { ALL_SCOPES: SCOPES } = await import("../lib/server/mcpToken.js");
   check(
     TOOLS.every((t) => SCOPES.includes(t.scope)),
     "every tool declares a known scope",
@@ -227,8 +229,9 @@ console.log("\ntool registry contract");
     String(readOnly.filter((t) => /^(create|update|delete|set|add|upload|restore|publish|import|crosspost|mark)_/.test(t.name)).map((t) => t.name))
   );
   check(
-    listToolsFor(["read", "write", "vault"]).length === TOOLS.length,
-    "all three scopes together offer everything"
+    listToolsFor(SCOPES).length === TOOLS.length,
+    "every scope together offers everything",
+    `${listToolsFor(SCOPES).length} of ${TOOLS.length}`
   );
   check(listToolsFor([]).length === 0, "a token with no scopes is offered nothing");
 }
@@ -676,6 +679,66 @@ console.log("\nGoogle Analytics is read-only by construction");
     "every reporting tool requires a propertyId",
     String(missing.map((t) => t.name))
   );
+}
+
+console.log("\nthe secret store is fenced off from every other scope");
+{
+  const { TOOLS, listToolsFor } = await import("../lib/server/mcpTools.js");
+  const secretTools = TOOLS.filter((t) => /_secret/.test(t.name));
+
+  check(secretTools.length > 0, "secret tools exist", String(secretTools.length));
+  // The whole containment argument rests on this: a token holding `secrets` is
+  // equivalent to the passwords it can read, so nothing else may imply it.
+  const leaked = secretTools.filter((t) => t.scope !== "secrets");
+  check(leaked.length === 0, "every secret tool sits behind the secrets scope", String(leaked.map((t) => t.name)));
+
+  for (const combo of [["read"], ["write"], ["vault"], ["read", "write", "vault"]]) {
+    const offered = listToolsFor(combo).filter((t) => /_secret/.test(t.name));
+    check(
+      offered.length === 0,
+      `a token with ${combo.join("+")} is offered no secret tool`,
+      String(offered.map((t) => t.name))
+    );
+  }
+  check(
+    listToolsFor(["secrets"]).filter((t) => /_secret/.test(t.name)).length === secretTools.length,
+    "and a secrets token is offered all of them"
+  );
+
+  // Listing must never be able to carry a value, however it is called.
+  const list = TOOLS.find((t) => t.name === "list_secrets");
+  check(!/value/i.test(JSON.stringify(list.inputSchema)), "list_secrets takes no value-revealing option");
+  const get = TOOLS.find((t) => t.name === "get_secret");
+  check(
+    (get.inputSchema.required || []).includes("name"),
+    "get_secret reads ONE secret by name, never in bulk"
+  );
+  const del = TOOLS.find((t) => t.name === "delete_secret");
+  check(!!del.inputSchema.properties.confirm, "delete_secret asks for confirmation");
+
+  // The store's own guards, called directly — they must refuse before any I/O.
+  // Sealing needs a key; the value of it does not matter to these assertions.
+  process.env.SECRETS_KEY ||= "test-key-for-the-suite";
+  const store = await import("../lib/server/secretStore.js");
+  let threw = "";
+  try {
+    store.readValue({ value: "x", agentReadable: false }, { forAgent: true, name: "aws" });
+  } catch (e) {
+    threw = e.message;
+  }
+  check(
+    /not marked readable by an agent/.test(threw),
+    "a secret not marked agent-readable is refused to an agent",
+    threw.slice(0, 80)
+  );
+  check(
+    store.buildRecord({ name: "a", value: "b" }).record.agentReadable === false,
+    "and agentReadable is FALSE by default, so saving never exposes"
+  );
+  // A listing row must not be able to contain the sealed value either.
+  const shaped = store.publicShape("x", { name: "x", value: "SEALED", agentReadable: true });
+  check(!("value" in shaped), "a listing row carries no value field at all");
+  check(shaped.hasValue === true, "only whether there is one");
 }
 
 console.log("\nguards refuse before they touch anything");

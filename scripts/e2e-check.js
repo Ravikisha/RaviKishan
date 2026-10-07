@@ -870,6 +870,40 @@ async function integrationsAuthSuite() {
     bad("social GET", e.message);
   }
 
+  // The secret store. Every action, because this is the one route where a
+  // single unauthenticated success is a full credential compromise.
+  for (const [body, name] of [
+    [{ action: "status" }, "status"],
+    [{ action: "list" }, "list"],
+    [{ action: "reveal", name: "aws" }, "reveal"],
+    [{ action: "save", name: "aws", value: "x" }, "save"],
+    [{ action: "delete", name: "aws" }, "delete"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}/api/secrets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      check(res.status === 401, `/api/secrets ${name} refuses an anonymous caller`, String(res.status));
+      // A refusal must not leak the shape of the store either.
+      const text = await res.text();
+      check(
+        !/value|secret"\s*:/i.test(text) || /error/i.test(text),
+        `and its ${name} refusal carries no secret material`,
+        text.slice(0, 80)
+      );
+    } catch (e) {
+      bad(`secrets ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/secrets`, { method: "GET" });
+    check(res.status === 405, "/api/secrets refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("secrets GET", e.message);
+  }
+
   // Google Analytics reads traffic for every property the account can see.
   for (const [body, name] of [
     [{ action: "accounts" }, "accounts"],

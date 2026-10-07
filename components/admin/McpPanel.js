@@ -24,6 +24,14 @@ const SCOPES = [
   { id: "read", label: "Read", hint: "Profile, résumé, jobs, posts, links, contacts, vault listings" },
   { id: "write", label: "Write", hint: "Update profile, create jobs, posts and short links" },
   { id: "vault", label: "Vault", hint: "Vault metadata + short-lived document download links" },
+  // Never pre-ticked. A token holding this is equivalent to the passwords it
+  // can read, so granting it has to be a decision someone makes on purpose.
+  {
+    id: "secrets",
+    label: "Secrets",
+    hint: "Read and write stored passwords and API keys — only ones marked readable by agents",
+    danger: true,
+  },
 ];
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
@@ -31,7 +39,7 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 export default function McpPanel({ user }) {
   const [rows, setRows] = useState(null);
   const [label, setLabel] = useState("");
-  const [picked, setPicked] = useState({ read: true, write: false, vault: false });
+  const [picked, setPicked] = useState({ read: true, write: false, vault: false, secrets: false });
   const [issued, setIssued] = useState(null); // shown once
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -219,7 +227,10 @@ export default function McpPanel({ user }) {
           />
           <div className="mcp-scopes">
             {SCOPES.map((s) => (
-              <label key={s.id} className={`mcp-scope${picked[s.id] ? " on" : ""}`}>
+              <label
+                key={s.id}
+                className={`mcp-scope${picked[s.id] ? " on" : ""}${s.danger ? " danger" : ""}`}
+              >
                 <input
                   type="checkbox"
                   checked={!!picked[s.id]}
@@ -443,6 +454,17 @@ export default function McpPanel({ user }) {
           line-height: 1.55;
           color: #cfd3dd;
           margin: 0;
+        }
+        .mcp-scope.danger.on {
+          border-color: #a33b45;
+          color: #ff9a9a;
+        }
+        .mcp-scope.danger.on::after {
+          content: "equivalent to the passwords it can read";
+          display: block;
+          margin-top: 4px;
+          font-size: 10.5px;
+          color: #ff8a8a;
         }
       `}</style>
     </main>

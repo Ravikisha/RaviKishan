@@ -361,3 +361,59 @@ do not.
 > **Thresholding.** GA4 withholds rows that could identify an individual, so a
 > low-traffic property can report zero rows while having real traffic. The panel
 > and the tools both flag that case rather than showing it as "no traffic".
+
+---
+
+## 8. The secret store (passwords and API keys)
+
+One environment variable:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+```
+SECRETS_KEY=<that value>
+```
+
+Separate from `INTEGRATION_SECRET` and `MCP_TOKEN_SECRET` on purpose — rotating
+one of those must not destroy the password store, and rotating this one must
+not sign every account out.
+
+> **Rotating `SECRETS_KEY` makes every stored value permanently unreadable.**
+> There is no recovery path and no second copy. It is the emergency lever, not
+> routine maintenance.
+
+### What this store is, and what it is not
+
+**It is not end-to-end encrypted, and it cannot be.** The document vault
+(`vault/`) encrypts in the browser under a passphrase that never leaves your
+machine — which is exactly why it has no write tool and no MCP read of its
+bytes. This store exists so an **agent can read a value**, and that means the
+deployment must be able to decrypt it. Those two properties are mutually
+exclusive. Use the document vault for things no software should ever read;
+use this for credentials you want to hand to an agent.
+
+The blast radius is contained four ways instead:
+
+| | |
+|---|---|
+| **Sealed at rest** | AES-256-GCM under `SECRETS_KEY`, which is never in the database. A Firestore leak yields ciphertext |
+| **Its own MCP scope** | `secrets`, implied by nothing. Every token minted before it existed cannot touch the store |
+| **Per-secret opt-in** | `agentReadable` is **off by default** — saving a password exposes it to nothing until you turn it on |
+| **One at a time, audited** | Listing never returns values; each reveal writes to the append-only audit log with which token read what |
+
+What cannot be engineered away: **an MCP token with the `secrets` scope is
+equivalent to the secrets it can read.** Treat minting one as handing over
+those passwords, and revoke it when a client is retired.
+
+### Using it
+
+**Admin → Secrets.** Copy puts a value on the clipboard rather than on the
+screen; revealing on screen costs a sign-in from the last 30 minutes. The row's
+left edge is amber when an agent may read it.
+
+**From an agent:** mint a token in the MCP tab with the **Secrets** scope
+ticked (it is never pre-ticked), then `list_secrets` to find a name and
+`get_secret` to read one value. A secret not marked readable is refused with
+instructions rather than returned.

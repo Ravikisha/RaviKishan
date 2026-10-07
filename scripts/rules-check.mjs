@@ -70,6 +70,7 @@ const PRIVATE = [
   ["linkedinPosts", "what this app published to LinkedIn"],
   ["connectedAccounts", "sealed YouTube, Instagram, X and Google Analytics credentials"],
   ["notes", "note bodies, including unfinished ones"],
+  ["secrets", "sealed passwords and API keys"],
   ["siteDrafts", "unpublished site content"],
   ["auditLog", "the audit trail"],
   ["mcpTokens", "MCP token records"],

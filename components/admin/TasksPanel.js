@@ -109,9 +109,29 @@ export default function TasksPanel({ user }) {
   const [showDone, setShowDone] = useState(false);
   const [editing, setEditing] = useState(null);
   const [dragOver, setDragOver] = useState(null);
+  // Lists with nothing in them collapse to a name. These are the ones the
+  // reader has asked to open anyway, keyed `provider:groupId`.
+  const [opened, setOpened] = useState({});
+  // True for the length of a drag, so every list is a column — and therefore a
+  // drop target — while one is in the air.
+  const [dragging, setDragging] = useState(false);
   const dragged = useRef(null);
 
   const key = (provider, groupId) => `${provider}:${groupId}`;
+
+  // Does this list get a column? It does if it holds anything worth the space
+  // — open work, or completed work while completed work is being shown — or if
+  // it was opened by hand. A drag in progress opens every list, because you
+  // cannot drop a task onto a chip.
+  const shown = (provider, group) => {
+    if (opened[key(provider, group.id)]) return true;
+    // `dragged` is a ref, so it cannot drive this on its own — a ref change
+    // renders nothing, and the chips would still be chips at the moment you
+    // need them to be drop targets.
+    if (dragging) return true;
+    const list = tasks[key(provider, group.id)] || [];
+    return showDone ? list.length > 0 : list.some((t) => !t.done);
+  };
 
   /* ---------------- connections ---------------- */
 
@@ -177,8 +197,10 @@ export default function TasksPanel({ user }) {
         try {
           const rec = await finishConnect(connected);
           setMsg(
-            `${providerLabel(connected)} connected${rec?.email ? ` as ${rec.email}` : ""}. ` +
-              `It stays connected — the MCP tools use it too.`
+            // One line. The old copy explained the architecture ("It stays
+            // connected — the MCP tools use it too") in a confirmation toast,
+            // which is the one place nobody is reading about architecture.
+            `${providerLabel(connected)} connected${rec?.email ? ` as ${rec.email}` : ""}.`
           );
           logAdminAction({
             action: "integration.connect",
@@ -373,7 +395,10 @@ export default function TasksPanel({ user }) {
     <div className="tk-main">
       <div className="ops-head tk-head">
         <div>
-          <h2>Tasks</h2>
+          {/* No <h2>Tasks</h2> here: AdminShell already prints the section
+              name as the page's h1, and the panel repeating it put the word
+              twice on one screen, the second time smaller and greyer — which
+              reads as a subheading that forgot its content. */}
           <p className="tk-sub">
             Your real Google Tasks and Microsoft To Do, side by side. Everything here saves
             straight to the account it sits in.
@@ -410,7 +435,9 @@ export default function TasksPanel({ user }) {
           </button>
         </div>
       ) : null}
-      {msg ? <p className="tk-ok">{msg}</p> : null}
+      {/* Not while something is loading: "Loading your tasks…" sitting above
+          "Google Tasks connected…" is two states claiming the present tense. */}
+      {msg && !busy ? <p className="tk-ok">{msg}</p> : null}
 
       {conns === null ? (
         <p className="tk-busy">Checking your accounts…</p>
@@ -482,8 +509,9 @@ export default function TasksPanel({ user }) {
 
               {status.connected ? (
                 gs.length ? (
+                  <>
                   <div className="tk-rail">
-                    {gs.map((g) => (
+                    {gs.filter((g) => shown(p.id, g)).map((g) => (
                       <GroupColumn
                         key={g.id}
                         provider={p.id}
@@ -499,6 +527,7 @@ export default function TasksPanel({ user }) {
                             : null
                         }
                         draggedRef={dragged}
+                        onDragging={setDragging}
                         onDragStateChange={setDragOver}
                         onDropTask={() => dropTask({ provider: p.id, groupId: g.id })}
                         onAdd={(groupId, draft) => addTask(p.id, groupId, draft)}
@@ -511,6 +540,17 @@ export default function TasksPanel({ user }) {
                       />
                     ))}
                   </div>
+                  {/* An empty list is a name, not a column. Five of them side
+                      by side, each repeating "Nothing here. Add the first task
+                      below." under a full-size field, filled the first screen
+                      with the word "nothing" and pushed eighteen real tasks in
+                      the other account below the fold. Clicking one opens it
+                      where it stands. */}
+                  <QuietLists
+                    lists={gs.filter((g) => !shown(p.id, g))}
+                    onOpen={(g) => setOpened((m) => ({ ...m, [key(p.id, g.id)]: true }))}
+                  />
+                  </>
                 ) : failed ? (
                   <p className="tk-empty tk-empty-unread">
                     Nothing was read from this account, so whether it has lists is unknown.
@@ -553,6 +593,25 @@ export default function TasksPanel({ user }) {
 
 /* ================= one group ================= */
 
+// The lists that hold nothing.
+//
+// Exported and rendered by /__taskspreview as well, because this is the state
+// the board is in most of the time on a personal account — and a design
+// reference that only ever shows full lists is a reference for the easy case.
+export function QuietLists({ lists, onOpen }) {
+  if (!lists.length) return null;
+  return (
+    <div className="tk-quiet">
+      <span className="tk-quiet-label">Empty</span>
+      {lists.map((g) => (
+        <button key={g.id} type="button" className="tk-chip" onClick={() => onOpen(g)}>
+          {g.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function GroupColumn({
   provider = "google",
   list,
@@ -562,6 +621,7 @@ export function GroupColumn({
   dropState,
   onDragStateChange,
   draggedRef,
+  onDragging,
   onDropTask,
   onAdd,
   onToggle,
@@ -617,7 +677,9 @@ export function GroupColumn({
     >
       <header className="tk-col-head">
         <h4 title={list.title}>{list.title}</h4>
-        <span className="tk-count">{open.filter((t) => !t.isStep).length}</span>
+        {open.filter((t) => !t.isStep).length > 0 ? (
+          <span className="tk-count">{open.filter((t) => !t.isStep).length}</span>
+        ) : null}
         <div className="tk-menu-wrap">
           <button
             type="button"
@@ -690,6 +752,7 @@ export function GroupColumn({
                 listId={list.id}
                 provider={provider}
                 draggedRef={draggedRef}
+                onDragging={onDragging}
                 onToggle={onToggle}
                 onEdit={onEdit}
                 onRemove={onRemove}
@@ -702,6 +765,7 @@ export function GroupColumn({
                   provider={provider}
                   child
                   draggedRef={draggedRef}
+                  onDragging={onDragging}
                   onToggle={onToggle}
                   onEdit={onEdit}
                   onRemove={onRemove}
@@ -760,7 +824,7 @@ export function GroupColumn({
 
 /* ================= one task ================= */
 
-function TaskRow({ task, listId, provider, child, draggedRef, onToggle, onEdit, onRemove }) {
+function TaskRow({ task, listId, provider, child, draggedRef, onDragging, onToggle, onEdit, onRemove }) {
   const state = dueState(task.due);
   return (
     <article
@@ -769,9 +833,11 @@ function TaskRow({ task, listId, provider, child, draggedRef, onToggle, onEdit, 
       data-task={task.id}
       onDragStart={() => {
         draggedRef.current = { provider, groupId: listId, task };
+        if (onDragging) onDragging(true);
       }}
       onDragEnd={() => {
         draggedRef.current = null;
+        if (onDragging) onDragging(false);
       }}
     >
       <button
@@ -1033,6 +1099,43 @@ export function TasksStyles() {
         align-items: center;
         flex-wrap: wrap;
       }
+      /* The quiet strip: lists that hold nothing. A name and a target, no
+         card, no field, no repeated sentence. */
+      .tk-quiet {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        /* Clear of the columns above it. Tight against them it reads as the
+           last card's footer rather than as the shelf's own. */
+        margin-top: 4px;
+        padding: 10px 2px 2px;
+      }
+      .tk-quiet-label {
+        margin-right: 2px;
+        font-size: 11.5px;
+        color: var(--a-dim, #8b90a0);
+      }
+      .tk-chip {
+        padding: 5px 11px;
+        border: 1px dashed var(--a-line, #23262f);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--a-dim, #8b90a0);
+        font: inherit;
+        font-size: 12.5px;
+        cursor: pointer;
+        transition: color 0.12s, border-color 0.12s;
+      }
+      /* Dashed, and solid once it holds something — the same "dashed means not
+         yet real" language the board already uses for a cross-service drag and
+         the writing desk uses for an unpublished post. */
+      .tk-chip:hover,
+      .tk-chip:focus-visible {
+        color: var(--a-fg, #eceef3);
+        border-color: var(--a-accent, #ffb020);
+        border-style: solid;
+      }
       .tk-empty {
         margin: 14px 0 0 15px;
         font-size: 13px;
@@ -1051,12 +1154,18 @@ export function TasksStyles() {
       }
 
       /* ---- the column rail ---- */
+      /* Wraps, never scrolls sideways.
+         The rail used to be a horizontal strip, which put a long amber
+         scrollbar across the page — the loudest object on a panel whose whole
+         identity is "one amber accent, used for the thing you are acting on"
+         — and clipped the last list mid-card. Sideways scrolling in an admin
+         panel is where content goes to be forgotten. */
       .tk-rail {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+        align-content: start;
         gap: 12px;
-        overflow-x: auto;
         padding: 14px 2px 6px;
-        scroll-snap-type: x proximity;
         /* Each column is its own height. Stretching them all to the tallest is
            the kanban default and it turns a list with one task into a tall
            empty box; the floor on .tk-rows keeps a short column a big enough
@@ -1064,8 +1173,7 @@ export function TasksStyles() {
         align-items: flex-start;
       }
       .tk-col {
-        flex: 0 0 288px;
-        scroll-snap-align: start;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         background: var(--a-raise, #15171d);
@@ -1367,7 +1475,6 @@ export function TasksStyles() {
 
       @media (max-width: 720px) {
         .tk-col {
-          flex-basis: 85vw;
           max-height: none;
         }
         .tk-rows {

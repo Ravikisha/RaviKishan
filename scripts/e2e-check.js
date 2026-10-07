@@ -1260,6 +1260,59 @@ async function tasksSuite(browser) {
       "Microsoft's built-in list cannot be renamed or deleted",
       JSON.stringify(builtIn)
     );
+
+    // --- space goes to work, not to containers ---
+    //
+    // The board used to lay its lists out in a horizontal strip. On a personal
+    // account most lists are empty most of the time, so the first screen was
+    // five cards each repeating "Nothing here. Add the first task below." under
+    // a full-size field, a long amber scrollbar across the page, and the other
+    // account's real tasks below the fold.
+    const space = await page.evaluate(() => {
+      const de = document.documentElement;
+      const rail = document.querySelector(".tk-rail");
+      const titles = [...document.querySelectorAll(".tk-col-head h4")].map((n) => n.textContent.trim());
+      const chips = [...document.querySelectorAll(".tk-chip")].map((n) => n.textContent.trim());
+      return {
+        sideways: de.scrollWidth > de.clientWidth,
+        railSideways: rail ? rail.scrollWidth > rail.clientWidth + 1 : false,
+        titles,
+        chips,
+        zeroBadges: [...document.querySelectorAll(".tk-count")].filter((n) => n.textContent.trim() === "0").length,
+        repeatedNothing: [...document.querySelectorAll(".tk-none, .tk-empty")].filter((n) =>
+          /Nothing here/i.test(n.textContent)
+        ).length,
+      };
+    });
+    check(!space.sideways, "the board does not scroll the page sideways");
+    // The rail is where the scrollbar used to be, and it is the thing that has
+    // to wrap — a page that fits while its rail clips is the same bug.
+    check(!space.railSideways, "and the lists wrap rather than scrolling sideways");
+    check(space.chips.length > 0, "an empty list is a chip, not a column", JSON.stringify(space.chips));
+    check(
+      !space.chips.some((c) => space.titles.includes(c)),
+      "and never both at once",
+      JSON.stringify(space.chips.filter((c) => space.titles.includes(c)))
+    );
+    check(space.zeroBadges === 0, "a count of zero is not printed", String(space.zeroBadges));
+    check(
+      space.repeatedNothing === 0,
+      "and the empty-list sentence is not repeated per list",
+      String(space.repeatedNothing)
+    );
+
+    // Clicking a chip opens that list where it stands. Without this the chip
+    // is a label for something unreachable.
+    const chipName = space.chips[0];
+    await page.click(".tk-chip");
+    await new Promise((r) => setTimeout(r, 120));
+    const afterOpen = await page.evaluate(() => ({
+      titles: [...document.querySelectorAll(".tk-col-head h4")].map((n) => n.textContent.trim()),
+      chips: [...document.querySelectorAll(".tk-chip")].map((n) => n.textContent.trim()),
+    }));
+    check(afterOpen.titles.includes(chipName), `opening "${chipName}" gives it a column`);
+    check(!afterOpen.chips.includes(chipName), "and takes it out of the empty strip");
+
   } catch (e) {
     bad("tasks board", e.message);
   } finally {

@@ -11,7 +11,7 @@
 //
 // 404s in production: it is a design tool, not a page.
 import React, { useRef, useState } from "react";
-import { GroupColumn, TasksStyles, shelfSummary } from "../components/admin/TasksPanel";
+import { GroupColumn, QuietLists, TasksStyles, shelfSummary } from "../components/admin/TasksPanel";
 
 const iso = (days) => {
   const d = new Date();
@@ -37,6 +37,9 @@ const SHELVES = [
     lists: [
       { id: "m1", title: "Tasks", provider: "microsoft", readOnlyName: true },
       { id: "m2", title: "Work", provider: "microsoft" },
+      { id: "m3", title: "Books", provider: "microsoft" },
+      { id: "m4", title: "Topics to study", provider: "microsoft" },
+      { id: "m5", title: "Blogs", provider: "microsoft" },
     ],
   },
 ];
@@ -75,6 +78,10 @@ const SEED = {
 
 export default function TasksPreview() {
   const [byList, setByList] = useState(SEED);
+  // Which empty lists have been opened by hand. Real state, not a stub: a
+  // reference whose one interaction does nothing cannot show what it does.
+  const [opened, setOpened] = useState({});
+  const isShown = (l) => (byList[l.id] || []).length > 0 || !!opened[l.id];
   const [showDone, setShowDone] = useState(true);
   const [dragOver, setDragOver] = useState(null);
   const dragged = useRef(null);
@@ -173,7 +180,7 @@ export default function TasksPreview() {
             </header>
 
             <div className="tk-rail">
-              {shelf.lists.map((list) => (
+              {shelf.lists.filter(isShown).map((list) => (
                 <GroupColumn
                   key={list.id}
                   provider={shelf.provider}
@@ -201,6 +208,12 @@ export default function TasksPreview() {
                 />
               ))}
             </div>
+            {/* The other half of the board, and the commoner one: lists that
+                hold nothing yet. */}
+            <QuietLists
+              lists={shelf.lists.filter((l) => !isShown(l))}
+              onOpen={(g) => setOpened((m) => ({ ...m, [g.id]: true }))}
+            />
           </section>
         );
       })}

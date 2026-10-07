@@ -232,6 +232,22 @@ console.log("\na saved sign-in belongs to exactly one account");
   check(row.provider === "instagram", "but does say which account it is for");
 }
 
+console.log("\nthe ML lab is a job");
+check(SERVICES.ml?.providers.join() === "huggingface,kaggle", "ml is done by Hugging Face and Kaggle");
+check(servicesFor("huggingface").some((s) => s.id === "ml"), "huggingface is wired to ml");
+{
+  const two = [acct("huggingface", "alice"), acct("huggingface", "bob")];
+  throws(() => chooseAccount(two, { service: "ml", provider: "huggingface" }), "two HF accounts and no default refuses", /alice|bob/);
+  const one = chooseAccount([acct("kaggle", "ravi")], { service: "ml", provider: "kaggle" });
+  check(one.accountId === "ravi" && one.chosenBy === "only", "the only Kaggle account is chosen, and says why");
+}
+
+console.log("\nthe legacy token path returns the token, not undefined");
+{
+  const src = (await import("node:fs")).readFileSync(new URL("../lib/server/accountDirectory.js", import.meta.url), "utf8");
+  check(!/const \{ token \} = await accessTokenFor/.test(src), "tokenFor does not destructure the string accessTokenFor returns");
+}
+
 console.log(`\n${pass} passed, ${fails.length} failed`);
 if (fails.length) {
   console.log("\nfailures:");

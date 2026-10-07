@@ -420,17 +420,26 @@ export default function TasksPanel({ user }) {
           const gs = groups[p.id] || [];
           const all = gs.flatMap((g) => tasks[key(p.id, g.id)] || []);
           const summary = shelfSummary(all);
+          // A shelf whose load FAILED has no lists for the same reason it has
+          // no tasks: nothing was read. Rendering it as a genuinely empty
+          // account states something untrue — "no lists in this account yet"
+          // about an account nobody could open, next to a banner saying so.
+          const failed = dead === p.id;
 
           return (
             <section className="tk-shelf" key={p.id} data-provider={p.id}>
-              <header className={`tk-shelf-head ${summary.tone}`}>
+              <header className={`tk-shelf-head ${failed ? "" : summary.tone}`}>
                 <div className="tk-shelf-who">
                   <h3>{p.label}</h3>
                   {status.connected ? (
                     <p>
                       <span className="tk-acct">{status.email || "connected"}</span>
                       <span className="tk-hair" aria-hidden="true" />
-                      <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
+                      {failed ? (
+                        <span className="tk-state tk-unread">Could not be read</span>
+                      ) : (
+                        <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
+                      )}
                     </p>
                   ) : (
                     <p className="tk-off">{status.detail}</p>
@@ -443,7 +452,10 @@ export default function TasksPanel({ user }) {
                         className="admin-ghost"
                         type="button"
                         onClick={() => addGroup(p.id)}
-                        disabled={!!busy}
+                        /* Creating a list needs the same credential that just
+                           failed, so offering it is offering an error. */
+                        disabled={!!busy || failed}
+                        title={failed ? "Reconnect this account first" : undefined}
                       >
                         New list
                       </button>
@@ -499,6 +511,10 @@ export default function TasksPanel({ user }) {
                       />
                     ))}
                   </div>
+                ) : failed ? (
+                  <p className="tk-empty tk-empty-unread">
+                    Nothing was read from this account, so whether it has lists is unknown.
+                  </p>
                 ) : (
                   <p className="tk-empty">
                     No lists in this account yet. Press New list to make the first one.
@@ -1021,6 +1037,17 @@ export function TasksStyles() {
         margin: 14px 0 0 15px;
         font-size: 13px;
         color: var(--a-dim, #8b90a0);
+      }
+      /* Dashed, because the state is "unknown", not "empty" — the same
+         dashed-means-unconfirmed language the board already uses for a drag
+         that crosses services. */
+      .tk-empty-unread {
+        border-left: 1px dashed rgba(220, 76, 70, 0.45);
+        padding-left: 11px;
+        margin-left: 15px;
+      }
+      .tk-state.tk-unread {
+        color: #f0a9a5;
       }
 
       /* ---- the column rail ---- */

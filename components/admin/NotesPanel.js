@@ -49,6 +49,69 @@ const dayLabel = (iso) => {
   return d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
 };
 
+// What to do about a source that is not connected.
+//
+// "Not connected yet." is a dead end: it names a state and offers no route out,
+// and the route is genuinely non-obvious for both of these — Trello's key lives
+// behind a Power-Up you have to create, and Notion issues no client id at all
+// until the integration is made public. So the steps are real steps, in order,
+// with the thing you cannot guess spelled out.
+//
+// A SEQUENCE, so it is numbered — the one case where numbered markers carry
+// information rather than decorating a list.
+export function SourceSetup({ setup, label }) {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  if (!setup?.steps?.length) return null;
+
+  return (
+    <div className="nt-setup">
+      <h4>Connecting {label}</h4>
+      {setup.why ? <p className="nt-why">{setup.why}</p> : null}
+
+      <ol className="nt-steps">
+        {setup.steps.map((step, i) => (
+          <li key={step.title}>
+            <span className="nt-step-n">{i + 1}</span>
+            <div>
+              <strong>{step.title}</strong>
+              <p>{step.body}</p>
+              {step.link ? (
+                <a className="nt-step-link" href={step.link} target="_blank" rel="noreferrer noopener">
+                  {step.link.replace(/^https?:\/\//, "")}
+                </a>
+              ) : null}
+              {step.uris?.length ? (
+                <ul className="nt-uris">
+                  {step.uris.flatMap((path) =>
+                    ["https://www.ravikishan.me", "https://ravikishan.me", origin || "http://localhost:3000"]
+                      // The origin this is served from may already be in the
+                      // list; a duplicate reads as a mistake in the steps.
+                      .filter((o, n, all) => o && all.indexOf(o) === n)
+                      .map((o) => (
+                        <li key={o + path}>
+                          <code>{o + path}</code>
+                        </li>
+                      ))
+                  )}
+                </ul>
+              ) : null}
+              {step.env?.length ? (
+                <p className="nt-env">
+                  {step.env.map((e) => (
+                    <code key={e}>{e}</code>
+                  ))}
+                </p>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      {setup.warning ? <p className="nt-warn">{setup.warning}</p> : null}
+    </div>
+  );
+}
+
 // The sentence under the source strip. Built from the capabilities the server
 // declares, so it cannot claim something the adapter does not do.
 export function capabilityLine(source) {
@@ -293,6 +356,7 @@ export default function NotesPanel({ user }) {
               {l}
             </p>
           ))}
+          <SourceSetup setup={current?.setup} label={current?.label} />
         </div>
       ) : (
         <div className="nt-grid">
@@ -894,6 +958,97 @@ export function NotesStyles() {
           max-height: 40vh;
         }
       }
-    `}</style>
+    
+      /* ---------- how to connect a source ---------- */
+      .nt-setup {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--a-line, #2b3040);
+        max-width: 78ch;
+      }
+      .nt-setup h4 {
+        font-family: "Space Grotesk", system-ui, sans-serif;
+        font-size: 14px;
+        margin: 0;
+        color: var(--a-text, #e7e8ee);
+      }
+      .nt-why {
+        margin: 8px 0 0;
+        font-size: 12px;
+        line-height: 1.65;
+        color: var(--a-dim, #8b90a0);
+      }
+      .nt-steps {
+        list-style: none;
+        margin: 16px 0 0;
+        padding: 0;
+      }
+      .nt-steps li {
+        display: flex;
+        gap: 12px;
+        padding: 0 0 16px;
+      }
+      /* The steps ARE a sequence, which is the one case where a number
+         carries information rather than decorating a list. */
+      .nt-step-n {
+        flex: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 1px solid var(--a-line, #2b3040);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        color: var(--a-dim, #8b90a0);
+      }
+      .nt-steps strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--a-text, #e7e8ee);
+      }
+      .nt-steps p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        line-height: 1.65;
+        color: var(--a-dim, #8b90a0);
+      }
+      .nt-step-link {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 11.5px;
+        color: #ffb020;
+        text-decoration: none;
+      }
+      .nt-step-link:hover {
+        text-decoration: underline;
+      }
+      .nt-uris {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+      }
+      .nt-uris li {
+        display: block;
+        padding: 3px 0;
+      }
+      .nt-setup code {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--a-text, #e7e8ee);
+        overflow-wrap: anywhere;
+      }
+      .nt-env code {
+        margin-right: 12px;
+      }
+      .nt-warn {
+        margin: 4px 0 0;
+        padding-left: 11px;
+        border-left: 2px solid #ffb020;
+        font-size: 11.5px;
+        line-height: 1.65;
+        color: var(--a-dim, #8b90a0);
+      }
+`}</style>
   );
 }

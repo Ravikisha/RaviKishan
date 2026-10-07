@@ -220,6 +220,23 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // PASSWORDS AND API KEYS. Admin-only in both directions, and the single
+    // most sensitive collection in this database.
+    //
+    // Every value is sealed with AES-256-GCM under SECRETS_KEY, which lives
+    // only in the deployment environment and never in Firestore — so reading
+    // this collection yields ciphertext, and the key and the ciphertext never
+    // sit in the same place.
+    //
+    // Unlike vault/, this store is deliberately NOT end-to-end encrypted. It
+    // cannot be: an AI client reading a secret means the server can decrypt
+    // it. That is the trade this store exists to make, and the containment is
+    // elsewhere — its own MCP scope, per-secret agent opt-in, one value at a
+    // time, and an audit entry for every read.
+    match /secrets/{secretId} {
+      allow read, write: if isAdmin();
+    }
+
     // What this app has published to LinkedIn. Admin-only, and it exists
     // because LinkedIn cannot be asked: reading a member's own posts needs
     // r_member_social, which is restricted, so this record is the ONLY

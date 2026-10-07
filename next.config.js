@@ -74,6 +74,11 @@ const withPWA = require("next-pwa")({
 });
 
 const nextConfig = {
+  // Lets a build run into a separate directory so it cannot overwrite the
+  // .next that a running `next dev` is serving from — which silently 404s
+  // every chunk and leaves the site rendering but not hydrating. Defaults to
+  // the normal .next, so nothing changes unless NEXT_DIST_DIR is set.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   images: {
     domains: ["cdn.pixabay.com", "cdn.jsdelivr.net","upload.wikimedia.org","images.unsplash.com","bit.ly","raw.githubusercontent.com","cdn.rareblocks.xyz","4achievers.in","hackr.io","icons.veryicon.com","cdn-icons-png.flaticon.com"],
     loader: "akamai",

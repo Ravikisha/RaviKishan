@@ -1041,6 +1041,73 @@ async function notesSuite(browser) {
   }
 }
 
+// Adding a contact in any form.
+//
+// The assertion that matters is that you can SEE what the parser understood
+// before you commit to it. A parser you cannot see is one you stop trusting,
+// and then you type every field by hand and the feature was pointless.
+async function contactsSuite(browser) {
+  console.log("\ncontacts: paste anything, see what it read");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__contactspreview?noload`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".ct-parsed .ct-ch", { timeout: 30000 });
+
+    const read = await page.evaluate(() => ({
+      name: document.querySelector(".ct-parsed-name")?.textContent?.trim() || "",
+      chips: [...document.querySelectorAll(".ct-parsed .ct-ch")].map((c) => ({
+        kind: c.querySelector("i")?.textContent || "",
+        text: c.textContent || "",
+      })),
+      note: [...document.querySelectorAll(".ct-add .admin-sub")].map((p) => p.textContent).join(" "),
+      dupe: document.querySelector(".ct-dupe")?.textContent || "",
+      button: document.querySelector(".ct-add .admin-primary")?.textContent || "",
+    }));
+
+    check(read.name === "Asha Menon", "the name is read out of the signature", read.name);
+    const kinds = read.chips.map((c) => c.kind);
+    for (const k of ["email", "phone", "url", "handle"]) {
+      check(kinds.includes(k), `the ${k} is found`, kinds.join(","));
+    }
+    // A plus-addressed e-mail is a real address and a common one.
+    check(
+      read.chips.some((c) => c.text.includes("asha.menon+work@northwind.co.in")),
+      "including a plus-addressed e-mail"
+    );
+    // The line that is not a channel is usually the reason you saved them.
+    check(/Rust meetup/.test(read.note), "and the prose survives as the note");
+
+    // Finding the duplicate AFTER saving means two records to merge instead of
+    // one decision to make.
+    check(/already has one of those/.test(read.dupe), "a clash with an existing contact is shown before saving", read.dupe.slice(0, 60));
+    check(/Save anyway/.test(read.button), "and the button says what it would do", read.button);
+
+    // The chips must actually be styled. They are not, if the stylesheet only
+    // mounts with the whole panel — the `.ops-card` trap.
+    const styled = await page.evaluate(() => {
+      const c = document.querySelector(".ct-parsed .ct-ch");
+      const s = getComputedStyle(c);
+      return { radius: s.borderRadius, border: parseFloat(s.borderTopWidth), kind: parseFloat(getComputedStyle(c.querySelector("i")).fontSize) };
+    });
+    check(styled.radius === "999px" && styled.border >= 1, "the channel chips are styled, not bare text", JSON.stringify(styled));
+    check(styled.kind > 0 && styled.kind < 12, "with the kind label smaller than the value", String(styled.kind));
+
+    const fits = await page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      textarea: document.querySelector(".ct-add textarea").clientHeight,
+    }));
+    check(!fits.overflow, "the panel does not overflow the page");
+    // A five-line signature is the normal case; clipping it hides what was pasted.
+    check(fits.textarea >= 120, "the paste box fits a signature without scrolling", String(fits.textarea));
+  } catch (e) {
+    bad("contacts panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 async function tasksSuite(browser) {
   console.log("\ntasks board");
   const page = await browser.newPage();
@@ -1849,6 +1916,7 @@ async function resumeSuite() {
       await exportSuite(browser);
       await tasksSuite(browser);
       await notesSuite(browser);
+      await contactsSuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
     } finally {
@@ -1857,6 +1925,14 @@ async function resumeSuite() {
   }
   if (which === "seo") {
     await seoSuite();
+  }
+  if (which === "contacts") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await contactsSuite(browser);
+    } finally {
+      await browser.close();
+    }
   }
   if (which === "notes") {
     const browser = await launch({ headful: !!process.env.HEADFUL });

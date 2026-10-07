@@ -741,6 +741,61 @@ console.log("\nthe secret store is fenced off from every other scope");
   check(shaped.hasValue === true, "only whether there is one");
 }
 
+console.log("\ncontacts hold other people's personal data");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const contact = TOOLS.filter((t) => /contact/.test(t.name));
+  const names = contact.map((t) => t.name);
+
+  check(contact.length >= 7, "the contact tools exist", String(contact.length));
+  // There used to be no way to add one at all: the only route in was a
+  // LinkedIn CSV import through the admin.
+  check(names.includes("create_contact"), "a contact can be created, not only imported");
+  check(names.includes("merge_contacts"), "and two records for one person can be joined");
+  check(names.includes("find_duplicate_contacts"), "with a tool that finds them");
+
+  // This is the whole "in any form" requirement.
+  const create = TOOLS.find((t) => t.name === "create_contact");
+  check(!!create.inputSchema.properties.text, "create_contact accepts free-form text");
+  check(!!create.inputSchema.properties.channels, "and structured channels");
+  check(
+    !(create.inputSchema.required || []).length,
+    "with neither required, so either route works",
+    JSON.stringify(create.inputSchema.required || [])
+  );
+  const kinds = create.inputSchema.properties.channels.items.properties.kind.enum;
+  check(
+    ["email", "phone", "url", "handle", "address"].every((k) => kinds.includes(k)),
+    "covering e-mail, phone, url, handle and address",
+    JSON.stringify(kinds)
+  );
+
+  // Deleting a person and merging two records are both unrecoverable.
+  for (const name of ["delete_contact", "merge_contacts"]) {
+    const t = TOOLS.find((x) => x.name === name);
+    check(!!t?.inputSchema?.properties?.confirm, `${name} asks for confirmation`);
+    check(
+      !(t.inputSchema.required || []).includes("confirm"),
+      `and ${name} does not require it, so the dry run is the default`
+    );
+  }
+
+  const writers = contact.filter((t) => /^(create|update|merge|delete)_/.test(t.name));
+  check(writers.every((t) => t.scope === "write"), "every contact write is behind the write scope",
+    String(writers.filter((t) => t.scope !== "write").map((t) => t.name)));
+  check(
+    contact.filter((t) => /^(list|get|search|find)_/.test(t.name)).every((t) => t.scope === "read"),
+    "and every read behind read"
+  );
+
+  // The address book is admin-only in firestore.rules; nothing here should
+  // suggest otherwise, because it is other people's personal data.
+  check(
+    /admin-only|private/i.test(TOOLS.find((t) => t.name === "list_contacts").description),
+    "list_contacts says the book is private"
+  );
+}
+
 console.log("\nguards refuse before they touch anything");
 {
   const { toolByName } = await import("../lib/server/mcpTools.js");

@@ -43,7 +43,9 @@
     "e2e:notes": "node scripts/e2e-check.js notes",
     "test:social": "node scripts/social-check.mjs",
     "test:analytics": "node scripts/analytics-check.mjs",
-    "test:secrets": "node scripts/secrets-check.mjs"
+    "test:secrets": "node scripts/secrets-check.mjs",
+    "test:contactshape": "node scripts/contactshape-check.mjs",
+    "e2e:contacts": "node scripts/e2e-check.js contacts"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

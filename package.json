@@ -48,6 +48,7 @@
     "test:secrets": "node scripts/secrets-check.mjs",
     "test:env": "node scripts/env-check.mjs",
     "test:accounts": "node scripts/accounts-check.mjs",
+    "test:ml": "node scripts/ml-check.mjs",
     "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs"
   },
   "dependencies": {

@@ -106,6 +106,17 @@ const Footer2 = () => {
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-edge pt-6 font-mono text-xs text-muted sm:flex-row sm:items-center">
           <span>© {identity.name} · {identity.location}</span>
+          {/* Reachable from the home page on purpose: an OAuth consent screen
+              review checks that the privacy policy it was given is actually
+              linked from the site it claims to describe. */}
+          <span className="flex items-center gap-3">
+            <Link href="/privacy">
+              <a className="transition-colors hover:text-accentText">Privacy</a>
+            </Link>
+            <Link href="/terms">
+              <a className="transition-colors hover:text-accentText">Terms</a>
+            </Link>
+          </span>
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-live shadow-[0_0_8px_#4ED0C0]" />
             built from first principles

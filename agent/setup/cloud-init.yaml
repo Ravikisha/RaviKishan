@@ -1,0 +1,85 @@
+#cloud-config
+# Paste this into Oracle's "Create instance" form, under
+#   Show advanced options → Management → Cloud-init script.
+#
+# The box then provisions itself on first boot: packages, Node, Claude Code,
+# Codex, the agent user, agentd under systemd, and cloudflared installed (but
+# not configured — that needs your Cloudflare login).
+#
+# Takes about 4 minutes. Watch it with:
+#   ssh ubuntu@<ip> 'sudo tail -f /var/log/cloud-init-output.log'
+#
+# Nothing here opens a port. agentd binds to 127.0.0.1 and Cloudflare Tunnel
+# connects outward, so the instance is never reachable by IP.
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - curl
+  - git
+  - jq
+  - ripgrep
+  - build-essential
+  - ca-certificates
+  - unzip
+
+write_files:
+  # Written before the runcmd block so setup.sh finds it and leaves it alone.
+  - path: /etc/agentd.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      # Who may drive this server. MUST match the site's admin allow-list.
+      AGENT_ADMIN_EMAILS=ravikishan63392@gmail.com
+      FIREBASE_PROJECT_ID=myportifilio-3ab5f
+
+      AGENT_HOME=/home/agent/.agentd
+      AGENT_PORT=7777
+      # Loopback only. npm run doctor fails if this is anything else.
+      AGENT_HOST=127.0.0.1
+
+      AGENT_MAX_CONCURRENT=4
+      AGENT_MAX_PER_PROFILE=2
+      AGENT_MAX_PER_DAY=50
+      AGENT_APPROVAL_TIMEOUT_MS=600000
+
+      AGENT_DEFAULT_PROFILE=personal
+      AGENT_GIT_NAME=agentd
+      AGENT_GIT_EMAIL=agent@localhost
+
+  # Oracle's Ubuntu images ship iptables rules that block everything except
+  # SSH, and those rules outlive ufw. We are not opening anything — this just
+  # records why the box appears firewalled, so the next person does not spend
+  # an hour on it.
+  - path: /etc/agentd-README
+    permissions: "0644"
+    content: |
+      agentd listens on 127.0.0.1:7777 only.
+
+      Oracle instances also carry an instance-level firewall (iptables, plus
+      the subnet's security list). Nothing needs opening: cloudflared makes an
+      OUTBOUND connection and serves the tunnel from inside.
+
+      If the panel cannot reach the server, the problem is the tunnel, not the
+      firewall. Check:  systemctl status cloudflared
+
+runcmd:
+  - |
+    set -euxo pipefail
+    # Ubuntu's unattended-upgrades holds the dpkg lock on a fresh boot; waiting
+    # for it beats racing it and failing the whole provision.
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done
+
+    git clone https://github.com/Ravikisha/RaviKishan.git /opt/agentd
+    bash /opt/agentd/agent/setup/setup.sh
+
+    # A clear marker in the log, because cloud-init's own output is noisy.
+    echo "=================================================="
+    echo " agentd provisioned. Two things left, both need YOUR accounts:"
+    echo "   1. cloudflared tunnel login   (then create + route + service install)"
+    echo "   2. claude auth login          (per profile; see agent/README.md)"
+    echo " Check it:  cd /opt/agentd/agent && npm run doctor"
+    echo "=================================================="
+
+final_message: "agentd ready after $UPTIME seconds. Run: sudo -u agent -H env CLAUDE_CONFIG_DIR=/home/agent/.agentd/profiles/personal/claude claude auth login"

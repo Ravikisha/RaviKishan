@@ -49,3 +49,7 @@ firebase-debug.*.log
 # A git worktree lives here while parallel work is in flight. It is a second
 # full checkout of this repo, not source.
 .claude/worktrees/
+
+# Backups and dumps of env files leak exactly what the env file holds.
+.env*.bak*
+.env.*.local

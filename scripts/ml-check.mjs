@@ -246,6 +246,87 @@ console.log("\nKaggle client (stubbed network)");
   api.setFetch(null);
 }
 
+console.log("\nreview fixes: Jobs cost, flavors, read tokens");
+{
+  // /api/jobs/hardware quotes per MINUTE (unitLabel), not per hour.
+  const perMin = hf.jobCostEstimate({ name: "t4-small", unitCostMicroUSD: 10000, unitCostUSD: 0.01, unitLabel: "minute" }, 1800);
+  check(perMin.maxCostUSD === 0.3 && perMin.unitLabel === "minute", "a per-minute price × 30 minutes", JSON.stringify(perMin));
+  const perHour = hf.jobCostEstimate({ name: "x", unitCostUSD: 0.6, unitLabel: "hour" }, 1800);
+  check(perHour.maxCostUSD === 0.3, "a per-hour price × half an hour", JSON.stringify(perHour));
+  check(hf.jobCostEstimate(null, 1800).maxCostUSD === null, "no price row, no invented number");
+  for (const f of ["rtx-pro-6000", "rtx-pro-6000x8", "inf2x6"]) check(hf.assertFlavor(f) === f, `${f} is a real flavor`);
+  throws(() => hf.assertWritable("read", "commit"), "a read token is refused for a write, before any request", /read token/);
+  check(hf.assertWritable("write", "commit") === true && hf.assertWritable("fineGrained", "x") === true, "write and fine-grained pass");
+}
+
+console.log("\nreview fixes: Hub paths cannot be steered");
+{
+  const api = await import("../lib/server/huggingface.js");
+  let calls = 0;
+  api.setFetch(async () => {
+    calls++;
+    return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
+  });
+  const refuse = async (fn, name) => {
+    let e;
+    try {
+      await fn();
+    } catch (x) {
+      e = x;
+    }
+    check(e?.status === 400, name, e?.message || "did not throw");
+  };
+  await refuse(() => api.listFiles("hf_x", { id: "a/b", path: "../../../api/spaces/o/n/secrets" }), "a traversal path in listFiles is refused");
+  await refuse(() => api.readFile("hf_x", { id: "a/b", path: "x?y=1" }), "a query in a file path is refused");
+  await refuse(() => api.readFile("hf_x", { id: "a/b", rev: "../main", path: "README.md" }), "a traversal revision is refused");
+  await refuse(() => api.getCollection("hf_x", { slug: "x/../../repos/create" }), "a traversal collection slug is refused");
+  await refuse(() => api.addToCollection("hf_x", { slug: "x/y?z", itemType: "model", itemId: "a/b" }), "a query in a collection slug is refused");
+  check(calls === 0, "and none of them reached the network", String(calls));
+  await api.listFiles("hf_x", { id: "a/b", path: "sub dir/file.txt" });
+  check(calls === 1, "a normal path still works");
+  api.setFetch(null);
+}
+
+console.log("\nreview fixes: logs are a stream, billing takes epochs");
+{
+  const api = await import("../lib/server/huggingface.js");
+  let url = "";
+  api.setFetch(async (u) => {
+    url = String(u);
+    // A RUNNING job: the stream sends two frames and never closes.
+    const body = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('data: {"data":"epoch 1"}\n\ndata: {"data":"epoch 2"}\n\n'));
+      },
+    });
+    return { ok: true, status: 200, body };
+  });
+  const t0 = Date.now();
+  const logs = await api.jobLogs("hf_x", { namespace: "ravi", id: "j1", tail: 50, deadlineMs: 300 });
+  check(Date.now() - t0 < 3000, "a never-ending log stream returns by its deadline", `${Date.now() - t0}ms`);
+  check(logs.lines.join("|") === "epoch 1|epoch 2", "SSE frames become log lines", logs.lines.join("|"));
+  check(/[?&]tail=50/.test(url), "the tail is asked of the server", url);
+  let q = "";
+  api.setFetch(async (u) => {
+    if (String(u).includes("usage-v2")) q = String(u);
+    return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
+  });
+  await api.usage("hf_x", { startDate: "2026-10-01", endDate: "2026-10-07" });
+  const sp = new URL(q).searchParams;
+  check(/^\d+$/.test(sp.get("startDate") || "") && /^\d+$/.test(sp.get("endDate") || ""), "billing dates go as integers", q);
+  check(Number(sp.get("endDate")) > Number(sp.get("startDate")), "and in order");
+  api.setFetch(null);
+}
+
+console.log("\nreview fixes: a dataset version replaces the whole dataset");
+{
+  const { ML_TOOLS } = await import("../lib/server/mlTools.js");
+  const t = ML_TOOLS.find((x) => x.name === "kaggle_create_dataset_version");
+  check(/ONLY the files/.test(t.description), "the description says the version holds only the files sent");
+  const out = await t.handler({ ref: "ravi/ds", files: [{ name: "a.csv", content: "x" }] }, { idToken: "" });
+  check(out?.isError === true && /replaceAll/.test(out.error), "and it refuses without replaceAll:true, before any I/O");
+}
+
 console.log(`\n${pass} passed, ${fails.length} failed`);
 if (fails.length) {
   for (const f of fails) console.log(`  ✗ ${f}`);

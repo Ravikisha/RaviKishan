@@ -242,6 +242,23 @@ check(servicesFor("huggingface").some((s) => s.id === "ml"), "huggingface is wir
   check(one.accountId === "ravi" && one.chosenBy === "only", "the only Kaggle account is chosen, and says why");
 }
 
+console.log("\na default for a shared job only binds its own provider");
+{
+  // ml is done by two providers. A default naming the HF account must not
+  // block the only Kaggle account — and must not report itself as stale.
+  const both = [acct("huggingface", "ravi"), acct("kaggle", "ravi")];
+  const d = { ml: "huggingface__ravi" };
+  const k = chooseAccount(both, { service: "ml", provider: "kaggle", defaults: d });
+  check(k.provider === "kaggle" && k.chosenBy === "only", "an HF default does not block the only Kaggle account", `${k.provider}/${k.chosenBy}`);
+  const h = chooseAccount(both, { service: "ml", provider: "huggingface", defaults: d });
+  check(h.provider === "huggingface" && h.chosenBy === "default", "and still chooses for HF");
+  throws(
+    () => chooseAccount(both, { service: "ml", provider: "kaggle", defaults: { ml: "kaggle__gone" } }),
+    "a default naming a vanished account of THIS provider is still stale",
+    /not connected any more/
+  );
+}
+
 console.log("\nan exportable token says so, and only a real true does");
 check(accountShape({ provider: "kaggle", accountId: "r", agentReadable: true }).agentReadable === true, "agentReadable:true survives into the row");
 check(accountShape({ provider: "kaggle", accountId: "r", agentReadable: "true" }).agentReadable === false, "a truthy string is not true");

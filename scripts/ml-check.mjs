@@ -189,7 +189,62 @@ check(kg.authHeader("KGAT_abc") === "Bearer KGAT_abc", "a token is a bearer");
 check(kg.authHeader("Basic cmF2aTprZXk=") === "Basic cmF2aTprZXk=", "a legacy key stays basic");
 check(/paste/i.test(kg.kaggleError(401, {}).message), "401 says to paste a new token");
 
-// (Task 6 appends here.)
+console.log("\npasted keys");
+{
+  const k = await import("../lib/server/mlKeys.js");
+  check(k.parseKey("huggingface", "  hf_" + "a".repeat(34) + "\n").accessToken === "hf_" + "a".repeat(34), "an HF token is trimmed");
+  throws(() => k.parseKey("huggingface", "sk-123"), "a non-HF token is refused with where to get one", /huggingface\.co\/settings\/tokens/);
+  const legacy = k.parseKey("kaggle", '\r\n{"username":"ravi","key":"0123456789abcdef"}\r\n');
+  check(
+    legacy.accessToken === "Basic " + Buffer.from("ravi:0123456789abcdef").toString("base64") && legacy.legacyUser === "ravi",
+    "kaggle.json becomes a basic credential"
+  );
+  check(k.parseKey("kaggle", "KGAT_" + "b".repeat(30)).accessToken.startsWith("KGAT_"), "a Kaggle token stays a token");
+  throws(() => k.parseKey("kaggle", '{"username":"ravi"}'), "kaggle.json without a key is refused", /key/);
+  throws(() => k.parseKey("kaggle", ""), "an empty paste is refused", /Paste/);
+  throws(() => k.parseKey("github", "x"), "an OAuth provider cannot take a pasted key", /not connected with a pasted token/);
+  const m1 = k.credentialMaterial("huggingface", "hf_x");
+  check(m1.env.HF_TOKEN === "hf_x", "HF material is HF_TOKEN");
+  const m2 = k.credentialMaterial("kaggle", "Basic " + Buffer.from("ravi:key1").toString("base64"));
+  check(m2.kaggleJson.username === "ravi" && m2.kaggleJson.key === "key1", "a legacy Kaggle key becomes kaggle.json again");
+  check(k.credentialMaterial("kaggle", "KGAT_x").env.KAGGLE_API_TOKEN === "KGAT_x", "a Kaggle token becomes KAGGLE_API_TOKEN");
+}
+
+console.log("\nKaggle client (stubbed network)");
+{
+  const api = await import("../lib/server/kaggle.js");
+  const seen = [];
+  api.setFetch(async (url, init = {}) => {
+    seen.push({ url: String(url), init });
+    const json = (b, status = 200) => ({ ok: status < 400, status, json: async () => b, text: async () => JSON.stringify(b) });
+    const u = String(url);
+    if (u.endsWith("/IntrospectToken")) return json({ active: true, username: "ravi" });
+    if (u.endsWith("/GetAcceleratorQuotaStatistics")) return json({ gpuQuota: { timeUsed: "3600s", totalTimeAllowed: "108000s" } });
+    if (u.endsWith("/GetKernelSessionStatus")) return json({ status: "RUNNING" });
+    if (u.endsWith("/SaveKernel")) return json({ ref: "ravi/exp-1", url: "https://www.kaggle.com/code/ravi/exp-1", versionNumber: 1 });
+    return json({ message: "no" }, 404);
+  });
+  const who = await api.introspect("KGAT_x");
+  check(who.username === "ravi", "introspect returns the username");
+  check(seen[0].url === "https://api.kaggle.com/v1/security.OAuthService/IntrospectToken", "RPC url is service/method");
+  check(seen[0].init.method === "POST" && seen[0].init.headers.Authorization === "Bearer KGAT_x", "POST with a bearer token");
+  check(JSON.parse(seen[0].init.body).token === "KGAT_x", "the token is introspected in the body");
+  const q = await api.quota("KGAT_x");
+  check(q.gpu.usedHours === 1 && q.gpu.leftHours === 29, "quota comes back shaped");
+  const st = await api.kernelStatus("KGAT_x", { ref: "ravi/exp-1" });
+  const sb = JSON.parse(seen.at(-1).init.body);
+  check(st.status === "running" && sb.userName === "ravi" && sb.kernelSlug === "exp-1", "status asks by userName + kernelSlug");
+  const pushed = await api.pushKernel("KGAT_x", { slug: "ravi/exp-1", newTitle: "x", text: "1", kernelType: "script", language: "python", isPrivate: true });
+  check(pushed.url.includes("/code/ravi/exp-1"), "push returns the kernel url");
+  let err;
+  try {
+    await api.getDataset("KGAT_x", { ref: "no/such" });
+  } catch (e) {
+    err = e;
+  }
+  check(err?.status === 404, "a 404 surfaces translated");
+  api.setFetch(null);
+}
 
 console.log(`\n${pass} passed, ${fails.length} failed`);
 if (fails.length) {

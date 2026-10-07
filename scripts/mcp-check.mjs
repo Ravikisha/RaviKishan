@@ -713,6 +713,15 @@ console.log("\nthe registry survived however it was last merged");
       "get_analytics_report", "get_analytics_top_pages", "get_analytics_sources",
       "get_analytics_realtime",
     ],
+    // The ML lab. Search is the point of half of these, so losing one quietly
+    // would leave a model unable to find the dataset it was asked to train on.
+    huggingface: [
+      "hf_whoami", "hf_search", "hf_search_papers", "hf_daily_papers", "hf_semantic_search_spaces", "hf_search_docs",
+      "hf_get_repo", "hf_list_files", "hf_read_file", "hf_list_commits", "hf_list_my_repos",
+      "hf_list_collections", "hf_get_collection", "hf_create_repo", "hf_commit_files", "hf_delete_file",
+      "hf_add_to_collection", "hf_space_status", "hf_restart_space", "hf_set_space_secret", "hf_inference",
+      "hf_jobs_hardware", "hf_run_job", "hf_list_jobs", "hf_get_job", "hf_job_logs", "hf_cancel_job", "hf_usage",
+    ],
     env: [
       "get_env_status", "set_env_var", "import_env_vars", "delete_env_var",
       "get_runtime_config",

@@ -332,6 +332,81 @@ console.log("\nLinkedIn is the awkward grant: refresh token for partners only");
   check(asRefresh.expiresAt === "", "and has no expiry worth showing");
 }
 
+
+// A token endpoint's refusal has to say WHICH refusal it was.
+//
+// Google answers a dead refresh token with
+//   {"error":"invalid_grant","error_description":"Bad Request"}
+// and the old code preferred error_description, so the panel reported
+// "Google Tasks refused the stored connection (Bad Request)" — a sentence that
+// sends you auditing the request instead of re-granting the permission. Both
+// halves travel now, and the machine-readable one is kept on the error so a
+// caller can tell a withdrawn permission from a broken deployment.
+{
+  console.log("\na refused token names the refusal, not the status line");
+
+  const { accessTokenFromRefresh } = await import("../lib/server/integrations.js");
+  const realFetch = globalThis.fetch;
+  const answer = (status, body) => {
+    globalThis.fetch = async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    });
+  };
+  const refuse = async () => {
+    try {
+      await accessTokenFromRefresh({ provider: "google", refreshToken: "r" });
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+
+  try {
+    answer(400, { error: "invalid_grant", error_description: "Bad Request" });
+    let e = await refuse();
+    check(/invalid_grant/.test(e.message), "the real reason survives", e.message);
+    check(/Bad Request/.test(e.message), "and so does the provider's own wording", e.message);
+    check(e.oauthError === "invalid_grant", "the code is kept machine-readable", e.oauthError);
+
+    // Microsoft is the mirror image: generic error, the detail in the
+    // description. Neither field may be the one that is dropped.
+    answer(400, {
+      error: "invalid_grant",
+      error_description: "AADSTS70000: The provided grant has expired.",
+    });
+    e = await refuse();
+    check(/AADSTS70000/.test(e.message), "an AADSTS code is not swallowed either", e.message);
+
+    // No duplication when a provider repeats itself.
+    answer(400, { error: "invalid_client", error_description: "invalid_client" });
+    e = await refuse();
+    check(e.message === "invalid_client", "an echoed description is not printed twice", e.message);
+
+    // Nothing parseable at all still has to produce something actionable.
+    answer(500, {});
+    e = await refuse();
+    check(e.message === "HTTP 500", "and a bodyless failure falls back to the status", e.message);
+    check(e.oauthError === "", "with no code invented for it", JSON.stringify(e.oauthError));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  // The translation the panel and the MCP tools both read.
+  const { ConnectionError } = await import("../lib/server/connectedAccount.js");
+  const ce = new ConnectionError("x", {
+    provider: "google",
+    code: "integration/rejected",
+    oauthError: "invalid_grant",
+  });
+  check(ce.oauthError === "invalid_grant", "ConnectionError carries it through");
+  check(
+    new ConnectionError("x", { provider: "google" }).oauthError === "",
+    "and defaults to empty rather than undefined"
+  );
+}
+
 console.log(`\n${pass} passed, ${fails.length} failed`);
 if (fails.length) {
   console.log("FAILURES:");

@@ -24,6 +24,12 @@ async function handler(req, res) {
   try {
     const claims = await verifyAdmin(req);
     const provider = String(req.query.provider || "");
+    const asked = getProvider(provider);
+    if (asked.auth === "apiKey") {
+      return res.status(400).json({
+        error: `${asked.label} is connected by pasting a token in the Accounts tab, not through a consent screen.`,
+      });
+    }
     const cfg = providerConfig(provider);
 
     if (!cfg.configured) {

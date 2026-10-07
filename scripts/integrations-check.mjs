@@ -61,8 +61,8 @@ console.log("\nproviders");
 // Assert the SET, not just the count: a provider silently renamed or dropped
 // is the failure that matters, and a count passes right through it.
 check(
-  providerIds().join(",") === "google,microsoft,github,youtube,instagram,x,analytics,notion,linkedin",
-  "all nine providers are registered, in order",
+  providerIds().join(",") === "google,microsoft,github,youtube,instagram,x,analytics,notion,linkedin,huggingface,kaggle",
+  "all eleven providers are registered, in order",
   providerIds().join(", ")
 );
 // EVERY provider is multi-account. The four-and-five split was real while
@@ -79,6 +79,25 @@ check(
   "google, microsoft and github",
   providerIds().join(", ")
 );
+console.log("\nAPI-key providers");
+{
+  const { providerConfig } = await import("../lib/server/integrations.js");
+  for (const id of ["huggingface", "kaggle"]) {
+    check(PROVIDERS[id].auth === "apiKey", `${id} connects by pasted token`);
+    check(PROVIDERS[id].env === null, `${id} needs no client credentials`);
+    const saved = process.env.INTEGRATION_SECRET;
+    process.env.INTEGRATION_SECRET = "x".repeat(32);
+    check(providerConfig(id).configured === true, `${id} is configured once sealing is`);
+    delete process.env.INTEGRATION_SECRET;
+    const off = providerConfig(id);
+    check(!off.configured && off.missing.join() === "INTEGRATION_SECRET", `${id} names only INTEGRATION_SECRET as missing`, off.missing.join());
+    if (saved) process.env.INTEGRATION_SECRET = saved;
+  }
+  check(
+    providerIds().filter((id) => PROVIDERS[id].auth !== "apiKey").every((id) => PROVIDERS[id].env),
+    "every OAuth provider still declares its client env"
+  );
+}
 check(getProvider("GOOGLE").id === "google", "a provider id is case-insensitive");
 throws(() => getProvider("dropbox"), "an unknown provider is refused by name", /Unknown provider/);
 check(

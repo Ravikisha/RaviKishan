@@ -70,7 +70,7 @@ check(
 console.log("\nevery provider can say which account consented");
 for (const id of Object.keys(PROVIDERS)) {
   const p = PROVIDERS[id];
-  const named = p.identityFromIdToken || ["youtube", "instagram", "x", "github", "linkedin", "notion"].includes(id);
+  const named = p.identityFromIdToken || p.auth === "apiKey" || ["youtube", "instagram", "x", "github", "linkedin", "notion"].includes(id);
   check(named, `${id} identifies the account it just connected`);
 }
 // And none of them pins a single account on the consent screen any more -- a

@@ -417,3 +417,38 @@ left edge is amber when an agent may read it.
 ticked (it is never pre-ticked), then `list_secrets` to find a name and
 `get_secret` to read one value. A secret not marked readable is refused with
 instructions rather than returned.
+
+---
+
+## 9. Managing the variables themselves (Environment tab)
+
+Optional. Without it the tab still works as a **checklist** — what is set, what
+is missing, what each variable is for — it just cannot write to Vercel.
+
+```
+VERCEL_TOKEN=<a Vercel API token>
+VERCEL_PROJECT_ID=<the project id, from Project Settings → General>
+VERCEL_TEAM_ID=<only if the project belongs to a team>
+```
+
+### Three things to know before using it
+
+1. **A change to a deployment variable takes effect on the NEXT DEPLOYMENT.**
+   Vercel bakes the environment at build time. Nothing here redeploys — push a
+   commit, or press Redeploy in the dashboard, once the variables are right.
+2. **Five keys can never be changed from inside the app**, and the tab shows
+   them as *Locked* with the reason: `SECRETS_KEY`, `MCP_TOKEN_SECRET`,
+   `INTEGRATION_SECRET`, the `B2_*` pair, and `VERCEL_TOKEN` itself. They
+   decrypt everything else or could mint credentials — a store that handed
+   them out would make every other guard decorative. Set them in the Vercel
+   dashboard or `.env.local`.
+3. **No value is ever readable** — not in the UI, not over MCP. Secrets are
+   written to Vercel as `sensitive`, which means Vercel itself refuses to hand
+   them back afterwards. That is the correct behaviour, not a missing feature.
+
+### Live now vs next deployment
+
+A handful of non-secret settings are **runtime** class: stored in Firestore,
+read on every request, and effective the moment you save them —
+`NEXT_PUBLIC_MEDIUM_USER`, `INTEGRATION_ACCOUNT`, `INTEGRATION_GITHUB_LOGIN`.
+Everything else is a deployment variable. The tab groups them exactly that way.

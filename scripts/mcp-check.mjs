@@ -609,6 +609,10 @@ console.log("\nthe registry survived however it was last merged");
       "get_analytics_report", "get_analytics_top_pages", "get_analytics_sources",
       "get_analytics_realtime",
     ],
+    env: [
+      "get_env_status", "list_env_vars", "set_env_var", "delete_env_var",
+      "get_runtime_config",
+    ],
   };
 
   const byName = new Map(TOOLS.map((t) => [t.name, t]));
@@ -739,6 +743,52 @@ console.log("\nthe secret store is fenced off from every other scope");
   const shaped = store.publicShape("x", { name: "x", value: "SEALED", agentReadable: true });
   check(!("value" in shaped), "a listing row carries no value field at all");
   check(shaped.hasValue === true, "only whether there is one");
+}
+
+console.log("\nenvironment tools cannot reach the keys that decrypt everything");
+{
+  const { TOOLS, listToolsFor } = await import("../lib/server/mcpTools.js");
+  const reg = await import("../lib/server/envRegistry.js");
+  const envTools = TOOLS.filter((t) => /_env_|_env$|runtime_config/.test(t.name));
+
+  check(envTools.length > 0, "env tools exist", String(envTools.length));
+  // A deployment variable is a credential, so these live with the secrets.
+  const loose = envTools.filter((t) => t.scope !== "secrets");
+  check(loose.length === 0, "every env tool sits behind the secrets scope", String(loose.map((t) => t.name)));
+  for (const combo of [["read"], ["write"], ["vault"], ["read", "write", "vault"]]) {
+    const offered = listToolsFor(combo).filter((t) => /_env_|_env$|runtime_config/.test(t.name));
+    check(offered.length === 0, `a token with ${combo.join("+")} is offered no env tool`, String(offered.map((t) => t.name)));
+  }
+
+  // THE containment claim: the keys that decrypt everything else, or that
+  // could mint credentials, are refused before any I/O — and the refusal
+  // explains itself rather than reading as an arbitrary denylist.
+  for (const key of ["SECRETS_KEY", "MCP_TOKEN_SECRET", "INTEGRATION_SECRET", "B2_APP_KEY", "VERCEL_TOKEN"]) {
+    let msg = "";
+    let status = 0;
+    try {
+      reg.assertManageable(key);
+    } catch (e) {
+      msg = e.message;
+      status = e.status;
+    }
+    check(!!msg && status === 403, `${key} is refused with 403 before any I/O`, `${status} ${msg.slice(0, 50)}`);
+  }
+
+  // No tool may return a value. Presence is the whole contract.
+  const reader = TOOLS.filter((t) => /^get_env|^list_env/.test(t.name));
+  check(
+    reader.every((t) => !/\breveal\b|\bdecrypt\b|\bvalue\b/i.test(JSON.stringify(t.inputSchema))),
+    "no env tool takes an option that would return a value",
+    String(reader.map((t) => t.name))
+  );
+  const del = TOOLS.find((t) => t.name === "delete_env_var");
+  check(!!del.inputSchema.properties.confirm, "delete_env_var asks for confirmation");
+
+  // Nothing may redeploy: setting a variable and shipping the site are two
+  // different decisions and should not be made in one call.
+  const deployers = TOOLS.filter((t) => /redeploy|trigger_deploy|create_deployment/.test(t.name));
+  check(deployers.length === 0, "nothing triggers a deployment", String(deployers.map((t) => t.name)));
 }
 
 console.log("\nguards refuse before they touch anything");

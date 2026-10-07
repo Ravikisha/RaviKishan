@@ -220,6 +220,18 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Runtime settings — the handful of variables the app reads per request
+    // instead of from process.env, so they can change without a deployment.
+    //
+    // Admin-only, and deliberately NOT secret: a value the app must read on
+    // every request cannot sit behind a passphrase. Nothing sensitive is
+    // allowed in here — lib/server/runtimeConfig.js refuses any key the
+    // registry classes as deploy or critical, so a client secret cannot be
+    // written to this document by mistake.
+    match /config/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // PASSWORDS AND API KEYS. Admin-only in both directions, and the single
     // most sensitive collection in this database.
     //

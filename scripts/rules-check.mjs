@@ -71,6 +71,7 @@ const PRIVATE = [
   ["connectedAccounts", "sealed YouTube, Instagram, X and Google Analytics credentials"],
   ["notes", "note bodies, including unfinished ones"],
   ["secrets", "sealed passwords and API keys"],
+  ["config", "runtime settings"],
   ["siteDrafts", "unpublished site content"],
   ["auditLog", "the audit trail"],
   ["mcpTokens", "MCP token records"],

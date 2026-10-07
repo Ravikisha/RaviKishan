@@ -870,6 +870,31 @@ async function integrationsAuthSuite() {
     bad("social GET", e.message);
   }
 
+  // The environment route can write deployment credentials.
+  for (const [body, name] of [
+    [{ action: "status" }, "status"],
+    [{ action: "listVercel" }, "listVercel"],
+    [{ action: "set", key: "GITHUB_CLIENT_SECRET", value: "x" }, "set"],
+    [{ action: "delete", key: "GITHUB_CLIENT_SECRET" }, "delete"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}/api/env`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      check(res.status === 401, `/api/env ${name} refuses an anonymous caller`, String(res.status));
+    } catch (e) {
+      bad(`env ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/env`, { method: "GET" });
+    check(res.status === 405, "/api/env refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("env GET", e.message);
+  }
+
   // The secret store. Every action, because this is the one route where a
   // single unauthenticated success is a full credential compromise.
   for (const [body, name] of [

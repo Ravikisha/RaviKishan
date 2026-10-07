@@ -35,6 +35,7 @@ import DriftPanel from "../components/admin/DriftPanel";
 import LinkedInPanel from "../components/admin/LinkedInPanel";
 import SocialPanel from "../components/admin/SocialPanel";
 import SecretsPanel from "../components/admin/SecretsPanel";
+import EnvPanel from "../components/admin/EnvPanel";
 import ContactsPanel from "../components/admin/ContactsPanel";
 import McpPanel from "../components/admin/McpPanel";
 import TasksPanel from "../components/admin/TasksPanel";
@@ -85,6 +86,7 @@ export const TABS = [
 
   ["vault", "Vault", "Stored"],
   ["secrets", "Secrets", "Stored"],
+  ["env", "Environment", "Access"],
   ["assets", "Assets", "Stored"],
   ["ops", "Backup & log", "Stored"],
 
@@ -758,6 +760,8 @@ function Editor({ user }) {
         </ContentContext.Provider>
       ) : view === "vault" ? (
         <VaultPanel user={user} />
+      ) : view === "env" ? (
+        <EnvPanel />
       ) : view === "secrets" ? (
         <SecretsPanel user={user} />
       ) : view === "social" ? (

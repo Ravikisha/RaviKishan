@@ -50,7 +50,8 @@
     "test:accounts": "node scripts/accounts-check.mjs",
     "test:ml": "node scripts/ml-check.mjs",
     "ml:live": "node scripts/ml-live.mjs",
-    "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs"
+    "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs",
+    "dev:https": "node scripts/https-dev.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

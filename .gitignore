@@ -53,3 +53,4 @@ firebase-debug.*.log
 # Backups and dumps of env files leak exactly what the env file holds.
 .env*.bak*
 .env.*.local
+.https-dev/

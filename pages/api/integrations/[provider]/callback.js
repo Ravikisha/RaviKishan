@@ -32,7 +32,7 @@ const TAB_FOR = {
   microsoft: "accounts",
   github: "github",
   linkedin: "linkedin",
-  youtube: "social",
+  youtube: "youtube",
   instagram: "social",
   x: "social",
   analytics: "analytics",

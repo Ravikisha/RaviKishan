@@ -294,11 +294,41 @@ Display API that served them shut down on 4 December 2024.
 1. Create an app, add the **Instagram** product, and use **Instagram Login**
    (not Facebook Login — it needs no linked Page).
 2. Permissions: `instagram_business_basic`, `instagram_business_content_publish`.
-3. OAuth redirect URIs:
+3. OAuth redirect URIs (Instagram → API setup with Instagram login → step 3 →
+   **Business login settings**):
    ```
+   https://www.ravikishan.me/api/integrations/instagram/callback
    https://ravikishan.me/api/integrations/instagram/callback
-   http://localhost:3000/api/integrations/instagram/callback
+   https://localhost:3443/api/integrations/instagram/callback
    ```
+
+**Meta will not save an `http://` redirect URI at all — not even for
+localhost.** It answers "Error saving OAuth redirect URIs" and refuses the
+whole form; remove the `http://` line and the same save succeeds. `https://localhost`
+*is* accepted, which is the whole reason `npm run dev:https` exists: it is a
+TLS front door on **:3443** that forwards to `next dev` on :3000 and sets
+`x-forwarded-proto: https`, so `redirectUriFor()` builds an https:// callback
+rather than reading the plain socket underneath it. Two terminals:
+
+```
+npm run dev          # the usual dev server, :3000
+npm run dev:https    # the TLS proxy,      :3443
+```
+
+then connect at <https://localhost:3443/admin?tab=accounts> — a self-signed
+certificate, so the browser warns once. It is a different ORIGIN from :3000, so
+the Firebase session does not carry over and you sign in again there.
+
+4. **Assign the Instagram Tester role, or consent fails.** While the app is in
+   Development mode only an account holding a role may authorize it, and the
+   refusal is `Insufficient Developer Role: Insufficient developer role` on
+   instagram.com — which says nothing about roles being the fix. It is two
+   steps, on two sites:
+   - Meta app → **App roles → Roles → Add People → Instagram Tester**, and type
+     the handle (the list is fuzzy; pick the exact match). The row goes
+     **Pending**.
+   - Then on instagram.com as that account: **Settings → Apps and websites →
+     Tester Invites → Accept**. Only then does the consent screen appear.
 
 ```
 INSTAGRAM_CLIENT_ID=

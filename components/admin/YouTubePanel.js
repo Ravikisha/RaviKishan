@@ -22,8 +22,15 @@
 // Channel configuration sits last and folded: it is edited about once a year,
 // and `channels.update` REPLACES the part it is given, so the save is
 // read-modify-write and says so.
+//
+// SEVERAL CHANNELS. Every call names the channel it is about (`accountId`), so
+// two connected Google accounts never resolve to "whichever the server picks"
+// — with two connected and no default, the server refuses rather than guesses.
+// The switcher above the figures is the place you choose; the selected chip
+// wears the console's one amber edge, as everywhere else.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { auth } from "../../lib/firebase";
+import { connectProvider, finishConnect } from "../../lib/accountsClient";
 
 const RANGES = [
   ["7d", "7 days"],
@@ -68,49 +75,115 @@ const delta = (c) => {
 
 export default function YouTubePanel() {
   const [range, setRange] = useState("28d");
+  const [status, setStatus] = useState(null);
+  const [sel, setSel] = useState("");
   const [channel, setChannel] = useState(null);
   const [growth, setGrowth] = useState(null);
   const [daily, setDaily] = useState(null);
   const [videos, setVideos] = useState(null);
   const [titles, setTitles] = useState({});
   const [config, setConfig] = useState(null);
-  const [busy, setBusy] = useState("Reading the channel…");
+  const [busy, setBusy] = useState("Reading your channels…");
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
-  const load = useCallback(async () => {
+  const accounts = status?.accounts || [];
+  // Every call is about the selected channel, by name.
+  const ask = useCallback((body) => call({ ...body, accountId: sel }), [sel]);
+
+  const loadAccounts = useCallback(async () => {
+    const { providers = [] } = await call({ action: "accounts" });
+    const yt = providers.find((p) => p.provider === "youtube") || { configured: false, accounts: [] };
+    setStatus(yt);
+    setSel((s) => (s && yt.accounts.some((a) => a.accountId === s) ? s : yt.accounts[0]?.accountId || ""));
+    return yt;
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // The callback seals the credential into a short-lived cookie and the
+      // signed-in browser writes it; skip the claim and a consent that already
+      // happened simply never appears.
+      try {
+        const q = new URLSearchParams(window.location.search);
+        const connected = q.get("connected");
+        const failed = q.get("connectError");
+        if (connected === "youtube") {
+          setBusy("Saving the channel connection…");
+          try {
+            await finishConnect("youtube");
+            setMsg(`Connected ${q.get("account") || "the channel"}.`);
+          } catch (e) {
+            setErr(e.message || "The connection could not be saved.");
+          }
+        } else if (failed) {
+          setErr(failed);
+        }
+        if (connected || failed) {
+          ["connected", "connectError", "account"].forEach((k) => q.delete(k));
+          const rest = q.toString();
+          window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
+        }
+      } catch (_) {}
+      const yt = await loadAccounts().catch((e) => {
+        setErr(e.message);
+        return null;
+      });
+      if (!yt?.accounts?.length) setBusy("");
+    })();
+  }, [loadAccounts]);
+
+  const connect = async () => {
     setErr("");
+    setBusy("Opening Google…");
     try {
-      const ch = await call({ action: "channel" });
+      // Back to this tab, through Google's account chooser — no account is
+      // pinned, which is what lets a second channel be connected at all.
+      await connectProvider("youtube", "youtube");
+    } catch (e) {
+      setErr(e.message);
+      setBusy("");
+    }
+  };
+
+  const load = useCallback(async () => {
+    if (!sel) return;
+    setErr("");
+    setChannel(null);
+    setConfig(null);
+    setTitles({});
+    try {
+      const ch = await ask({ action: "channel" });
       setChannel(ch);
       // Titles come from the Data API; the analytics report returns video IDs
       // only. One call, then a lookup — the alternative is one call per row.
-      const list = await call({ action: "videos", max: 50 }).catch(() => ({ videos: [] }));
+      const list = await ask({ action: "videos", max: 50 }).catch(() => ({ videos: [] }));
       const map = {};
       for (const v of list.videos || []) map[v.id] = v;
       setTitles(map);
-      setConfig(await call({ action: "channelConfig" }).catch(() => null));
+      setConfig(await ask({ action: "channelConfig" }).catch(() => null));
     } catch (e) {
       setErr(e.message);
     } finally {
       setBusy("");
     }
-  }, []);
+  }, [sel, ask]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // The three analytics calls move together with the range and are kept apart
-  // from the channel read, which does not.
+  // The three analytics calls move together with the range and the channel,
+  // and are kept apart from the channel read.
   useEffect(() => {
+    if (!sel) return undefined;
     let alive = true;
     (async () => {
       setBusy("Reading YouTube Analytics…");
       const [g, d, v] = await Promise.all([
-        call({ action: "growth", range }).catch((e) => ({ available: false, why: e.message })),
-        call({ action: "dailyGrowth", range }).catch((e) => ({ available: false, why: e.message })),
-        call({ action: "videoGrowth", range, limit: 10 }).catch((e) => ({ available: false, why: e.message })),
+        ask({ action: "growth", range }).catch((e) => ({ available: false, why: e.message })),
+        ask({ action: "dailyGrowth", range }).catch((e) => ({ available: false, why: e.message })),
+        ask({ action: "videoGrowth", range, limit: 10 }).catch((e) => ({ available: false, why: e.message })),
       ]);
       if (!alive) return;
       setGrowth(g);
@@ -121,7 +194,7 @@ export default function YouTubePanel() {
     return () => {
       alive = false;
     };
-  }, [range]);
+  }, [range, sel, ask]);
 
   const bars = useMemo(() => {
     const rows = daily?.rows || [];
@@ -136,8 +209,61 @@ export default function YouTubePanel() {
 
   const unavailable = growth && growth.available === false ? growth.why : "";
 
+  if (status && (!status.configured || !accounts.length)) {
+    return (
+      <main className="admin-main">
+        <section className="yt-empty">
+          <h2 className="yt-name">{status.configured ? "Connect a YouTube channel" : "YouTube is not set up"}</h2>
+          <p className="yt-note">
+            {status.configured
+              ? "Connect as many channels as you run. Google's account chooser decides which one; each channel gets its own figures here and every tool can name it."
+              : `Missing on this deployment: ${(status.missing || []).join(", ") || "the Google OAuth client"}.`}
+          </p>
+          {status.configured ? (
+            <button className="admin-primary" type="button" onClick={connect} disabled={busy === "Opening Google…"}>
+              Connect YouTube
+            </button>
+          ) : null}
+          {err ? <p className="admin-err">{err}</p> : null}
+        </section>
+        <YouTubeStyles />
+      </main>
+    );
+  }
+
   return (
     <main className="admin-main">
+      <nav className="yt-chans" aria-label="YouTube channels">
+        {accounts.map((a) => (
+          <button
+            key={a.accountId}
+            type="button"
+            className={`yt-chan${a.accountId === sel ? " on" : ""}${a.needsReconnect ? " bad" : ""}`}
+            aria-pressed={a.accountId === sel}
+            onClick={() => {
+              setGrowth(null);
+              setDaily(null);
+              setVideos(null);
+              setMsg("");
+              setSel(a.accountId);
+            }}
+            title={`Channel ${a.accountId}`}
+          >
+            <span className="yt-chan-name">{a.label || a.accountId}</span>
+            {/* The second line must tell two channels apart: the Google
+                address when it was recorded, otherwise the channel id —
+                never the title again. */}
+            <span className="yt-chan-mail">
+              {/@/.test(a.email || "") ? a.email : a.accountId}
+            </span>
+          </button>
+        ))}
+        <button type="button" className="yt-chan yt-chan-add" onClick={connect} disabled={busy === "Opening Google…"}>
+          <span className="yt-chan-name">Connect another channel</span>
+          <span className="yt-chan-mail">Google&apos;s account chooser opens</span>
+        </button>
+      </nav>
+
       <header className="yt-top">
         <div className="yt-who">
           {channel?.thumbnail ? (
@@ -282,9 +408,9 @@ export default function YouTubePanel() {
           setErr("");
           setMsg("");
           try {
-            const out = await call({ action: "updateChannel", ...patch });
+            const out = await ask({ action: "updateChannel", ...patch });
             setChannel((c) => ({ ...c, title: out.title, description: out.description }));
-            setConfig(await call({ action: "channelConfig" }));
+            setConfig(await ask({ action: "channelConfig" }));
             setMsg("Channel saved. YouTube can take a few minutes to show it.");
           } catch (e) {
             setErr(e.message);
@@ -382,6 +508,73 @@ export function ChannelConfig({ config, onSave, busy }) {
 export function YouTubeStyles() {
   return (
     <style jsx global>{`
+      /* ---- the channel switcher ---- */
+      .yt-chans {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 18px;
+      }
+      .yt-chan {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        min-width: 180px;
+        max-width: 280px;
+        padding: 9px 14px 9px 11px;
+        border: 1px solid var(--a-line, #2b3040);
+        border-left: 3px solid transparent;
+        border-radius: 10px;
+        background: var(--a-raise, #15171d);
+        color: var(--a-text, #e7e8ee);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .yt-chan.on {
+        border-left-color: var(--a-amber, #ffb020);
+      }
+      .yt-chan.bad {
+        border-left-color: #a33b45;
+      }
+      .yt-chan:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: 2px;
+      }
+      .yt-chan-name {
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 600;
+        font-size: 13.5px;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .yt-chan-mail {
+        font-size: 11.5px;
+        color: var(--a-dim, #8b90a0);
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .yt-chan-add {
+        background: none;
+        border-style: dashed;
+        border-left: 1px dashed var(--a-line, #2b3040);
+        color: var(--a-dim, #8b90a0);
+      }
+      .yt-chan-add .yt-chan-name {
+        color: var(--a-dim, #8b90a0);
+      }
+      .yt-empty {
+        max-width: 60ch;
+        display: grid;
+        gap: 12px;
+        justify-items: start;
+        padding: 12px 0;
+      }
       .yt-top {
         display: flex;
         align-items: flex-start;

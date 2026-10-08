@@ -258,6 +258,36 @@ check(local === "http://localhost:3000/api/integrations/google/callback", "local
 const prod = redirectUriFor({ headers: { host: "ravikishan.me" } }, "google");
 check(prod.startsWith("https://"), "anything else is forced to https", prod);
 
+// Instagram is the ONE provider that will not register an http:// redirect at
+// all, not even for localhost, so connecting it from a laptop needs the local
+// HTTPS proxy (`npm run dev:https`). The proxy terminates TLS and forwards to
+// the dev server, so the socket this code reads is plain http — the forwarded
+// headers are the only evidence that the browser spoke https. Ignore them and
+// the consent is served over TLS while the callback is built as http://, which
+// comes back from Meta as "Invalid redirect_uri" and reads like their fault.
+const proxied = redirectUriFor(
+  { headers: { "x-forwarded-proto": "https", "x-forwarded-host": "localhost:3443", host: "localhost:3000" }, socket: {} },
+  "instagram"
+);
+check(
+  proxied === "https://localhost:3443/api/integrations/instagram/callback",
+  "a TLS-terminating proxy in front of dev yields an https localhost callback",
+  proxied
+);
+// A proxy chain sends a list; the first entry is what the client spoke.
+const chained = redirectUriFor(
+  { headers: { "x-forwarded-proto": "https, http", host: "localhost:3443" }, socket: {} },
+  "instagram"
+);
+check(chained.startsWith("https://"), "and a comma-separated chain reads the first hop", chained);
+// Without the header nothing changes: plain `next dev` must stay http, or
+// every other provider's registered localhost URI would stop matching.
+check(
+  redirectUriFor({ headers: { host: "localhost:3000" }, socket: {} }, "instagram") ===
+    "http://localhost:3000/api/integrations/instagram/callback",
+  "while plain dev is untouched"
+);
+
 console.log("\nwhere a connection is stored");
 check(docPathFor("google") === "integrations/googleTasks", "google has its own document", docPathFor("google"));
 check(

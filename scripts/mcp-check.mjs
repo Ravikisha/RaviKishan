@@ -612,8 +612,13 @@ console.log("\nsocial tools promise only what the services offer");
   // Multi-account: every social tool must accept an accountId, because with
   // two handles connected the alternative is posting to whichever one the
   // store happened to return first.
+  // list_youtube_channels is the one exception, by name: like
+  // list_social_accounts it reads EVERY account, so there is none to name.
+  const SPANS_ALL = ["list_youtube_channels"];
   const perAccount = TOOLS.filter(
-    (t) => /^(get|list|update|delete|create|publish|reply|add)_(youtube|instagram|x)_/.test(t.name)
+    (t) =>
+      /^(get|list|update|delete|create|publish|reply|add)_(youtube|instagram|x)_/.test(t.name) &&
+      !SPANS_ALL.includes(t.name)
   );
   const missing = perAccount.filter((t) => !t.inputSchema?.properties?.accountId);
   check(
@@ -671,6 +676,8 @@ console.log("\nthe registry survived however it was last merged");
     // what tells a model that in one call instead of leaving it to hunt.
     insights: [
       "list_insights", "get_youtube_insights", "get_instagram_insights", "get_github_traffic",
+      // Several channels: list them, then the two questions a creator asks.
+      "list_youtube_channels", "get_youtube_daily_growth", "get_youtube_top_videos",
     ],
     // The channel's own description is a WRITE that replaces the whole record;
     // losing the read half would leave only the destructive one registered.

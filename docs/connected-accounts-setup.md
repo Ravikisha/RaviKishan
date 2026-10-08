@@ -345,17 +345,50 @@ INSTAGRAM_CLIENT_SECRET=
 pay-per-usage credits, so reads in particular may refuse on billing rather than
 on anything wrong here. The error says which.
 
-**X developer portal** → <https://developer.x.com>
+Rates read off the live pricing page on 8 Oct 2026. The second line is the one
+that matters and is easy to miss:
 
-1. Create a project and app, then **User authentication settings**:
-   - Type of App: **Web App** (confidential client)
-   - Permissions: **Read and write**
-   - Callback URI:
+| | |
+|---|---|
+| Post a plain post | $0.015 per post |
+| **Post containing a link** | **$0.200 per post** |
+| Delete a post | $0.010 per request |
+| Read your own posts ("Owned Reads") | $0.001 each |
+
+A post carrying a link costs **thirteen times** a plain one, and almost every
+post this site would make links to an article. Saving a payment card earns $20
+in free credits (~100 link-posts) and a first auto-recharge is matched up to
+$50; set a spending limit at the same time, since it is the only hard stop.
+
+**Developer console** → <https://console.x.com>
+
+1. **Enrol as a developer first.** Every `developer.x.com/en/portal/*` URL
+   redirects to `/onboarding` until you do — there is no existing-account path
+   to find. It asks for an account name, a free-text description of your use of
+   the API, and acceptance of the X Developer Agreement and Developer Policy.
+   Enrolment creates a Default Project and one app automatically.
+2. The app's **Keys & Tokens → OAuth 2.0 Keys → User authentication settings →
+   Set up**:
+   - Permissions: **Read and write** (Read only authorises but cannot post)
+   - Type of App: **Web App, Automated App or Bot** — the confidential client.
+     Native App is a *public* client and issues no secret.
+   - Callback URI / Redirect URL, one per field via **Add another**:
      ```
+     https://www.ravikishan.me/api/integrations/x/callback
      https://ravikishan.me/api/integrations/x/callback
-     http://localhost:3000/api/integrations/x/callback
+     https://localhost:3443/api/integrations/x/callback
      ```
-2. Copy the **OAuth 2.0** Client ID and Client Secret (not the API key/secret).
+     The last is the local HTTPS proxy (`npm run dev:https`). X accepts a plain
+     `http://localhost` too, unlike Meta, but the proxy address is what the
+     admin builds when served over it.
+   - Website URL is required.
+3. Saving shows the **OAuth 2.0** Client ID and Client Secret **once**, in a
+   dialog. These are not the API Key/Secret above them on the same page. Copy
+   both before closing it; the secret cannot be read back, only regenerated.
+4. **The consent screen has an "I trust this app" checkbox** that must be
+   ticked before *Authorize app* becomes enabled. X shows the warning because
+   the app requests sensitive permissions and is not affiliated with X — which
+   is true of every self-serve app, including your own.
 
 ```
 X_CLIENT_ID=

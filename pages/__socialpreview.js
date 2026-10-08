@@ -24,6 +24,7 @@ import {
   SocialStyles,
 } from "../components/admin/SocialPanel";
 import { IG_MAX, PROVIDERS as META, X_MAX, weightedLength } from "../lib/socialClient";
+import { FORMATS, FORMAT_IDS } from "../lib/server/instagram";
 
 const PROVIDERS = [
   {
@@ -100,8 +101,39 @@ export default function SocialPreview() {
             stats={["300 followers", "19 posts", "100 of 100 publishes left today"]}
           />
           <div className="so-work">
+            {/* The real kind picker, so the design reference shows the state
+                that decides everything else about the post. */}
+            <div className="so-ptypes" role="radiogroup" aria-label="What kind of post">
+              {FORMAT_IDS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={id === "reel"}
+                  className={`so-ptype${id === "reel" ? " on" : ""}`}
+                >
+                  {FORMATS[id].label}
+                </button>
+              ))}
+            </div>
+            <dl className="so-spec">
+              <div>
+                <dt>Accepts</dt>
+                <dd>{FORMATS.reel.accepts}</dd>
+              </div>
+              <div>
+                <dt>Shape</dt>
+                <dd>{FORMATS.reel.aspect}</dd>
+              </div>
+              <div>
+                <dt>Length</dt>
+                <dd>{FORMATS.reel.duration}</dd>
+              </div>
+            </dl>
+            <p className="so-ptype-note">{FORMATS.reel.note}</p>
+
             <label className="so-field">
-              <span>Image URL</span>
+              <span>File URL</span>
               <input className="admin-input" defaultValue="" placeholder="https://ravikishan.me/api/media/…" />
               <small>
                 Instagram fetches the file rather than accepting an upload, so this has to be
@@ -119,12 +151,9 @@ export default function SocialPreview() {
               <span className="so-count over">34 of 30 hashtags — the extras are dropped</span>
             </Meter>
             <div className="so-row-end">
-              <label className="so-check">
-                <input type="checkbox" readOnly /> Publish as a Reel
-              </label>
               <span className="so-spacer" />
               <button className="admin-primary" type="button">
-                Publish as @ravikishan.404
+                Publish reel as @ravikishan.404
               </button>
             </div>
             <Refusal cap={NO_EDIT} title="Fixed once published." />

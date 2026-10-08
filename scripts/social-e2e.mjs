@@ -105,7 +105,7 @@ try {
         todoSays: document.querySelector(".so-who.so-todo .so-who-kind")?.textContent || "",
         setupSteps: document.querySelectorAll(".so-setup .so-steps > li").length,
         setupHasConnect: [...document.querySelectorAll(".so-setup button")].some((b) =>
-          /connect/i.test(b.textContent)
+          /Publish .*as @/.test(b.textContent)
         ),
         setupCosts: [...document.querySelectorAll(".so-cost td")].map((t) => t.textContent),
         setupUris: [...document.querySelectorAll(".so-uris code")].map((c) => c.textContent),
@@ -115,9 +115,14 @@ try {
         // The empty part of the track is what makes a meter legible as one.
         trackWidth: document.querySelector(".so-track")?.getBoundingClientRect().width || 0,
         namesAccount: [...document.querySelectorAll(".admin-primary")].some((b) =>
-          /Publish as @/.test(b.textContent)
+          // "Publish reel as @handle" — it names the KIND and the ACCOUNT.
+          /Publish .*as @/.test(b.textContent)
         ),
         refusalIsNotAButton: !document.querySelector(".so-cant button"),
+        kinds: [...document.querySelectorAll(".so-ptype")].map((b) => b.textContent.trim()),
+        kindSelected: document.querySelectorAll(".so-ptype.on").length,
+        specRows: document.querySelectorAll(".so-spec > div").length,
+        hasReelCheckbox: [...document.querySelectorAll("label")].some((l) => /as a Reel/i.test(l.textContent)),
       };
     });
     await page.close();
@@ -149,8 +154,17 @@ try {
     check(r.tones.includes("fine") && r.tones.includes("close") && r.tones.includes("over"),
       "the meter reaches all three states", r.tones.join(", "));
     check(r.trackWidth > 20, "the meter has a visible empty track, not just a fill", `${r.trackWidth}px`);
-    check(r.namesAccount, "the publish button names the account it would post as");
+    check(r.namesAccount, "the publish button names the kind AND the account it would post as");
     check(r.refusalIsNotAButton, "a refusal is stated, never offered as a disabled control");
+    // The kind is picked before the file, because it decides what the file has
+    // to be. Four kinds, exactly one selected, and each states its shape.
+    check(r.kinds.join() === "Photo,Video,Reel,Story", "all four post kinds are offered", r.kinds.join());
+    check(r.kindSelected === 1, "exactly one is selected", String(r.kindSelected));
+    check(r.specRows >= 2, "and the chosen one states what it accepts", String(r.specRows));
+    check(
+      !r.hasReelCheckbox,
+      "the old Reel checkbox is gone - it made 'a Story that is also a Reel' expressible"
+    );
 
     if (name === "phone") {
       // Both faces must shrink. `.so-addr` sets its own size, so a media query

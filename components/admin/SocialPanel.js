@@ -32,6 +32,7 @@
 // would have been, rather than offering a disabled button that implies a
 // permission you could go and fix.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FORMATS, FORMAT_IDS, publishShape } from "../../lib/server/instagram";
 import {
   IG_MAX,
   PROVIDERS,
@@ -691,7 +692,12 @@ export function InstagramPane({ account, caps, onError, onMsg, user }) {
   const accountId = account.accountId;
   const [profile, setProfile] = useState(null);
   const [media, setMedia] = useState(null);
-  const [form, setForm] = useState({ imageUrl: "", caption: "", isReel: false });
+  // A KIND, not a pair of booleans. "Reel" and "Story" were a checkbox each,
+  // which made "a Story that is also a Reel" expressible and meaningless, and
+  // left video unreachable from the panel at all — even though the server, the
+  // route and the MCP tool have carried videoUrl all along.
+  const [form, setForm] = useState({ kind: "image", url: "", caption: "" });
+  const fmt = FORMATS[form.kind];
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -726,23 +732,37 @@ export function InstagramPane({ account, caps, onError, onMsg, user }) {
   const overTags = tags > 30;
 
   const publish = async () => {
-    if (!form.imageUrl)
-      return onError("Instagram fetches the file, so it needs a publicly reachable image URL.");
+    if (!form.url)
+      return onError(
+        `Instagram FETCHES the file rather than accepting an upload, so this needs a publicly reachable ${
+          fmt.field === "imageUrl" ? "image" : "file"
+        } URL.`
+      );
     if (overCaption) return onError(`That caption is ${form.caption.length - IG_MAX} characters over.`);
     if (overTags) return onError(`That caption has ${tags} hashtags; Instagram keeps 30 and drops the rest.`);
-    if (!window.confirm(`Publish as ${account.label}? The caption cannot be edited afterwards.`))
+    // Names the kind AND the account, because both are things you can get
+    // wrong and neither can be undone: there is no caption edit, and a Story
+    // posted as a Reel stays on the grid.
+    if (
+      !window.confirm(
+        `Publish this ${fmt.label.toLowerCase()} as ${account.label}?\n\nThe caption cannot be edited afterwards.`
+      )
+    )
       return;
     setSending(true);
     try {
-      const out = await igPublish(accountId, form);
+      const out = await igPublish(accountId, {
+        ...publishShape(form.kind, form.url),
+        caption: form.caption,
+      });
       onMsg(`Published. ${out.url || ""}`);
       logAdminAction({
         action: "instagram.post",
         target: accountId,
-        detail: form.caption.slice(0, 80),
+        detail: `${form.kind}: ${form.caption.slice(0, 60)}`,
         user,
       });
-      setForm({ imageUrl: "", caption: "", isReel: false });
+      setForm({ kind: form.kind, url: "", caption: "" });
       setMedia(await igMedia(accountId, 12).then((j) => j.media));
     } catch (e) {
       onError(e.message);
@@ -773,12 +793,50 @@ export function InstagramPane({ account, caps, onError, onMsg, user }) {
       />
 
       <div className="so-work">
+        {/* The kind is picked FIRST, because it decides what the file has to
+            be. Choosing it after uploading is how you end up with a 16:9 Reel
+            with bars down both sides. */}
+        <div className="so-ptypes" role="radiogroup" aria-label="What kind of post">
+          {FORMAT_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={form.kind === id}
+              className={`so-ptype${form.kind === id ? " on" : ""}`}
+              onClick={() => setForm({ ...form, kind: id })}
+            >
+              {FORMATS[id].label}
+            </button>
+          ))}
+        </div>
+
+        {/* What this kind wants, stated before the field rather than after a
+            failed publish. */}
+        <dl className="so-spec">
+          <div>
+            <dt>Accepts</dt>
+            <dd>{fmt.accepts}</dd>
+          </div>
+          <div>
+            <dt>Shape</dt>
+            <dd>{fmt.aspect}</dd>
+          </div>
+          {fmt.duration ? (
+            <div>
+              <dt>Length</dt>
+              <dd>{fmt.duration}</dd>
+            </div>
+          ) : null}
+        </dl>
+        {fmt.note ? <p className="so-ptype-note">{fmt.note}</p> : null}
+
         <label className="so-field">
-          <span>Image URL</span>
+          <span>{fmt.field === "imageUrl" ? "Image URL" : "File URL"}</span>
           <input
             className="admin-input"
-            value={form.imageUrl}
-            onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+            value={form.url}
+            onChange={(e) => setForm({ ...form, url: e.target.value })}
             placeholder="https://ravikishan.me/api/media/…"
           />
           <small>
@@ -813,22 +871,18 @@ export function InstagramPane({ account, caps, onError, onMsg, user }) {
         </Meter>
 
         <div className="so-row-end">
-          <label className="so-check">
-            <input
-              type="checkbox"
-              checked={form.isReel}
-              onChange={(e) => setForm({ ...form, isReel: e.target.checked })}
-            />
-            Publish as a Reel
-          </label>
           <span className="so-spacer" />
           <button
             className="admin-primary"
             type="button"
             onClick={publish}
-            disabled={sending || !form.imageUrl || overCaption || overTags}
+            disabled={sending || !form.url || overCaption || overTags}
           >
-            Publish as {account.label}
+            {sending
+              ? fmt.field === "imageUrl"
+                ? "Publishing…"
+                : "Instagram is transcoding…"
+              : `Publish ${fmt.label.toLowerCase()} as ${account.label}`}
           </button>
         </div>
 
@@ -1213,7 +1267,7 @@ export function SocialStyles() {
           animation: none;
         }
       }
-      .so-kind {
+      .so-ptype {
         margin: 5px 0 0;
         font-size: 12px;
         color: var(--a-dim, #8b90a0);
@@ -1540,6 +1594,61 @@ export function SocialStyles() {
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
+      }
+
+      /* ---- what kind of post ---- */
+      .so-ptypes {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .so-ptype {
+        padding: 7px 14px;
+        border-radius: 9px;
+        border: 1px solid var(--a-line, #2b3040);
+        border-left-width: 3px;
+        background: var(--a-raise, #15171d);
+        color: var(--a-dim, #8b90a0);
+        font: inherit;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .so-ptype.on {
+        border-left-color: var(--a-amber, #ffb020);
+        color: var(--a-text, #e7e8ee);
+        font-weight: 600;
+      }
+      .so-ptype:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: 2px;
+      }
+      /* A definition list, because that is what it is: each row names a
+         constraint and answers it. */
+      .so-spec {
+        margin: 0 0 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 28px;
+        font-size: 11.5px;
+      }
+      .so-spec > div {
+        display: flex;
+        gap: 8px;
+      }
+      .so-spec dt {
+        color: var(--a-dim, #6f7687);
+      }
+      .so-spec dd {
+        margin: 0;
+        color: var(--a-dim, #8b90a0);
+      }
+      .so-ptype-note {
+        margin: 0 0 14px;
+        font-size: 11.5px;
+        line-height: 1.55;
+        color: var(--a-dim, #6f7687);
+        max-width: 68ch;
       }
 
       /* ---- the setup checklist ---- */

@@ -76,14 +76,27 @@ export default function AdminShell({
   const current = tabs.find(([k]) => k === view);
   const currentLabel = current ? current[1] : title;
 
-  // Preserve the order the tabs were given; the group is just a heading that
-  // appears the first time a new one shows up.
+  // A heading appears the FIRST time a group name shows up, and every later
+  // tab with that name joins it.
+  //
+  // This used to merge only CONSECUTIVE runs, and TABS interleaves — Stored,
+  // then Access, then Stored again. So the rail grew two "Stored" headings and
+  // two "Publish" ones, which defeats the point of grouping: fifteen equal
+  // items are something you re-scan every visit, and repeating a heading puts
+  // you back there. It also gave two React children the same key, which React
+  // warns about on every render and which makes reconciliation of that list
+  // undefined.
   const groups = [];
+  const byName = new Map();
   for (const t of tabs) {
     const name = t[2] || "";
-    const last = groups[groups.length - 1];
-    if (!last || last.name !== name) groups.push({ name, items: [t] });
-    else last.items.push(t);
+    let g = byName.get(name);
+    if (!g) {
+      g = { name, items: [] };
+      byName.set(name, g);
+      groups.push(g);
+    }
+    g.items.push(t);
   }
 
   // What the rail says before you have picked anything.

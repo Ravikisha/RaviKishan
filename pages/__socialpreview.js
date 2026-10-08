@@ -18,11 +18,12 @@ import React, { useState } from "react";
 import {
   Identity,
   Meter,
+  ProviderSetup,
   Refusal,
   Roster,
   SocialStyles,
 } from "../components/admin/SocialPanel";
-import { IG_MAX, X_MAX, weightedLength } from "../lib/socialClient";
+import { IG_MAX, PROVIDERS as META, X_MAX, weightedLength } from "../lib/socialClient";
 
 const PROVIDERS = [
   {
@@ -158,6 +159,16 @@ export default function SocialPreview() {
             stats={null}
           />
         </div>
+      </section>
+
+      {/* The state the panel spends the least time in and most needs to
+          explain itself in. X is the one carrying a cost, which is the part of
+          a setup you cannot undo by deleting the app. */}
+      <section className="so-desk">
+        <ProviderSetup
+          provider={META.find((p) => p.id === "x")}
+          missing={["X_CLIENT_ID", "X_CLIENT_SECRET"]}
+        />
       </section>
 
       <SocialStyles />

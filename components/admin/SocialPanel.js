@@ -46,6 +46,7 @@ import {
   igPublish,
   listAccounts,
   providerLabel,
+  redirectUrisFor,
   xAccount,
   xDelete,
   xPosts,
@@ -153,6 +154,109 @@ export function Identity({ account, picture, kind, url, stats }) {
   );
 }
 
+// What a service that is not connected yet needs. "Not set up — missing
+// X_CLIENT_ID" names a state and offers no route out, and for all three the
+// route is genuinely non-obvious. This is the same shape as the LinkedIn and
+// Analytics panels, for the same reason: the unconnected state is where a
+// panel most needs to explain itself, and it is the state it spends the least
+// time in once it works.
+//
+// It is NOT a Connect button. A button that cannot work is worse than no
+// button, because you only find out after pressing it.
+export function ProviderSetup({ provider, missing }) {
+  const [copied, setCopied] = useState("");
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const setup = provider.setup;
+  if (!setup) return null;
+  const uris = redirectUrisFor(provider.id, origin);
+  const needs = missing?.length ? missing : setup.env || [];
+
+  const copy = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(text);
+      setTimeout(() => setCopied(""), 1600);
+    } catch {
+      setCopied("");
+    }
+  };
+
+  return (
+    <div className="so-pane so-setup">
+      <header className="so-id">
+        <div className="so-id-body">
+          <h4 className="so-handle">{provider.label}</h4>
+          <p className="so-kind">Not set up on this deployment</p>
+          {needs.length ? (
+            <p className="so-stats">
+              <span>
+                Needs{" "}
+                {needs.map((e, i) => (
+                  <React.Fragment key={e}>
+                    {i ? ", " : ""}
+                    <code>{e}</code>
+                  </React.Fragment>
+                ))}{" "}
+                in the Environment tab
+              </span>
+            </p>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="so-work">
+        {setup.why ? <p className="so-why">{setup.why}</p> : null}
+
+        {/* Stated up front, not in a footnote: a cost is the part of a setup
+            you cannot undo by deleting the app. */}
+        {setup.cost ? (
+          <table className="so-cost">
+            <tbody>
+              {setup.cost.map(([what, rate]) => (
+                <tr key={what}>
+                  <th scope="row">{what}</th>
+                  <td>{rate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+
+        <ol className="so-steps">
+          {setup.steps.map((step, i) => (
+            <li key={step.title}>
+              <span className="so-step-n">{i + 1}</span>
+              <div>
+                <strong>{step.title}</strong>
+                <p>{step.body}</p>
+                {step.link ? (
+                  <a className="so-step-link" href={step.link} target="_blank" rel="noreferrer noopener">
+                    {step.link.replace(/^https?:\/\//, "")}
+                  </a>
+                ) : null}
+                {step.uris ? (
+                  <ul className="so-uris">
+                    {uris.map((u) => (
+                      <li key={u}>
+                        <code>{u}</code>
+                        <button type="button" className="admin-ghost so-sm" onClick={() => copy(u)}>
+                          {copied === u ? "Copied" : "Copy"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        {setup.warning ? <p className="so-cant">{setup.warning}</p> : null}
+      </div>
+    </div>
+  );
+}
+
 // Every account you can act as, across every service, in one row. "Which
 // account am I about to act as" is ONE question, so it is asked once — the
 // previous version asked it twice, as a provider shelf and then a chip inside
@@ -200,12 +304,23 @@ export function Roster({ providers, who, onPick, onConnect, busy }) {
               <span className="so-who-kind">Nothing connected yet</span>
             </button>
           ) : (
-            <span key={p.provider} className="so-who so-off">
+            // Selectable, but what it opens is the CHECKLIST, not a Connect
+            // button — the thing worth avoiding is an action that cannot
+            // succeed, not an explanation of why.
+            <button
+              key={p.provider}
+              type="button"
+              aria-current={who?.provider === p.provider && !who?.accountId ? "true" : undefined}
+              className={`so-who so-todo${
+                who?.provider === p.provider && !who?.accountId ? " on" : ""
+              }`}
+              onClick={() => onPick({ provider: p.provider, accountId: null })}
+            >
               <span className="so-who-name">{providerLabel(p.provider)}</span>
               <span className="so-who-kind">
                 {p.missing?.length ? `Needs ${p.missing.join(", ")}` : "Not set up here"}
               </span>
-            </span>
+            </button>
           )
         )}
     </nav>
@@ -333,6 +448,12 @@ export default function SocialPanel({ user }) {
             <p className="so-empty so-firstrun">
               Connect a service above and this becomes the desk you post from.
             </p>
+          ) : null}
+
+          {meta && !account && !row?.configured ? (
+            <section className="so-desk" data-provider={meta.id}>
+              <ProviderSetup provider={meta} missing={row?.missing} />
+            </section>
           ) : null}
 
           {account && meta ? (
@@ -1007,17 +1128,16 @@ export function SocialStyles() {
       .so-who.stale .so-who-kind {
         color: #ff8a8a;
       }
-      .so-who.so-add {
+      .so-who.so-add,
+      .so-who.so-todo {
         border-style: dashed;
         background: none;
       }
-      /* Not a button, because there is nothing here to press — the reason is
-         the content. */
-      .so-who.so-off {
-        border-style: dashed;
-        background: none;
-        cursor: default;
-        opacity: 0.6;
+      .so-who.so-todo .so-who-name {
+        color: var(--a-dim, #8b90a0);
+      }
+      .so-who.so-todo.on .so-who-name {
+        color: var(--a-text, #e7e8ee);
       }
       .so-who:focus-visible {
         outline: 2px solid var(--a-amber, #ffb020);
@@ -1420,6 +1540,117 @@ export function SocialStyles() {
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
+      }
+
+      /* ---- the setup checklist ---- */
+      .so-why {
+        margin: 0 0 16px;
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: var(--a-dim, #8b90a0);
+        max-width: 68ch;
+      }
+      /* A cost is the part of a setup you cannot undo by deleting the app, so
+         it is a table at the top rather than a sentence at the bottom. */
+      .so-cost {
+        border-collapse: collapse;
+        margin: 0 0 20px;
+        font-size: 12px;
+      }
+      .so-cost th,
+      .so-cost td {
+        text-align: left;
+        font-weight: 400;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--a-line, #23262f);
+        color: var(--a-dim, #8b90a0);
+      }
+      .so-cost th {
+        padding-right: 28px;
+        color: var(--a-text, #e7e8ee);
+      }
+      .so-cost td {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        white-space: nowrap;
+      }
+      /* Numbered because it genuinely IS a sequence — step three cannot be
+         done before step two. */
+      .so-steps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .so-steps > li {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .so-step-n {
+        flex: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 1px solid var(--a-line, #2b3040);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        color: var(--a-dim, #8b90a0);
+      }
+      .so-steps strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--a-text, #e7e8ee);
+      }
+      .so-steps p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--a-dim, #8b90a0);
+        max-width: 68ch;
+      }
+      .so-step-link {
+        display: inline-block;
+        margin-top: 7px;
+        font-size: 11.5px;
+        color: var(--a-dim, #8b90a0);
+        text-decoration: none;
+        border-bottom: 1px solid var(--a-line, #2b3040);
+      }
+      .so-step-link:hover {
+        color: var(--a-text, #e7e8ee);
+        border-bottom-color: var(--a-amber, #ffb020);
+      }
+      .so-uris {
+        list-style: none;
+        margin: 9px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .so-uris li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .so-uris code,
+      .so-setup .so-stats code {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11.5px;
+        color: var(--a-text, #e7e8ee);
+        background: var(--a-void, #0d0e13);
+        border: 1px solid var(--a-line, #23262f);
+        border-radius: 6px;
+        padding: 3px 7px;
+        overflow-wrap: anywhere;
+      }
+      .so-setup .so-id {
+        padding-bottom: 14px;
       }
 
       .so-foot {

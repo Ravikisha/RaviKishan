@@ -21,8 +21,11 @@
 //    sets a size and beat the media query's `.so-handle`, so an address stayed
 //    at its desktop size on a 390px screen while a plain name shrank.
 //  - All three meter tones render. A meter that cannot go red is decoration.
-//  - A service that is not set up states what it needs INSTEAD of offering a
-//    button, and is not a <button> at all — there is nothing there to press.
+//  - A service that is not set up opens a CHECKLIST, never a Connect button.
+//    The thing worth avoiding is an action that cannot succeed, not an
+//    explanation of why; so the roster entry is pressable and what it opens
+//    names the env vars, the callback URLs and — for X — the cost, which is
+//    the part of a setup you cannot undo by deleting the app.
 //  - The selected account carries the amber edge and nothing else does, which
 //    is the only answer to "which account am I about to act as".
 import fs from "fs";
@@ -99,8 +102,13 @@ try {
         nameSize: size(handles.find((h) => !h.textContent.trim().startsWith("@"))),
         selected: [...document.querySelectorAll(".so-who.on .so-who-name")].map((e) => e.textContent),
         expiredChips: document.querySelectorAll(".so-who.stale").length,
-        offIsButton: document.querySelector(".so-who.so-off")?.tagName === "BUTTON",
-        offSays: document.querySelector(".so-who.so-off .so-who-kind")?.textContent || "",
+        todoSays: document.querySelector(".so-who.so-todo .so-who-kind")?.textContent || "",
+        setupSteps: document.querySelectorAll(".so-setup .so-steps > li").length,
+        setupHasConnect: [...document.querySelectorAll(".so-setup button")].some((b) =>
+          /connect/i.test(b.textContent)
+        ),
+        setupCosts: [...document.querySelectorAll(".so-cost td")].map((t) => t.textContent),
+        setupUris: [...document.querySelectorAll(".so-uris code")].map((c) => c.textContent),
         tones: [...document.querySelectorAll(".so-meter")].map((m) =>
           /\b(fine|close|over)\b/.exec(m.className)?.[1]
         ),
@@ -121,8 +129,23 @@ try {
     check(!/Mono/i.test(r.nameFace || ""), "a channel NAME is not, because it is not one", r.nameFace);
     check(r.selected.length === 1, "exactly one account wears the amber edge", r.selected.join(", "));
     check(r.expiredChips === 1, "an expired account is marked in the roster", String(r.expiredChips));
-    check(r.offIsButton === false, "a service that is not set up offers no button to press");
-    check(/X_CLIENT_ID/.test(r.offSays), "and names what it needs instead", r.offSays);
+    check(/X_CLIENT_ID/.test(r.todoSays), "a service that is not set up names what it needs", r.todoSays);
+    check(r.setupSteps >= 4, "and opens a real checklist", `${r.setupSteps} steps`);
+    check(!r.setupHasConnect, "which never offers a Connect button that cannot work");
+    // The second rate is the one that matters and is easy to miss: a post
+    // carrying a link costs THIRTEEN TIMES a plain one, and almost every post
+    // this site would make carries a link to an article.
+    check(r.setupCosts.includes("$0.200 per post"), "the cost of a post with a link is stated", r.setupCosts.join(", "));
+    check(
+      r.setupUris.some((u) => /^https:\/\/www\.ravikishan\.me\/api\/integrations\/x\/callback$/.test(u)),
+      "the production callback URL is offered to copy",
+      r.setupUris.join(" ")
+    );
+    check(
+      r.setupUris.some((u) => u.startsWith(new URL(BASE).origin)),
+      "and so is the one for the origin this is served from",
+      r.setupUris.join(" ")
+    );
     check(r.tones.includes("fine") && r.tones.includes("close") && r.tones.includes("over"),
       "the meter reaches all three states", r.tones.join(", "));
     check(r.trackWidth > 20, "the meter has a visible empty track, not just a fill", `${r.trackWidth}px`);

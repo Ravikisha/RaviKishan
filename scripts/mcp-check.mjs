@@ -236,11 +236,63 @@ console.log("\ntool registry contract");
   check(listToolsFor([]).length === 0, "a token with no scopes is offered nothing");
 }
 
+console.log("\nthe activity log is reachable and read-only");
+{
+  const { TOOLS, listToolsFor } = await import("../lib/server/mcpTools.js");
+  const { NEVER_LOGGED } = await import("../lib/server/activityLog.js");
+  const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+
+  for (const n of ["get_audit_log", "get_activity_summary"]) {
+    check(!!byName[n], `${n} exists`);
+    check(byName[n]?.scope === "read", `${n} is read scope`, byName[n]?.scope);
+    // Reading the log must not grow the log, or one call adds an entry, the
+    // next reports it, and the log fills with the history of being read.
+    check(NEVER_LOGGED.has(n), `${n} is never itself recorded`);
+  }
+  // A read-only token must still be able to see what happened - that is the
+  // whole point of handing someone a read token.
+  const readOnly = listToolsFor(["read"]).map((t) => t.name);
+  check(readOnly.includes("get_audit_log"), "a read-only token can read the log");
+  check(readOnly.includes("get_activity_summary"), "and the summary");
+
+  // Coverage is a property of the DISPATCHER, not of the tools. Assert that,
+  // so nobody "fixes" it later by moving the call into the handlers - which
+  // is exactly how the log came to cover the browser and miss the MCP server.
+  const route = (await import("node:fs")).readFileSync(
+    new URL("../pages/api/mcp/index.js", import.meta.url),
+    "utf8"
+  );
+  check(/recordToolCall\(/.test(route), "the dispatcher records every tool call");
+  // The CALL, not the import at the top of the file - which is what the first
+  // version of this assertion measured, and why it failed against correct code.
+  check(
+    route.indexOf("recordToolCall(") > route.indexOf("tool.handler("),
+    "after the handler runs, so the entry carries the outcome"
+  );
+}
+
+
 console.log("\ncapabilities that must stay absent");
 {
   const { TOOLS } = await import("../lib/server/mcpTools.js");
   const names = TOOLS.map((t) => t.name);
   const has = (re) => names.filter((n) => re.test(n));
+
+  // THE LOG IS EVIDENCE, so nothing may write an arbitrary entry into it and
+  // nothing may remove one. A log anyone can append to says only that someone
+  // appended; a log anyone can prune says nothing at all. Entries come from
+  // the dispatcher recording what actually ran, and firestore.rules refuses
+  // update and delete even to the admin.
+  check(
+    has(/^(log|write|create|add)_(activity|audit)/).length === 0,
+    "no tool writes an arbitrary log entry",
+    String(has(/^(log|write|create|add)_(activity|audit)/))
+  );
+  check(
+    has(/(delete|clear|purge|prune|reset)_(activity|audit)/).length === 0,
+    "and none deletes or prunes the log",
+    String(has(/(delete|clear|purge|prune|reset)_(activity|audit)/))
+  );
 
   // A token that can mint tokens is a privilege-escalation ladder.
   check(has(/mcp_?token|mint|revoke/).length === 0, "no tool mints or revokes an MCP token", String(has(/mcp_?token|mint|revoke/)));

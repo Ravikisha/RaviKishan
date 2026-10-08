@@ -11,6 +11,7 @@
 // That stays in /api/integrations/[provider]/{start,callback,claim}, because
 // consent happens in a browser in front of the person whose account it is.
 import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
+import { recordActivity } from "../../lib/server/activityLog.js";
 import {
   createDocument,
   deleteDocument,
@@ -26,14 +27,18 @@ import { withEnv } from "../../lib/server/envStore";
 
 // Append-only, and never allowed to break the action it records — the same
 // contract as lib/auditLog.js on the browser side.
+// One shape for every entry, defined in lib/server/activityLog.js. This used
+// to be a local copy in each of three routes, and all three wrote `actor`
+// where the browser wrote `email` — so the activity summary attributed every
+// env, secret and account change to "unknown".
 const audit = (idToken, claims, action, target, detail = "") =>
-  createDocument(idToken, "auditLog", null, {
+  recordActivity(idToken, {
     action,
+    source: "admin",
     target,
     detail,
-    actor: claims.email || "admin",
-    at: new Date().toISOString(),
-  }).catch(() => {});
+    actor: { email: claims.email || "admin" },
+  });
 
 const providerSummary = () =>
   Object.values(PROVIDERS).map((p) => {

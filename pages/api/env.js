@@ -8,19 +8,24 @@
 // one that stays in the deployment. Routing and the keyring rules live in
 // lib/server/envWrite.js, shared with the MCP tools.
 import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
+import { recordActivity } from "../../lib/server/activityLog.js";
 import { createDocument } from "../../lib/server/firestoreRest";
 import * as reg from "../../lib/server/envRegistry";
 import { withEnv } from "../../lib/server/envStore";
 import { envStatus, importEnv, removeEnv, writeEnv } from "../../lib/server/envWrite";
 
-const audit = (idToken, claims, action, target, detail) =>
-  createDocument(idToken, "auditLog", null, {
+// One shape for every entry, defined in lib/server/activityLog.js. This used
+// to be a local copy in each of three routes, and all three wrote `actor`
+// where the browser wrote `email` — so the activity summary attributed every
+// env, secret and account change to "unknown".
+const audit = (idToken, claims, action, target, detail = "") =>
+  recordActivity(idToken, {
     action,
+    source: "admin",
     target,
     detail,
-    actor: claims.email || "admin",
-    at: new Date().toISOString(),
-  }).catch(() => {});
+    actor: { email: claims.email || "admin" },
+  });
 
 async function handler(req, res) {
   if (req.method !== "POST") {

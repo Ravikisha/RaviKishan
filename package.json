@@ -52,7 +52,8 @@
     "ml:live": "node scripts/ml-live.mjs",
     "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs",
     "dev:https": "node scripts/https-dev.mjs",
-    "e2e:social": "node scripts/social-e2e.mjs"
+    "e2e:social": "node scripts/social-e2e.mjs",
+    "test:activity": "node scripts/activity-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

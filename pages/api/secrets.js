@@ -9,6 +9,7 @@
 // A bulk reveal would turn one mistaken call into a full credential dump, and
 // nothing in the interface needs it.
 import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
+import { recordActivity } from "../../lib/server/activityLog.js";
 import {
   getDocument,
   listDocuments,
@@ -72,13 +73,13 @@ async function handler(req, res) {
       const doc = await getDocument(idToken, `${store.COLLECTION}/${id}`).catch(() => null);
       const value = store.readValue(doc, { forAgent: false, name: req.body.name });
 
-      await createDocument(idToken, "auditLog", null, {
+      await recordActivity(idToken, {
         action: "secret.read",
+        source: "admin",
         target: id,
         detail: "revealed in the admin",
-        actor: claims.email || "admin",
-        at: new Date().toISOString(),
-      }).catch(() => {});
+        actor: { email: claims.email || "admin" },
+      });
       await patchDocument(idToken, `${store.COLLECTION}/${id}`, {
         lastReadAt: new Date().toISOString(),
         lastReadBy: claims.email || "admin",
@@ -100,26 +101,26 @@ async function handler(req, res) {
           createdAt: new Date().toISOString(),
         });
       }
-      await createDocument(idToken, "auditLog", null, {
+      await recordActivity(idToken, {
         action: existing ? "secret.update" : "secret.create",
+        source: "admin",
         target: id,
         detail: `agentReadable=${record.agentReadable}`,
-        actor: claims.email || "admin",
-        at: new Date().toISOString(),
-      }).catch(() => {});
+        actor: { email: claims.email || "admin" },
+      });
       return res.status(200).json({ id, saved: true });
     }
 
     if (action === "delete") {
       const id = store.assertName(req.body.name);
       await deleteDocument(idToken, `${store.COLLECTION}/${id}`);
-      await createDocument(idToken, "auditLog", null, {
+      await recordActivity(idToken, {
         action: "secret.delete",
+        source: "admin",
         target: id,
         detail: "deleted in the admin",
-        actor: claims.email || "admin",
-        at: new Date().toISOString(),
-      }).catch(() => {});
+        actor: { email: claims.email || "admin" },
+      });
       return res.status(200).json({ deleted: true, id });
     }
 

@@ -16,6 +16,7 @@
 import { verifyToken, hasScope, isMcpConfigured } from "../../../lib/server/mcpToken";
 import { idTokenFor, isRevoked } from "../../../lib/server/firestoreRest";
 import { toolByName, listToolsFor } from "../../../lib/server/mcpTools";
+import { recordToolCall } from "../../../lib/server/activityLog.js";
 import { withEnv } from "../../../lib/server/envStore";
 
 const PROTOCOL_VERSION = "2025-06-18";
@@ -150,6 +151,18 @@ async function handler(req, res) {
             })
           );
         } else {
+          // EVERY tool call is recorded here, and only here. Putting it in the
+          // handlers would mean 130 call sites that each have to remember,
+          // which is how the log came to cover the browser completely and the
+          // MCP server barely at all. A tool added tomorrow is logged because
+          // it passes through this line, not because someone noticed.
+          //
+          // The record is written AFTER the call, so it carries the outcome:
+          // a log that only says what was attempted cannot tell a refused
+          // delete from a successful one.
+          const started = Date.now();
+          let ok = true;
+          let failure = "";
           try {
             const out = await tool.handler(params?.arguments || {}, { idToken, claims });
             responses.push(
@@ -159,13 +172,26 @@ async function handler(req, res) {
               })
             );
           } catch (e) {
+            ok = false;
+            failure = e?.message || "Tool failed.";
             responses.push(
               rpcOk(id, {
                 isError: true,
-                content: [{ type: "text", text: e?.message || "Tool failed." }],
+                content: [{ type: "text", text: failure }],
               })
             );
           }
+          // Awaited so a serverless function is not torn down mid-write, but
+          // it can neither throw nor change the response: the tool has already
+          // answered by this point.
+          await recordToolCall(idToken, {
+            tool,
+            args: params?.arguments || {},
+            claims,
+            ok,
+            error: failure,
+            ms: Date.now() - started,
+          });
         }
       } else if (method === "resources/list") {
         responses.push(rpcOk(id, { resources: [] }));

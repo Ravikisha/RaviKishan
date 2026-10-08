@@ -42,6 +42,8 @@ import {
   deleteTask,
   moveTask,
   clearCompleted,
+  setTaskAccount,
+  taskAccount,
 } from "../../lib/taskProviders";
 import { logAdminAction } from "../../lib/auditLog";
 
@@ -232,6 +234,42 @@ export default function TasksPanel({ user }) {
     return list;
   }, []);
 
+  // Which account a shelf shows when nothing has been picked: the saved
+  // default if there is one, otherwise the account the server said would act.
+  // NOT simply the first in the list — that would show one account's lists
+  // under another's name the moment the order changed.
+  const defaultAccountId = (status) =>
+    (status.accounts || []).find((a) => a.isDefault)?.accountId ||
+    (status.accounts || []).find((a) => a.email && a.email === status.email)?.accountId ||
+    (status.accounts || [])[0]?.accountId ||
+    "";
+
+  // The head says whose tasks these are. With several connected it must name
+  // the SELECTED one, not whatever the status endpoint resolved — otherwise
+  // the chips and the line above them disagree.
+  const shelfAccountLabel = (status) => {
+    const id = taskAccount(status.provider) || defaultAccountId(status);
+    const a = (status.accounts || []).find((x) => x.accountId === id);
+    return a?.label || a?.email || status.email || "connected";
+  };
+
+  const pickAccount = useCallback(
+    async (provider, accountId) => {
+      if (!setTaskAccount(provider, accountId)) return;
+      // The board on screen belongs to the previous account. Clearing it is
+      // what stops one account's lists sitting under another's name while the
+      // new ones load.
+      setGroups((m) => ({ ...m, [provider]: [] }));
+      setTasks((m) =>
+        Object.fromEntries(Object.entries(m).filter(([k]) => !k.startsWith(`${provider}:`)))
+      );
+      setDead((d) => (d === provider ? "" : d));
+      setErr("");
+      await refreshRef.current?.(provider);
+    },
+    []
+  );
+
   const loadProvider = useCallback(async (provider) => {
     const gs = await listGroups(provider);
     setGroups((m) => ({ ...m, [provider]: gs }));
@@ -242,6 +280,8 @@ export default function TasksPanel({ user }) {
     );
     setTasks((m) => ({ ...m, ...Object.fromEntries(entries) }));
   }, []);
+
+  const refreshRef = useRef(null);
 
   const refresh = useCallback(
     async (only) => {
@@ -273,6 +313,7 @@ export default function TasksPanel({ user }) {
     },
     [conns, loadConnections, loadProvider]
   );
+  refreshRef.current = refresh;
 
   // On load, and after the consent redirect lands back here.
   useEffect(() => {
@@ -555,7 +596,7 @@ export default function TasksPanel({ user }) {
                   <h3>{p.label}</h3>
                   {status.connected ? (
                     <p>
-                      <span className="tk-acct">{status.email || "connected"}</span>
+                      <span className="tk-acct">{shelfAccountLabel(status)}</span>
                       <span className="tk-hair" aria-hidden="true" />
                       {failed ? (
                         <span className="tk-state tk-unread">Could not be read</span>
@@ -601,6 +642,34 @@ export default function TasksPanel({ user }) {
                   )}
                 </div>
               </header>
+
+              {/* WHICH account this shelf is showing. Hidden with one, because
+                  a chooser between one thing is chrome for a decision nobody
+                  has — the same rule as the LinkedIn shelf. The selected chip
+                  carries the amber left edge used everywhere in this admin for
+                  "this is the one", so the answer to "whose list am I about to
+                  write into" is readable without opening a menu. */}
+              {status.connected && (status.accounts || []).length > 1 ? (
+                <div className="tk-accounts" role="tablist" aria-label={`${p.label} accounts`}>
+                  {status.accounts.map((a) => {
+                    const on = (taskAccount(p.id) || defaultAccountId(status)) === a.accountId;
+                    return (
+                      <button
+                        key={a.accountId}
+                        type="button"
+                        role="tab"
+                        aria-selected={on}
+                        className={`tk-account${on ? " on" : ""}${a.needsReconnect ? " stale" : ""}`}
+                        disabled={!!busy}
+                        onClick={() => pickAccount(p.id, a.accountId)}
+                      >
+                        <span>{a.label || a.email || a.accountId}</span>
+                        {a.needsReconnect ? <em>expired</em> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
 
               {status.connected ? (
                 gs.length ? (
@@ -1285,6 +1354,51 @@ export function TasksStyles() {
         max-width: 62ch;
         line-height: 1.5;
       }
+      /* Which account this shelf shows. Same chip language as the Social
+         roster and the LinkedIn shelf: position carries the service, the
+         amber left edge carries the selection. */
+      .tk-accounts {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 14px;
+      }
+      .tk-account {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 9px;
+        border: 1px solid var(--a-line, #2b3040);
+        border-left-width: 3px;
+        background: var(--a-raise, #15171d);
+        color: var(--a-dim, #8b90a0);
+        font: inherit;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .tk-account.on {
+        border-left-color: var(--a-amber, #ffb020);
+        color: var(--a-text, #e7e8ee);
+        font-weight: 600;
+      }
+      .tk-account.stale {
+        border-left-color: #a33b45;
+      }
+      .tk-account em {
+        font-style: normal;
+        font-size: 10.5px;
+        color: #ff8a8a;
+      }
+      .tk-account:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .tk-account:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: 2px;
+      }
+
       .tk-shelf-actions {
         display: flex;
         gap: 8px;

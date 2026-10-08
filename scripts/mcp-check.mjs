@@ -236,6 +236,36 @@ console.log("\ntool registry contract");
   check(listToolsFor([]).length === 0, "a token with no scopes is offered nothing");
 }
 
+console.log("\nevery task tool can be told WHICH account");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const task = TOOLS.filter((t) => /task/.test(t.name) && t.name !== "list_task_providers");
+  check(task.length >= 10, "the task tools are there", String(task.length));
+
+  // Several Google accounts can be connected, so `provider` alone no longer
+  // says whose tasks these are. Every tool that acts must be able to be told,
+  // or a second account is connectable and unusable - which is what shipped:
+  // the handlers all passed args.accountId and only ONE schema declared it,
+  // so a model could not supply it and a validating client would strip it.
+  const missing = task.filter((t) => !(t.inputSchema?.properties || {}).accountId);
+  check(missing.length === 0, "all of them accept accountId", missing.map((t) => t.name).join(", "));
+  const noProvider = task.filter((t) => !(t.inputSchema?.properties || {}).provider);
+  check(noProvider.length === 0, "and still accept provider", noProvider.map((t) => t.name).join(", "));
+
+  // Optional, never required: one connected account is still the common case,
+  // and making a model name an id every time is friction that buys nothing.
+  const required = task.filter((t) => (t.inputSchema?.required || []).includes("accountId"));
+  check(
+    required.length === 0,
+    "none REQUIRES it - the directory resolves it when omitted",
+    required.map((t) => t.name).join(", ")
+  );
+
+  const lister = TOOLS.find((t) => t.name === "list_task_providers");
+  check(/account/i.test(lister.description), "list_task_providers is about accounts, not just services");
+}
+
+
 console.log("\nthe launch pipeline");
 {
   const { TOOLS } = await import("../lib/server/mcpTools.js");

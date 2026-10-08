@@ -75,7 +75,26 @@ console.log("\nclassification");
     "every catalogued variable has a known class",
     String(REGISTRY.filter((e) => !CLASSES.includes(e.cls)).map((e) => e.key))
   );
-  check(!REGISTRY.some((e) => e.key.startsWith("VERCEL_")), "nothing in the catalogue is about Vercel any more");
+  // Vercel is catalogued again, for the launch pipeline. What the old
+  // assertion was really protecting is that the PLATFORM environment is not a
+  // second place variables live — every value belongs in the sealed store, and
+  // the token exists only to link a repo so pushes deploy themselves.
+  {
+    const v = REGISTRY.filter((e) => e.key.startsWith("VERCEL_")).map((e) => e.key);
+    check(v.join() === "VERCEL_TOKEN,VERCEL_TEAM_ID", "only the two Vercel keys the pipeline needs", v.join());
+    check(
+      REGISTRY.find((e) => e.key === "VERCEL_TOKEN").cls === "stored",
+      "and the token is stored like everything else, not a bootstrap key"
+    );
+    check(
+      /never to deploy/i.test(REGISTRY.find((e) => e.key === "VERCEL_TOKEN").what),
+      "the catalogue says what it is NOT for"
+    );
+    check(
+      /Automation/.test(REGISTRY.find((e) => e.key === "NPM_TOKEN").what),
+      "and NPM_TOKEN names the Automation type, which is the 2FA trap"
+    );
+  }
   const keys = REGISTRY.map((e) => e.key);
   check(new Set(keys).size === keys.length, "no key is catalogued twice");
 }

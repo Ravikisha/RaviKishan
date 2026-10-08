@@ -99,6 +99,11 @@ export default function TasksPanel({ user }) {
   const [groups, setGroups] = useState({}); // provider -> group[]
   const [tasks, setTasks] = useState({}); // `${provider}:${groupId}` -> task[]
   const [err, setErr] = useState("");
+  // The provider whose STORED connection the service has stopped accepting.
+  // Held separately from `err` because this one failure has an action, and a
+  // sentence telling you to go and press a button on the tab you are already
+  // looking at is not one.
+  const [dead, setDead] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState("");
   const [showDone, setShowDone] = useState(false);
@@ -135,9 +140,18 @@ export default function TasksPanel({ user }) {
         const live = list.filter((p) => p.connected && (!only || p.provider === only));
         await Promise.all(
           live.map((p) =>
-            loadProvider(p.provider).catch((e) =>
-              setErr((prev) => prev || `${providerLabel(p.provider)}: ${e.message}`)
-            )
+            loadProvider(p.provider).catch((e) => {
+              // A connection the service no longer accepts is not the same
+              // kind of failure as a network blip: it cannot be retried, only
+              // re-granted. Say which account, and offer the one action.
+              if (String(e.code || "").startsWith("integration/")) {
+                setDead((prev) => prev || p.provider);
+                // A success line from the consent redirect would otherwise sit
+                // directly under the failure, which reads as contradicting it.
+                setMsg("");
+              }
+              setErr((prev) => prev || `${providerLabel(p.provider)}: ${e.message}`);
+            })
           )
         );
       } catch (e) {
@@ -193,6 +207,7 @@ export default function TasksPanel({ user }) {
 
   const connect = async (provider) => {
     setErr("");
+    setDead("");
     setBusy(`Opening ${providerLabel(provider)}…`);
     try {
       await beginConnect(provider);
@@ -216,6 +231,7 @@ export default function TasksPanel({ user }) {
 
   const run = async (label, fn) => {
     setErr("");
+    setDead("");
     setMsg("");
     setBusy(label);
     try {
@@ -379,7 +395,21 @@ export default function TasksPanel({ user }) {
       </div>
 
       {busy ? <p className="tk-busy">{busy}</p> : null}
-      {err ? <p className="admin-err">{err}</p> : null}
+      {err && !dead ? <p className="admin-err">{err}</p> : null}
+      {dead ? (
+        <div className="tk-dead">
+          {/* The panel writes this, not the server. The server's wording ends
+              "open the admin's Tasks tab and press Connect" — correct for an
+              MCP client, absurd on the tab itself, next to the button. */}
+          <p className="tk-dead-msg">
+            {providerLabel(dead)} stopped accepting the saved connection. The permission was
+            withdrawn, or it expired. Reconnecting is one consent screen and holds again.
+          </p>
+          <button type="button" className="admin-btn primary" onClick={() => connect(dead)}>
+            Reconnect {providerLabel(dead)}
+          </button>
+        </div>
+      ) : null}
       {msg ? <p className="tk-ok">{msg}</p> : null}
 
       {conns === null ? (
@@ -390,17 +420,26 @@ export default function TasksPanel({ user }) {
           const gs = groups[p.id] || [];
           const all = gs.flatMap((g) => tasks[key(p.id, g.id)] || []);
           const summary = shelfSummary(all);
+          // A shelf whose load FAILED has no lists for the same reason it has
+          // no tasks: nothing was read. Rendering it as a genuinely empty
+          // account states something untrue — "no lists in this account yet"
+          // about an account nobody could open, next to a banner saying so.
+          const failed = dead === p.id;
 
           return (
             <section className="tk-shelf" key={p.id} data-provider={p.id}>
-              <header className={`tk-shelf-head ${summary.tone}`}>
+              <header className={`tk-shelf-head ${failed ? "" : summary.tone}`}>
                 <div className="tk-shelf-who">
                   <h3>{p.label}</h3>
                   {status.connected ? (
                     <p>
                       <span className="tk-acct">{status.email || "connected"}</span>
                       <span className="tk-hair" aria-hidden="true" />
-                      <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
+                      {failed ? (
+                        <span className="tk-state tk-unread">Could not be read</span>
+                      ) : (
+                        <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
+                      )}
                     </p>
                   ) : (
                     <p className="tk-off">{status.detail}</p>
@@ -413,7 +452,10 @@ export default function TasksPanel({ user }) {
                         className="admin-ghost"
                         type="button"
                         onClick={() => addGroup(p.id)}
-                        disabled={!!busy}
+                        /* Creating a list needs the same credential that just
+                           failed, so offering it is offering an error. */
+                        disabled={!!busy || failed}
+                        title={failed ? "Reconnect this account first" : undefined}
                       >
                         New list
                       </button>
@@ -469,6 +511,10 @@ export default function TasksPanel({ user }) {
                       />
                     ))}
                   </div>
+                ) : failed ? (
+                  <p className="tk-empty tk-empty-unread">
+                    Nothing was read from this account, so whether it has lists is unknown.
+                  </p>
                 ) : (
                   <p className="tk-empty">
                     No lists in this account yet. Press New list to make the first one.
@@ -889,6 +935,31 @@ export function TasksStyles() {
         font-size: 12.5px;
         color: var(--a-dim, #8b90a0);
       }
+      /* A dead connection is the one failure on this panel with a fix, so it
+         gets the fix rather than a sentence pointing at one. Red left edge,
+         the same "state lives on the left edge" language as the rail and the
+         content editor. */
+      .tk-dead {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 10px 0;
+        padding: 12px 14px;
+        border: 1px solid rgba(220, 76, 70, 0.35);
+        border-left: 2px solid #dc4c46;
+        border-radius: 0 10px 10px 0;
+        background: rgba(220, 76, 70, 0.07);
+      }
+      .tk-dead-msg {
+        margin: 0;
+        flex: 1 1 320px;
+        min-width: 0;
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: #f0a9a5;
+      }
       .tk-ok {
         margin: 10px 0;
         font-size: 12.5px;
@@ -966,6 +1037,17 @@ export function TasksStyles() {
         margin: 14px 0 0 15px;
         font-size: 13px;
         color: var(--a-dim, #8b90a0);
+      }
+      /* Dashed, because the state is "unknown", not "empty" — the same
+         dashed-means-unconfirmed language the board already uses for a drag
+         that crosses services. */
+      .tk-empty-unread {
+        border-left: 1px dashed rgba(220, 76, 70, 0.45);
+        padding-left: 11px;
+        margin-left: 15px;
+      }
+      .tk-state.tk-unread {
+        color: #f0a9a5;
       }
 
       /* ---- the column rail ---- */

@@ -1,207 +1,164 @@
-// Design reference for the Social panel, rendered with the REAL styles.
+// Design reference for the Social desk, rendered with the REAL components.
 //
 // The live panel needs connected YouTube, Instagram and X accounts, so without
-// this the board could not be looked at or asserted on at all.
+// this the desk could not be looked at or asserted on at all.
 //
-// It shows the thing that matters most and is hardest to catch otherwise: TWO
-// accounts on a shelf with one selected, so the amber left edge that answers
-// "which account am I about to post as" is actually visible, plus the X
-// composer at three weighted-count states.
+// It renders `Roster`, `Identity`, `Meter` and `Refusal` themselves rather
+// than a hand-copied imitation of their markup. The previous version WAS such
+// an imitation and it went stale the first time the panel changed — which is
+// how a design reference quietly stops referencing anything.
+//
+// The seed is deliberately unflattering: an expired account, a channel with a
+// name rather than a handle, a caption over its cap, and a service that is not
+// set up at all. A preview full of healthy rows shows none of the states these
+// components exist for.
 //
 // 404s in production: it is a design tool, not a page.
 import React, { useState } from "react";
-import { SocialStyles } from "../components/admin/SocialPanel";
-import { weightedLength, X_MAX } from "../lib/socialClient";
+import {
+  Identity,
+  Meter,
+  Refusal,
+  Roster,
+  SocialStyles,
+} from "../components/admin/SocialPanel";
+import { IG_MAX, X_MAX, weightedLength } from "../lib/socialClient";
 
-const SHELVES = [
+const PROVIDERS = [
   {
-    id: "youtube",
-    label: "YouTube",
-    noun: "channel",
+    provider: "instagram",
+    configured: true,
+    accounts: [
+      { accountId: "171", label: "@ravikishan.404" },
+      { accountId: "172", label: "@pch.dev", needsReconnect: true },
+    ],
+  },
+  {
+    provider: "youtube",
+    configured: true,
     accounts: [
       { accountId: "UC1", label: "Ravi Kishan" },
       { accountId: "UC2", label: "pch builds", expiresInDays: 4, warning: true },
     ],
   },
-  {
-    id: "instagram",
-    label: "Instagram",
-    noun: "account",
-    accounts: [
-      { accountId: "171", label: "@ravikishan" },
-      { accountId: "172", label: "@pch.dev", needsReconnect: true },
-    ],
-  },
-  { id: "x", label: "X", noun: "handle", accounts: [{ accountId: "99", label: "@ravikisha" }] },
+  { provider: "x", configured: false, missing: ["X_CLIENT_ID", "X_CLIENT_SECRET"], accounts: [] },
 ];
 
-function Composer({ label, initial }) {
+const NO_EDIT = {
+  available: false,
+  why: "Instagram has no endpoint to change a published media object.",
+  instead: "Delete and repost in the app, or get the caption right before publishing.",
+};
+
+function XMeter({ initial, label }) {
   const [text, setText] = useState(initial);
   const left = X_MAX - weightedLength(text);
-  const tone = left < 0 ? "over" : left < 30 ? "close" : "fine";
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div className="so-compose-head">
-        <h5>{label}</h5>
-      </div>
-      <div className={`so-compose ${tone}`}>
+    <div style={{ marginBottom: 20 }}>
+      <label className="so-field so-field-big">
+        <span>{label}</span>
         <textarea
-          className="so-text"
-          rows={4}
+          className={`so-text${left < 0 ? " over" : ""}`}
+          rows={3}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          aria-label={label}
         />
-      </div>
-      <div className="so-meter">
-        <span className={`so-count ${tone}`}>{left >= 0 ? `${left} left` : `${-left} over`}</span>
+      </label>
+      <Meter used={X_MAX - Math.max(left, 0)} max={X_MAX} over={left < 0}>
+        <span className="so-count">{left >= 0 ? `${left} left` : `${-left} over`}</span>
         <span className="so-hair" aria-hidden="true" />
-        <span className="so-dim">{X_MAX} weighted — a URL counts as 23, CJK as 2</span>
-      </div>
+        <span className="so-dim">a link counts as 23, CJK as 2</span>
+      </Meter>
     </div>
   );
 }
 
 export default function SocialPreview() {
-  const [selected, setSelected] = useState({ youtube: "UC1", instagram: "171", x: "99" });
+  const [who, setWho] = useState({ provider: "instagram", accountId: "171" });
 
   return (
     <main
       className="admin-main so-main"
-      style={{ background: "#08090d", minHeight: "100vh", padding: "88px 24px 48px" }}
+      style={{ background: "#08090d", minHeight: "100vh", padding: "48px 24px" }}
     >
-      <div className="ops-head">
-        <div>
-          <h3>Social</h3>
-          <p className="admin-sub so-sub">
-            YouTube, Instagram and X — several accounts of each. Everything here goes to the account
-            you have selected on that shelf, and the same connections serve the MCP tools.
-          </p>
-        </div>
-      </div>
+      <p className="admin-sub so-sub">
+        Everything here acts as the account you pick, and the MCP tools share the same connections.
+        Nothing published from this desk can be edited afterwards.
+      </p>
 
-      {SHELVES.map((s) => (
-        <section className="so-shelf" key={s.id} data-provider={s.id}>
-          <header className="so-shelf-head">
-            <div>
-              <h4>{s.label}</h4>
-              <p>
-                {s.accounts.length} {s.noun}
-                {s.accounts.length === 1 ? "" : "s"} connected.
-              </p>
-            </div>
-            <button className="admin-ghost" type="button">
-              Add another {s.noun}
-            </button>
-          </header>
+      <Roster providers={PROVIDERS} who={who} onPick={setWho} onConnect={() => {}} busy="" />
 
-          <div className="so-accounts" role="tablist">
-            {s.accounts.map((a) => (
-              <button
-                key={a.accountId}
-                type="button"
-                role="tab"
-                aria-selected={selected[s.id] === a.accountId}
-                className={`so-chip${selected[s.id] === a.accountId ? " on" : ""}${
-                  a.needsReconnect ? " stale" : ""
-                }`}
-                onClick={() => setSelected((x) => ({ ...x, [s.id]: a.accountId }))}
-              >
-                <span className="so-chip-label">{a.label}</span>
-                {a.needsReconnect ? <em>expired</em> : a.warning ? <em>{a.expiresInDays}d left</em> : null}
-              </button>
-            ))}
-          </div>
-
+      {/* A handle is set in mono; a channel NAME is not, because it is not an
+          address. Both at the size that makes the account unmissable. */}
+      <section className="so-desk">
+        <div className="so-pane">
+          <Identity
+            account={{ accountId: "171", label: "@ravikishan.404" }}
+            kind="Creator account"
+            url="https://www.instagram.com/ravikishan.404/"
+            stats={["300 followers", "19 posts", "100 of 100 publishes left today"]}
+          />
           <div className="so-work">
-            <div className="so-pane">
-              {s.id === "x" ? (
-                <>
-                  <Composer label="Post" initial="Shipping a container runtime write-up today." />
-                  <Composer
-                    label="Close to the cap"
-                    initial={"Shipping notes. ".repeat(16) + "https://ravikishan.me/blog/x"}
-                  />
-                  <Composer label="Over the cap" initial={"Shipping notes and more. ".repeat(13)} />
-                  <p className="so-cant">
-                    <strong>No editing.</strong> X has no edit endpoint at any tier. Editing is an
-                    in-app feature for paid accounts; the API only reads edit history. Delete and
-                    repost.
-                  </p>
-                </>
-              ) : s.id === "instagram" ? (
-                <>
-                  <p className="so-stats">
-                    <span>2,140 followers</span>
-                    <span className="so-hair" aria-hidden="true" />
-                    <span>86 posts</span>
-                    <span className="so-hair" aria-hidden="true" />
-                    <span>BUSINESS</span>
-                    <span className="so-hair" aria-hidden="true" />
-                    <span>97 of 100 posts left today</span>
-                  </p>
-                  <h5>Publish</h5>
-                  <p className="so-dim so-note">
-                    Instagram fetches the file from a public URL rather than accepting an upload, so
-                    paste a reachable image URL. A caption cannot be changed once published.
-                  </p>
-                  <label className="so-field">
-                    <span>Image URL</span>
-                    <input className="admin-input" defaultValue="" placeholder="https://…" />
-                  </label>
-                  <p className="so-cant">
-                    <strong>No caption editing.</strong> Instagram has no endpoint to change a
-                    published media object. Delete and repost in the app, or get the caption right
-                    before publishing.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="so-stats">
-                    <span>1,284 subscribers</span>
-                    <span className="so-hair" aria-hidden="true" />
-                    <span>37 videos</span>
-                    <span className="so-hair" aria-hidden="true" />
-                    <span>92,410 views</span>
-                  </p>
-                  <p className="so-dim so-note">
-                    Editing here is safe: YouTube&apos;s update replaces the whole record and
-                    deletes anything left out, so every save reads the video first and merges.
-                  </p>
-                  <ul className="so-list">
-                    {[
-                      ["Writing a container runtime from scratch", "public", "12,430"],
-                      ["A deterministic UI runtime, part 2", "unlisted", "804"],
-                    ].map(([t, p, v]) => (
-                      <li key={t} className="so-item so-video">
-                        <span className="so-thumb" style={{ background: "#1b1e26" }} />
-                        <div className="so-video-body">
-                          <p className="so-item-text">{t}</p>
-                          <p className="so-item-meta">
-                            <span>2026-09-14</span>
-                            <span className="so-hair" aria-hidden="true" />
-                            <span>{p}</span>
-                            <span className="so-hair" aria-hidden="true" />
-                            <span>{v} views</span>
-                          </p>
-                        </div>
-                        <button className="admin-ghost so-sm" type="button">
-                          Edit
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <div className="so-foot">
-                <button className="admin-ghost so-unlink" type="button">
-                  Disconnect
-                </button>
-              </div>
+            <label className="so-field">
+              <span>Image URL</span>
+              <input className="admin-input" defaultValue="" placeholder="https://ravikishan.me/api/media/…" />
+              <small>
+                Instagram fetches the file rather than accepting an upload, so this has to be
+                reachable without signing in. A signed or expiring URL fails.
+              </small>
+            </label>
+            <Meter used={IG_MAX - 140} max={IG_MAX} over={false}>
+              <span className="so-count">140 left</span>
+              <span className="so-hair" aria-hidden="true" />
+              <span className="so-dim">6 of 30 hashtags</span>
+            </Meter>
+            <Meter used={IG_MAX} max={IG_MAX} over>
+              <span className="so-count">31 over</span>
+              <span className="so-hair" aria-hidden="true" />
+              <span className="so-count over">34 of 30 hashtags — the extras are dropped</span>
+            </Meter>
+            <div className="so-row-end">
+              <label className="so-check">
+                <input type="checkbox" readOnly /> Publish as a Reel
+              </label>
+              <span className="so-spacer" />
+              <button className="admin-primary" type="button">
+                Publish as @ravikishan.404
+              </button>
             </div>
+            <Refusal cap={NO_EDIT} title="Fixed once published." />
           </div>
-        </section>
-      ))}
+        </div>
+      </section>
+
+      <section className="so-desk">
+        <div className="so-pane">
+          <Identity
+            account={{ accountId: "UC2", label: "pch builds", expiresInDays: 4, warning: true }}
+            kind="YouTube channel"
+            url="https://www.youtube.com/@pchbuilds"
+            stats={["1,284 subscribers", "37 public videos", "92,410 views"]}
+          />
+          <div className="so-work">
+            <XMeter label="Post" initial="Shipping a container runtime write-up today." />
+            <XMeter
+              label="Close to the cap"
+              initial={"Shipping notes. ".repeat(16) + "https://ravikishan.me/blog/x"}
+            />
+            <XMeter label="Over the cap" initial={"Shipping notes and more. ".repeat(13)} />
+          </div>
+        </div>
+      </section>
+
+      <section className="so-desk">
+        <div className="so-pane">
+          <Identity
+            account={{ accountId: "172", label: "@pch.dev", needsReconnect: true }}
+            kind="Instagram"
+            stats={null}
+          />
+        </div>
+      </section>
 
       <SocialStyles />
       <style jsx global>{`
@@ -215,43 +172,20 @@ export default function SocialPreview() {
           font: inherit;
           font-size: 13px;
         }
-        .admin-ghost {
-          background: none;
-          border: 1px solid var(--a-line, #2b3040);
-          border-radius: 9px;
-          color: var(--a-text, #e7e8ee);
-          padding: 9px 14px;
-          font: inherit;
-          font-size: 13px;
-          cursor: pointer;
-        }
         .admin-primary {
           background: var(--a-amber, #ffb020);
           color: #1a1300;
           border: none;
-          border-radius: 9px;
-          padding: 9px 14px;
+          border-radius: 10px;
+          padding: 10px 18px;
           font: inherit;
           font-weight: 600;
-          font-size: 13px;
+          font-size: 13.5px;
           cursor: pointer;
         }
         .admin-sub {
           color: var(--a-dim, #8b90a0);
           font-size: 12.5px;
-        }
-        .ops-head {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          flex-wrap: wrap;
-          margin-bottom: 16px;
-        }
-        .ops-head h3 {
-          margin: 0;
-          font-size: 15px;
-          color: #e7e8ee;
-          font-family: "Space Grotesk", sans-serif;
         }
         body {
           margin: 0;

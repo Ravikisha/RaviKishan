@@ -84,9 +84,21 @@ function MyApp({ Component, pageProps }) {
   // Hidden admin CMS: render bare — no nav, footer, loader, analytics or the
   // public SEO/meta. It manages its own Firebase state and must stay unindexed.
   // (Placed after all hooks so hook order stays constant across renders.)
-  // The admin design preview renders the same shell, so it needs the same bare
-  // treatment — no nav, no footer, no loader over the top of it.
-  if (router.pathname === "/admin" || router.pathname === "/__adminpreview") {
+  // The admin design previews render the same shell, so they need the same
+  // bare treatment — no nav, no footer, no loader over the top of them. Only
+  // /__adminpreview was listed, so every OTHER panel's design reference spent
+  // its first seconds underneath the site's full-screen loader, which is most
+  // of the time anybody spends looking at one. /__blogpreview is deliberately
+  // absent: it previews a PUBLIC page and wants the public chrome.
+  const ADMIN_PREVIEWS = [
+    "/__adminpreview",
+    "/__githubpreview",
+    "/__linkedinpreview",
+    "/__notespreview",
+    "/__socialpreview",
+    "/__taskspreview",
+  ];
+  if (router.pathname === "/admin" || ADMIN_PREVIEWS.includes(router.pathname)) {
     return (
       <ThemeProvider>
         <Head>

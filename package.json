@@ -51,7 +51,8 @@
     "test:ml": "node scripts/ml-check.mjs",
     "ml:live": "node scripts/ml-live.mjs",
     "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs",
-    "dev:https": "node scripts/https-dev.mjs"
+    "dev:https": "node scripts/https-dev.mjs",
+    "e2e:social": "node scripts/social-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

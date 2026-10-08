@@ -21,6 +21,7 @@
 // hairlines rather than middots, figures with a direction rather than bare
 // counts, sentence-case labels, Space Grotesk for names and numbers.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   getProfile,
   getAnalytics,
@@ -349,7 +350,11 @@ function Setup({ missing }) {
         </p>
         <p>
           Then set <code>GITHUB_CLIENT_SECRET</code> in the{" "}
-          <a href="/admin?tab=env">Environment tab</a>. This page connects on the next load.
+          {/* next/link, not a bare anchor: an <a> to a page in this app is a
+              build-blocking lint error here, and a full reload would throw away
+              the admin's Firebase session state for the sake of a tab switch. */}
+          <Link href="/admin?tab=env">Environment tab</Link>. This page connects on the next
+          load.
         </p>
       </section>
     );

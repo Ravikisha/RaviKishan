@@ -53,7 +53,8 @@
     "linkedin:snapshot": "node scripts/linkedin-snapshot.mjs",
     "dev:https": "node scripts/https-dev.mjs",
     "e2e:social": "node scripts/social-e2e.mjs",
-    "test:activity": "node scripts/activity-check.mjs"
+    "test:activity": "node scripts/activity-check.mjs",
+    "test:launch": "node scripts/launch-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

@@ -77,6 +77,7 @@ const PRIVATE = [
   ["auditLog", "the audit trail"],
   ["mcpTokens", "MCP token records"],
   ["oauthCodes", "single-use OAuth grants"],
+  ["launches", "unpublished plans, and the record that stops a double publish"],
 ];
 
 console.log("\nprivate collections are closed to an anonymous reader");

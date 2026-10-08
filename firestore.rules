@@ -294,6 +294,15 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // One document per launch: idea, plan, and which steps have already run.
+    // Admin-only because it holds unpublished plans and the record of what an
+    // agent did on the owner's behalf. It is also the thing that stops a
+    // re-run publishing an npm version twice, so a visitor must not be able to
+    // read it, let alone clear a step.
+    match /launches/{slug} {
+      allow read, write: if isAdmin();
+    }
+
     // Issued MCP tokens — LABELS ONLY, for the admin list. The token itself is
     // never stored anywhere: it is self-contained and shown once at mint time.
     match /mcpTokens/{jti} {

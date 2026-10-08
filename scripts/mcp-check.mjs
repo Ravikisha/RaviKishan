@@ -236,6 +236,56 @@ console.log("\ntool registry contract");
   check(listToolsFor([]).length === 0, "a token with no scopes is offered nothing");
 }
 
+console.log("\nthe launch pipeline");
+{
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const { STEP_IDS, IRREVERSIBLE } = await import("../lib/server/launch.js");
+  const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+
+  for (const n of [
+    "start_launch", "get_launch", "list_launches",
+    "claim_launch_step", "complete_launch_step",
+    "commit_github_files", "create_github_release",
+    "check_npm_version", "add_release_workflow",
+    "link_vercel_project", "get_project_performance",
+  ])
+    check(!!byName[n], `${n} exists`);
+
+  check(byName.check_npm_version?.scope === "read", "checking a version is a read");
+  check(byName.get_launch?.scope === "read", "so is reading a launch");
+  check(byName.get_project_performance?.scope === "read", "and so is measuring one");
+  check(byName.claim_launch_step?.scope === "write", "claiming a step is a write");
+
+  // The enum is generated from the same list the server enforces, so a model
+  // cannot be offered a step name the guard would then reject.
+  const claimEnum = byName.claim_launch_step?.inputSchema?.properties?.step?.enum || [];
+  check(
+    claimEnum.join() === STEP_IDS.join(),
+    "the step enum is the server's own list, not a second copy",
+    claimEnum.join()
+  );
+  check(IRREVERSIBLE.length === 3, "three steps are marked irreversible", String(IRREVERSIBLE.length));
+
+  // The two descriptions that have to carry a warning, because the model reads
+  // these and nothing else before acting.
+  check(
+    /never be reused|permanent/i.test(byName.check_npm_version?.description || ""),
+    "check_npm_version says a version is permanent"
+  );
+  check(
+    /Automation/.test(byName.add_release_workflow?.description || ""),
+    "add_release_workflow names the Automation token, which is the 2FA trap"
+  );
+  check(
+    /no tool that deploys|NO tool that deploys/i.test(byName.link_vercel_project?.description || ""),
+    "link_vercel_project says there is deliberately no deploy tool"
+  );
+  check(
+    /before every step|safe to resume/i.test(byName.get_launch?.description || ""),
+    "get_launch tells the model to call it before each step"
+  );
+}
+
 console.log("\nthe activity log is reachable and read-only");
 {
   const { TOOLS, listToolsFor } = await import("../lib/server/mcpTools.js");
@@ -278,6 +328,33 @@ console.log("\ncapabilities that must stay absent");
   const names = TOOLS.map((t) => t.name);
   const has = (re) => names.filter((n) => re.test(n));
 
+  // NOTHING SHIPS PRODUCTION ON A PROMPT. Vercel builds on push for a linked
+  // project, so the capability worth having is "link this repo once", not
+  // "deploy now" - which keeps the rule the rest of this codebase holds:
+  // setting a variable and shipping the site are two decisions and should not
+  // be made in one call.
+  check(
+    has(/^(deploy|redeploy|ship|rollback|promote)/).length === 0,
+    "no tool deploys or rolls back a site",
+    String(has(/^(deploy|redeploy|ship|rollback|promote)/))
+  );
+  // Publishing needs a build and a serverless function cannot build. A tool
+  // that tried would fail at call time, which is worse than no tool because
+  // the model only finds out after saying it was publishing.
+  check(
+    has(/^(npm_publish|publish_npm|publish_package)/).length === 0,
+    "no tool publishes to npm directly - CI does, on a release",
+    String(has(/^(npm_publish|publish_npm|publish_package)/))
+  );
+  // npm refuses to unpublish after 72 hours and refuses immediately once
+  // anything depends on the package, so a tool for it would mostly be a way
+  // to get a confusing error at the worst moment.
+  check(
+    has(/unpublish|yank|deprecate_package/).length === 0,
+    "and none unpublishes one",
+    String(has(/unpublish|yank|deprecate_package/))
+  );
+
   // THE LOG IS EVIDENCE, so nothing may write an arbitrary entry into it and
   // nothing may remove one. A log anyone can append to says only that someone
   // appended; a log anyone can prune says nothing at all. Entries come from
@@ -309,10 +386,14 @@ console.log("\ncapabilities that must stay absent");
   // connection would be a way to attach someone else's tasks from a chat
   // client. Reading and writing tasks is the capability; granting access is not.
   check(has(/task/).length > 0, "task tools exist", String(has(/task/).length));
+  // Narrowed to ACCOUNTS. The first version matched any tool starting with
+  // "link_", which caught link_vercel_project — a build hook, not a grant of
+  // access to anybody's account. A guard that fires on the wrong thing gets
+  // relaxed by whoever trips it next, which is how guards die.
   check(
-    has(/^(connect|disconnect|authorize|link|unlink)_/).length === 0,
+    has(/^(connect|disconnect|authorize|unlink)_|^link_\w+_account$/).length === 0,
     "but nothing connects or disconnects an account",
-    String(has(/^(connect|disconnect|authorize|link|unlink)_/))
+    String(has(/^(connect|disconnect|authorize|unlink)_|^link_\w+_account$/))
   );
   check(
     has(/refresh_token|oauth_google|google_credential|set_integration/).length === 0,
@@ -1000,7 +1081,23 @@ console.log("\nenvironment tools cannot reach the keys that decrypt everything")
     const imp = TOOLS.find((t) => t.name === "import_env_vars");
     check(!!imp && imp.scope === "secrets", "bulk import exists and sits behind the secrets scope");
   }
-  check(!TOOLS.some((t) => /vercel/i.test(t.name)), "no tool talks to Vercel any more");
+  // Vercel is reachable again, but only to LINK a repository so that pushes
+  // deploy themselves. The rule this file used to enforce as "no Vercel at
+  // all" is really two narrower rules, and these are the ones worth keeping:
+  // nothing ships production on a prompt, and the platform's own environment
+  // is not a second place credentials can be written or read.
+  {
+    const v = TOOLS.filter((t) => /vercel/i.test(t.name)).map((t) => t.name);
+    check(v.length === 1 && v[0] === "link_vercel_project", "the only Vercel tool links a repo", v.join(", "));
+    check(
+      !TOOLS.some((t) => /vercel/i.test(t.name) && /^(deploy|redeploy|promote|rollback)/.test(t.name)),
+      "nothing deploys, promotes or rolls back"
+    );
+    check(
+      !TOOLS.some((t) => /vercel/i.test(t.name) && /env/i.test(t.name)),
+      "and no tool reads or writes Vercel's own environment — variables live in the sealed store"
+    );
+  }
 
   // No tool may return a value. Presence is the whole contract.
   const reader = TOOLS.filter((t) => /^get_env|^list_env/.test(t.name));

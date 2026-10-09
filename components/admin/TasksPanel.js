@@ -239,6 +239,24 @@ export default function TasksPanel({ user }) {
   // default if there is one, otherwise the account the server said would act.
   // NOT simply the first in the list — that would show one account's lists
   // under another's name the moment the order changed.
+  // "Two accounts, in Google Tasks and Microsoft To Do." Named rather than
+  // counted, because which services are in play is the thing a merged board
+  // owes you and a number cannot give.
+  const accountSpread = (rows) => {
+    // TASK providers only. `conns` carries every provider the admin knows —
+    // the first version read all of them and announced "11 accounts, in
+    // Google Tasks, Microsoft To Do, github, youtube, instagram, x…" on a
+    // board that shows two services.
+    const ids = PROVIDERS.map((x) => x.id);
+    const live = Object.values(rows || {}).filter((p) => p.connected && ids.includes(p.provider));
+    if (!live.length) return "Nothing connected yet.";
+    const n = live.reduce((t, p) => t + Math.max(1, (p.accounts || []).length), 0);
+    const names = live.map((p) => providerLabel(p.provider));
+    const where =
+      names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+    return `${n} account${n === 1 ? "" : "s"}, in ${where}.`;
+  };
+
   const defaultAccountId = (status) =>
     (status.accounts || []).find((a) => a.isDefault)?.accountId ||
     (status.accounts || []).find((a) => a.email && a.email === status.email)?.accountId ||
@@ -309,6 +327,22 @@ export default function TasksPanel({ user }) {
       try {
         const list = only ? Object.values(conns || {}) : await loadConnections();
         const live = list.filter((p) => p.connected && (!only || p.provider === only));
+
+        // NAME THE ACCOUNT BEFORE READING ANYTHING.
+        //
+        // The browser starts with no account chosen, so the first load asked
+        // for a token without naming one and left the server to resolve it.
+        // That is correct behaviour on the server's part — with two accounts
+        // connected and no saved default it REFUSES rather than guessing — but
+        // it surfaced as a red "2 accounts could do this" across a board that
+        // had simply never said which it meant.
+        //
+        // The panel always knows: the status row carries the accounts and
+        // which of them would act. So it says so, and the ambiguous path is
+        // never reached from here.
+        for (const p of live) {
+          if (!taskAccount(p.provider)) setTaskAccount(p.provider, defaultAccountId(p));
+        }
         await Promise.all(
           live.map((p) =>
             loadProvider(p.provider).catch((e) => {
@@ -552,8 +586,17 @@ export default function TasksPanel({ user }) {
               name as the page's h1, and the panel repeating it put the word
               twice on one screen, the second time smaller and greyer — which
               reads as a subheading that forgot its content. */}
-          <p className="tk-sub">
-            Google Tasks and Microsoft To Do, read and written in place. Nothing here is a copy.
+          {/* The standing sentence that used to sit here ("read and written
+              in place, nothing here is a copy") was true once and furniture
+              forever. It is on the heading as a title instead, where it
+              answers the question the first time it is asked. */}
+          {/* Says what nothing else on the page says. The first version read
+              "347 open across your accounts" and sat fifty pixels above a lens
+              already reading "Everything 347" — the same number twice. The
+              count is the lens's job; this one names the SPREAD, which is the
+              fact a board merging several accounts has to state somewhere. */}
+          <p className="tk-sub" title="Read and written in place. Nothing here is a copy.">
+            {accountSpread(conns)}
           </p>
         </div>
         <div className="tk-actions">
@@ -612,18 +655,43 @@ export default function TasksPanel({ user }) {
           return (
             <section className="tk-shelf" key={p.id} data-provider={p.id}>
               <header className={`tk-shelf-head ${failed ? "" : summary.tone}`}>
-                <div className="tk-shelf-who">
+                <div className="tk-shelf-who tk-inline">
                   <h3>{p.label}</h3>
                   {status.connected ? (
-                    <p>
-                      <span className="tk-acct">{shelfAccountLabel(status)}</span>
+                    <>
+                      {/* The select is the account statement. It used to be
+                          preceded by the same address as text and followed by
+                          a sentence explaining the control — one fact said
+                          three times, on three lines. */}
+                      <select
+                        id={`acct-${p.id}`}
+                        className="tk-whose-select"
+                        aria-label={`Which ${p.label} account to act as`}
+                        value={taskAccount(p.id) || defaultAccountId(status)}
+                        disabled={!!busy || (status.accounts || []).length < 2}
+                        onChange={(e) => {
+                          const a = (status.accounts || []).find((x) => x.accountId === e.target.value);
+                          pickAccount(p.id, e.target.value, a?.key);
+                        }}
+                      >
+                        {(status.accounts || []).map((a) => (
+                          <option key={a.accountId} value={a.accountId}>
+                            {(a.label || a.email || a.accountId) + (a.needsReconnect ? " — expired" : "")}
+                          </option>
+                        ))}
+                      </select>
                       <span className="tk-hair" aria-hidden="true" />
                       {failed ? (
                         <span className="tk-state tk-unread">Could not be read</span>
                       ) : (
                         <span className={`tk-state ${summary.tone}`}>{summary.text}</span>
                       )}
-                    </p>
+                      {(status.accounts || []).find(
+                        (a) => a.accountId === (taskAccount(p.id) || defaultAccountId(status))
+                      )?.needsReconnect ? (
+                        <span className="tk-whose-dead">reconnect before writing</span>
+                      ) : null}
+                    </>
                   ) : (
                     <p className="tk-off">{status.detail}</p>
                   )}
@@ -642,27 +710,17 @@ export default function TasksPanel({ user }) {
                       >
                         New list
                       </button>
-                      {/* The only route to a SECOND account. Without it the
-                          header offered Connect while disconnected and then
-                          only New list / Disconnect, so a second account was
-                          reachable from the Accounts tab and nowhere near the
-                          board it would appear on. */}
-                      <button
-                        className="admin-ghost"
-                        type="button"
-                        onClick={() => connect(p.id)}
-                        disabled={!!busy}
-                        title={`Connect another ${p.label} account`}
-                      >
-                        Add another
-                      </button>
-                      <button
-                        className="admin-ghost"
-                        type="button"
-                        onClick={() => unlink(p.id)}
-                      >
-                        Disconnect
-                      </button>
+                      {/* Account management folds into the same ··· the
+                          columns already use. Disconnect removing an account
+                          should not look identical to New list adding one;
+                          three ghost buttons of equal weight, one of them
+                          destructive, is the shape that gets misclicked. */}
+                      <ShelfMenu
+                        label={p.label}
+                        busy={!!busy}
+                        onAdd={() => connect(p.id)}
+                        onDisconnect={() => unlink(p.id)}
+                      />
                     </>
                   ) : (
                     <button
@@ -676,56 +734,6 @@ export default function TasksPanel({ user }) {
                   )}
                 </div>
               </header>
-
-              {/* WHICH account this shelf is acting as.
-                  Shown whenever the service is connected, INCLUDING with one
-                  account — a chip row was hidden at one, which answered "can I
-                  switch?" and never answered "whose list is this?". The head
-                  line above names the account, but it reads as a label; a
-                  control reads as a thing you can change, and that is the
-                  question people actually arrive with.
-                  A select rather than chips because this grows: two Google
-                  accounts fit as chips, six do not, and a row that reflows to
-                  three lines stops being scannable. */}
-              {status.connected ? (
-                <div className="tk-whose">
-                  <label className="tk-whose-label" htmlFor={`acct-${p.id}`}>
-                    Acting as
-                  </label>
-                  <select
-                    id={`acct-${p.id}`}
-                    className="tk-whose-select"
-                    value={taskAccount(p.id) || defaultAccountId(status)}
-                    disabled={!!busy || (status.accounts || []).length < 2}
-                    onChange={(e) => {
-                      const a = (status.accounts || []).find((x) => x.accountId === e.target.value);
-                      pickAccount(p.id, e.target.value, a?.key);
-                    }}
-                  >
-                    {(status.accounts || []).map((a) => (
-                      <option key={a.accountId} value={a.accountId}>
-                        {(a.label || a.email || a.accountId) +
-                          (a.needsReconnect ? " — expired" : "") +
-                          (a.isDefault ? " — default" : "")}
-                      </option>
-                    ))}
-                  </select>
-                  {/* The one account that cannot be used is worth saying out
-                      loud here rather than at the moment a write fails. */}
-                  {(status.accounts || []).find(
-                    (a) => a.accountId === (taskAccount(p.id) || defaultAccountId(status))
-                  )?.needsReconnect ? (
-                    <span className="tk-whose-dead">Reconnect this account before writing to it.</span>
-                  ) : null}
-                  {(status.accounts || []).length < 2 ? (
-                    <span className="tk-whose-only">
-                      the only one connected — use <strong>Add another</strong> to connect a second
-                    </span>
-                  ) : (
-                    <span className="tk-whose-only">saved, and used by the MCP tools too</span>
-                  )}
-                </div>
-              ) : null}
 
               {status.connected ? (
                 gs.length ? (
@@ -844,6 +852,52 @@ export function QuietLists({ lists, onOpen }) {
 // says how many more there are; a lens lifts the cap, because then every row
 // on screen is one you asked for.
 export const COLUMN_LIMIT = 8;
+
+// Account actions for a shelf. Same ··· affordance as a list's own menu, so
+// the board has one vocabulary for "more things you can do here".
+function ShelfMenu({ label, busy, onAdd, onDisconnect }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="tk-menu-wrap">
+      <button
+        type="button"
+        className="tk-menu-btn"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={`More ${label} actions`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span aria-hidden="true">···</span>
+      </button>
+      {open ? (
+        <div className="tk-menu" role="menu" onMouseLeave={() => setOpen(false)}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy}
+            onClick={() => {
+              setOpen(false);
+              onAdd();
+            }}
+          >
+            Connect another account
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tk-menu-danger"
+            onClick={() => {
+              setOpen(false);
+              onDisconnect();
+            }}
+          >
+            Disconnect this account
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function GroupColumn({
   provider = "google",
@@ -1372,9 +1426,26 @@ export function TasksStyles() {
       .tk-shelf-head.today {
         border-left-color: var(--a-amber, #ffb020);
       }
+      /* The shelf head is ONE line: service, account, state. It was three —
+         name, then the address as text, then a labelled control repeating the
+         address and a sentence explaining it.
+         flex:1 is load-bearing: a second copy of this rule without it
+         collapsed the head, moved every column, and broke the cross-account
+         drag test, which works from on-screen coordinates.
+         (No backticks in here: this whole block is a template literal.) */
       .tk-shelf-who {
         flex: 1;
         min-width: 0;
+      }
+      /* The one-line head is THIS panel's shape. /__taskspreview renders its
+         own head from the same class (h3 over p), so putting the row layout on
+         .tk-shelf-who reached into markup this file does not own and moved the
+         preview's board out from under its own drag test. */
+      .tk-shelf-who.tk-inline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
       }
       .tk-shelf-who h3 {
         margin: 0;
@@ -1410,32 +1481,20 @@ export function TasksStyles() {
         max-width: 62ch;
         line-height: 1.5;
       }
-      /* Which account this shelf is acting as. A control, not a label:
-         "whose list is this" is the question people arrive with, and a select
-         answers it and offers the change in the same object. */
-      .tk-whose {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin: 0 0 14px;
-      }
-      .tk-whose-label {
-        font-size: 11.5px;
-        color: var(--a-dim, #7d8496);
-      }
       .tk-whose-select {
-        background: var(--a-raise, #15171d);
+        background: var(--a-void, #0d0e13);
         color: var(--a-text, #e7e8ee);
         border: 1px solid var(--a-line, #2b3040);
         /* The amber left edge this admin uses everywhere for "this is the
            one", kept so the control reads as part of the same system. */
         border-left: 3px solid var(--a-amber, #ffb020);
-        border-radius: 9px;
-        padding: 7px 10px;
-        font: inherit;
-        font-size: 12.5px;
-        max-width: 320px;
+        border-radius: 8px;
+        padding: 5px 8px;
+        /* An address is an identifier you would copy, so it is set in mono —
+           the rule the Social desk already follows for a handle. */
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11.5px;
+        max-width: 280px;
       }
       .tk-whose-select:disabled {
         border-left-color: var(--a-line, #2b3040);
@@ -1445,10 +1504,6 @@ export function TasksStyles() {
       .tk-whose-select:focus-visible {
         outline: 2px solid var(--a-amber, #ffb020);
         outline-offset: 2px;
-      }
-      .tk-whose-only {
-        font-size: 11px;
-        color: var(--a-dim, #6f7687);
       }
       .tk-whose-dead {
         font-size: 11.5px;
@@ -1583,12 +1638,17 @@ export function TasksStyles() {
         padding: 11px 10px 9px 13px;
         border-bottom: 1px solid var(--a-line, #23262f);
       }
+      /* The list name is the one thing raised. "Topics to study", "Books",
+         "movies and fun" are the owner's own words and the only durable
+         landmark on a board of 347 rows — and they were set at the same size
+         as a task, so a column read as a stack with a grey label on top. */
       .tk-col-head h4 {
         margin: 0;
         flex: 1;
         min-width: 0;
         font-family: "Space Grotesk", sans-serif;
-        font-size: 13.5px;
+        font-size: 15px;
+        letter-spacing: -0.01em;
         font-weight: 600;
         color: var(--a-text, #e7e8ee);
         overflow: hidden;
@@ -1601,6 +1661,9 @@ export function TasksStyles() {
         font-size: 12px;
         color: var(--a-dim, #7d8496);
         font-variant-numeric: tabular-nums;
+      }
+      .tk-menu-danger {
+        color: #ff8a8a !important;
       }
       .tk-menu-wrap {
         position: relative;

@@ -2354,6 +2354,179 @@ async function resumeSuite() {
 
 /* ---------------- runner ---------------- */
 
+async function agentSuite(browser) {
+  console.log("\nagent: the approval card is the product");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    await page.goto(`${BASE}/__agentpreview?noload`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".ag-card", { timeout: 30000 });
+
+    const card = await page.evaluate(() => {
+      const deny = document.querySelector(".ag-deny");
+      const allow = document.querySelector(".ag-allow");
+      const d = deny.getBoundingClientRect();
+      const a = allow.getBoundingClientRect();
+      return {
+        cmd: document.querySelector(".ag-card-cmd")?.textContent || "",
+        note: document.querySelector(".ag-card-note")?.textContent || "",
+        clock: document.querySelector(".ag-card-clock")?.textContent || "",
+        denyArea: d.width * d.height,
+        allowArea: a.width * a.height,
+        denyFirst: d.top < a.top || (Math.abs(d.top - a.top) < 2 && d.left < a.left),
+      };
+    });
+
+    // The exact command, not a summary of it. "Run a git command" is not
+    // something anyone can meaningfully approve.
+    check(/git push -u origin/.test(card.cmd), "the card shows the literal command", card.cmd);
+    // A mistaken deny costs a tap; a mistaken allow costs a repository.
+    check(card.denyArea > card.allowArea * 2, "Deny is a much larger target than Allow", `${Math.round(card.denyArea)} vs ${Math.round(card.allowArea)}`);
+    check(card.denyFirst, "and comes first");
+    check(/No answer means no/i.test(card.note), "the card states that silence is a refusal", card.note);
+    check(/left$/.test(card.clock.trim()), "and shows how long is left", card.clock);
+
+    // Hydration: the mic button and the countdown both differ between server
+    // and client, so both must be decided after mount. A mismatch here used to
+    // blank the whole panel behind an error overlay.
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.reload({ waitUntil: "networkidle2" });
+    await page.waitForSelector(".ag-card", { timeout: 20000 });
+    check(
+      !errors.some((e) => /hydrat/i.test(e)),
+      "the panel hydrates without a mismatch",
+      errors.find((e) => /hydrat/i.test(e)) || ""
+    );
+
+    const body = await page.evaluate(() => document.body.innerText);
+    // The transcript is redacted on the SERVER; this asserts the panel is not
+    // quietly undoing that.
+    check(/•{4,}/.test(body), "a secret in the transcript renders masked");
+    check(!/ghp_[A-Za-z0-9]/.test(body), "and no raw token reaches the page");
+
+    // `.text` is a global unscoped rule in _map.scss. A transcript line using
+    // it renders as a white Poppins heading, which is how it first shipped.
+    const lines = await page.evaluate(() =>
+      [...document.querySelectorAll(".ag-line")].map((x) => ({
+        cls: x.className,
+        size: parseFloat(getComputedStyle(x).fontSize),
+        family: getComputedStyle(x).fontFamily,
+      }))
+    );
+    check(lines.length > 0, "the transcript renders lines", String(lines.length));
+    check(
+      lines.every((l) => l.size < 14),
+      "no line inherits the global .text rule and renders heading-sized",
+      JSON.stringify(lines.find((l) => l.size >= 14) || {})
+    );
+    check(
+      lines.every((l) => /Mono/.test(l.family)),
+      "and every line keeps the monospace face",
+      JSON.stringify(lines.find((l) => !/Mono/.test(l.family)) || {})
+    );
+
+    const jobs = await page.evaluate(() => ({
+      total: document.querySelectorAll(".ag-job").length,
+      failed: document.querySelectorAll(".ag-job.bad").length,
+      done: document.querySelectorAll(".ag-job.ok").length,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    check(jobs.total === 3, "every job is listed", String(jobs.total));
+    // A failed job that looks like a finished one is how you deploy a broken
+    // branch believing it passed.
+    check(jobs.failed === 1 && jobs.done === 1, "a failed job does not look like a finished one", `${jobs.failed} failed, ${jobs.done} done`);
+    check(!jobs.overflow, "the panel does not overflow the page");
+  } catch (e) {
+    bad("agent panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+async function whatsappSuite(browser) {
+  console.log("\nwhatsapp: the warning stays, and it sends one at a time");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  try {
+    const states = ["warn", "connect", "qr", "live"];
+    for (const st of states) {
+      await page.goto(`${BASE}/__whatsapppreview?noload&state=${st}`, { waitUntil: "networkidle2", timeout: 45000 });
+      await page.waitForSelector(".wa-warn", { timeout: 20000 });
+      const seen = await page.evaluate(() => {
+        const w = document.querySelector(".wa-warn");
+        return { visible: !!w?.offsetHeight, text: w?.textContent || "" };
+      });
+      check(seen.visible, `the risk warning is visible in the "${st}" state`);
+      if (st === "live") {
+        // The one that matters: still there after connecting, because the risk
+        // is still there after connecting.
+        check(/banned/i.test(seen.text), "and still says accounts get banned once connected");
+        check(/no bulk send/i.test(seen.text), "and that there is no bulk send");
+      }
+    }
+
+    // --- the connected state ---
+    const live = await page.evaluate(() => ({
+      chats: document.querySelectorAll(".wa-chat").length,
+      msgs: document.querySelectorAll(".wa-msg").length,
+      mine: document.querySelectorAll(".wa-msg.mine").length,
+      unread: document.querySelectorAll(".wa-unread").length,
+      group: !!document.querySelector(".wa-chat-name i"),
+      compose: document.querySelectorAll(".wa-compose textarea").length,
+      sendButtons: document.querySelectorAll(".wa-compose button").length,
+      logout: !!document.querySelector(".wa-logout"),
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    check(live.chats === 3, "chats are listed", String(live.chats));
+    check(live.msgs === 4 && live.mine === 1, "a thread renders, with my own messages distinguished", `${live.msgs}/${live.mine}`);
+    check(live.unread === 1, "an unread count shows");
+    check(live.group, "a group is marked as one");
+
+    // ONE compose box, ONE send button, no recipient picker. A panel that can
+    // address several chats at once is a bulk sender with extra steps.
+    check(live.compose === 1 && live.sendButtons === 1, "there is exactly one compose box and one send button", `${live.compose}/${live.sendButtons}`);
+    const pickers = await page.evaluate(
+      () => document.querySelectorAll('.wa-compose select, .wa-compose input[type=checkbox], .wa select[multiple]').length
+    );
+    check(pickers === 0, "and no way to pick multiple recipients", String(pickers));
+    check(live.logout, "logging out is offered, not just disconnecting");
+    check(!live.overflow, "the panel does not overflow the page");
+
+    // --- hydration ---
+    // A locale-formatted timestamp is a different string on the server, and
+    // the mismatch used to bury the panel under an error overlay.
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.reload({ waitUntil: "networkidle2" });
+    await page.waitForSelector(".wa-msg", { timeout: 20000 });
+    check(
+      !errors.some((e) => /hydrat|does not match/i.test(e)),
+      "the panel hydrates without a mismatch",
+      errors.find((e) => /hydrat|does not match/i.test(e)) || ""
+    );
+
+    // --- the QR is drawn locally ---
+    await page.goto(`${BASE}/__whatsapppreview?noload&state=qr`, { waitUntil: "networkidle2", timeout: 45000 });
+    await page.waitForSelector(".wa-qr svg, .wa-qr-fallback", { timeout: 20000 });
+    const qr = await page.evaluate(() => ({
+      svg: !!document.querySelector(".wa-qr svg"),
+      remote: [...document.querySelectorAll(".wa img, .wa svg image")].map((n) => n.getAttribute("src") || n.getAttribute("href") || "").filter(Boolean),
+    }));
+    check(qr.svg, "the pairing code renders as an inline svg");
+    // A pairing code is a live credential while it is on screen. Handing it to
+    // an image service to draw would be handing out the session.
+    check(qr.remote.length === 0, "and is not fetched from an image service", JSON.stringify(qr.remote));
+  } catch (e) {
+    bad("whatsapp panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+
 (async () => {
   const which = process.argv[2] || "all";
   console.log(`base: ${BASE}\nchrome: ${CHROME}`);
@@ -2378,6 +2551,8 @@ async function resumeSuite() {
       await adminTabsSuite(browser);
       await notesSuite(browser);
       await contactsSuite(browser);
+      await agentSuite(browser);
+      await whatsappSuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
     } finally {
@@ -2402,6 +2577,22 @@ async function resumeSuite() {
     try {
       await contactsSuite(browser);
 
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "agent") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await agentSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "whatsapp") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await whatsappSuite(browser);
     } finally {
       await browser.close();
     }

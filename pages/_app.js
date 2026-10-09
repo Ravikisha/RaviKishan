@@ -92,12 +92,15 @@ function MyApp({ Component, pageProps }) {
   // absent: it previews a PUBLIC page and wants the public chrome.
   const ADMIN_PREVIEWS = [
     "/__adminpreview",
+    "/__agentpreview",
+    "/__contactspreview",
     "/__githubpreview",
     "/__linkedinpreview",
     "/__mailpreview",
     "/__notespreview",
     "/__socialpreview",
     "/__taskspreview",
+    "/__whatsapppreview",
   ];
   if (router.pathname === "/admin" || ADMIN_PREVIEWS.includes(router.pathname)) {
     return (

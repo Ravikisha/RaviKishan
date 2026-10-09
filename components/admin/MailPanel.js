@@ -16,6 +16,7 @@
 // the composer answers that: see Outbound.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MailStyles from "./MailStyles";
+import { mailFrameDoc } from "../../lib/server/mailHtml";
 import {
   capability,
   fullWhen,
@@ -124,7 +125,78 @@ export function Row({ m, open, onOpen }) {
 
 /* ================= reading ================= */
 
-export function Reader({ message, onBack, onAct, onReply, busy }) {
+// The body of a message, which is the ONLY content in this product written by
+// somebody who is not the owner.
+//
+// It renders in an iframe WITHOUT `allow-same-origin`, so the frame is an
+// opaque origin: it cannot read this page's DOM, its cookies or the IndexedDB
+// that holds the Firebase session. That boundary -- not the sanitiser -- is
+// what makes rendering a stranger's markup acceptable here. `allow-scripts` is
+// present only so our own nonce'd height reporter can run; the CSP inside the
+// document is `default-src 'none'` with scripts allowed under that one nonce,
+// so a <script> that somehow survived sanitising still cannot execute.
+export function MailBody({ html, text, allowRemote, onShowImages }) {
+  const frame = useRef(null);
+  const [height, setHeight] = useState(240);
+  // A new nonce per body, so one message's reporter cannot be replayed into
+  // the next one's document. The deps look unused to the linter precisely
+  // because the value is derived from nothing BUT them changing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nonce = useMemo(() => Math.random().toString(36).slice(2) + Date.now().toString(36), [html, allowRemote]);
+  const built = useMemo(
+    () => (html ? mailFrameDoc(html, { allowRemoteImages: allowRemote, nonce }) : null),
+    [html, allowRemote, nonce]
+  );
+
+  useEffect(() => {
+    if (!built) return undefined;
+    const onMsg = (e) => {
+      // An opaque origin reports itself as "null", so the frame is identified
+      // by its own window rather than by where it claims to be from.
+      if (!frame.current || e.source !== frame.current.contentWindow) return;
+      const h = Number(e.data?.mbxHeight);
+      // No fudge added here: a constant on top of a measurement the parent
+      // then feeds back is exactly how the runaway above happened.
+      if (Number.isFinite(h) && h > 0) setHeight(Math.min(Math.max(h, 80), 20000));
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [built]);
+
+  if (!built) {
+    return <div className="mbx-body">{text || "This message has no text body."}</div>;
+  }
+
+  return (
+    <div className="mbx-html">
+      {built.blockedImages > 0 && !allowRemote && (
+        <div className="mbx-imgbar">
+          <span>
+            {built.blockedImages} image{built.blockedImages === 1 ? "" : "s"} not loaded. Loading them
+            tells the sender you opened this.
+          </span>
+          <button type="button" className="admin-ghost" onClick={onShowImages}>
+            Show images
+          </button>
+        </div>
+      )}
+      <iframe
+        ref={frame}
+        title="Message"
+        className="mbx-frame"
+        style={{ height }}
+        // No allow-same-origin: the frame cannot reach this page. allow-popups
+        // and -to-escape-sandbox are what let a link open in a real tab rather
+        // than a scriptless sandboxed one.
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        referrerPolicy="no-referrer"
+        srcDoc={built.doc}
+      />
+    </div>
+  );
+}
+
+export function Reader({ message, onBack, onAct, onReply, busy, allowRemote, onShowImages }) {
   const m = message;
   return (
     <div>
@@ -141,7 +213,12 @@ export function Reader({ message, onBack, onAct, onReply, busy }) {
         <span>arrived in</span>
         <span className="mbx-addr">{m.account || m.to?.[0]?.email || ""}</span>
       </div>
-      <div className="mbx-body">{m.body || m.preview || "This message has no text body."}</div>
+      <MailBody
+        html={m.html || ""}
+        text={m.body || m.preview || ""}
+        allowRemote={!!allowRemote}
+        onShowImages={onShowImages}
+      />
       <div className="mbx-acts">
         <button type="button" className="admin-primary" onClick={onReply} disabled={busy}>
           Reply
@@ -574,6 +651,10 @@ export default function MailPanel() {
   const [from, setFrom] = useState("");
   const [reviewed, setReviewed] = useState(null);
   const [sent, setSent] = useState("");
+  // Per message, and deliberately NOT remembered. "Load remote images" is a
+  // decision about one sender, and a sticky setting quietly turns it into a
+  // decision about all of them.
+  const [showImages, setShowImages] = useState(false);
 
   const sender = useMemo(() => accounts.find((a) => keyOf(a) === from) || accounts[0], [accounts, from]);
 
@@ -662,6 +743,7 @@ export default function MailPanel() {
   async function openMessage(m) {
     setMode("read");
     setSent("");
+    setShowImages(false);
     setOpen(m); // show what the stream already knows, then fill in the body
     try {
       const full = await getMessage(m.provider, m.accountId, m.id);
@@ -967,6 +1049,8 @@ export default function MailPanel() {
             <Reader
               message={open}
               busy={busy}
+              allowRemote={showImages}
+              onShowImages={() => setShowImages(true)}
               onBack={() => setOpen(null)}
               onAct={act}
               onReply={() => {

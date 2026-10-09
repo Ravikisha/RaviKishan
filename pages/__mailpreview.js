@@ -80,8 +80,24 @@ const MESSAGES = [
   },
 ];
 
+// A real-shaped HTML mail: a table layout, a stylesheet, a tracking pixel, an
+// inline handler and a script. The last three are the reason the frame exists,
+// so a preview without them shows none of the states it is there for.
+const FULL_HTML = `
+<style>.wrap{font-family:Inter,sans-serif}.btn{background:#ffb020;color:#1a1300;padding:9px 14px;border-radius:8px;display:inline-block;text-decoration:none}</style>
+<div class="wrap">
+  <h2>The repository is the API</h2>
+  <p>Yes &mdash; the bit I could not get past was that a vault is just <b>files</b>, so there is nothing to call.</p>
+  <table cellpadding="8"><tr><td bgcolor="#1a1d27">Backed by a repo</td><td>no new credential</td></tr></table>
+  <p><a class="btn" href="https://example.com/read">Read the rest</a></p>
+  <img src="https://track.example/open.gif?u=42" width="1" height="1" alt="">
+  <p onclick="steal()">A paragraph carrying a handler.</p>
+  <script>steal()</script>
+</div>`;
+
 const FULL = {
   ...MESSAGES[0],
+  html: FULL_HTML,
   body:
     "Yes — the bit I could not get past was that a vault is just files, so there is nothing to call.\n\n" +
     "Backing it with a repository means the sync you already have IS the API, and it costs no new credential. " +
@@ -144,6 +160,7 @@ export default function MailPreview() {
   // row, overflow a phone, or lose a size contest with a form field.
   const [from, setFrom] = useState("outlook__2");
   const [open, setOpen] = useState("m1");
+  const [images, setImages] = useState(false);
   const sender = ACCOUNTS.find((a) => a.key === from);
 
   if (!ready) return <main style={{ background: "#0d0e13", minHeight: "100vh" }} />;
@@ -204,7 +221,15 @@ export default function MailPreview() {
             ))}
           </div>
           <div className="mbx-desk">
-            <Reader message={FULL} busy={false} onBack={() => {}} onAct={() => {}} onReply={() => {}} />
+            <Reader
+              message={FULL}
+              busy={false}
+              allowRemote={images}
+              onShowImages={() => setImages(true)}
+              onBack={() => {}}
+              onAct={() => {}}
+              onReply={() => {}}
+            />
           </div>
         </div>
       </Case>

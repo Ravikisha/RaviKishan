@@ -378,6 +378,41 @@ export default function MailStyles() {
         max-width: 68ch;
         padding: 14px 0;
       }
+      /* The message body. The frame carries no border of its own, so it reads
+         as part of the page rather than as an embedded document -- which is
+         the point: it is the mail, not a widget. */
+      .mbx-html {
+        padding: 12px 0 2px;
+      }
+      /* A white sheet on a dark desk. The message is authored for white and
+         is rendered on white; the console around it stays dark. */
+      .mbx-frame {
+        display: block;
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        background: #ffffff;
+        color-scheme: light;
+      }
+      /* Dashed, like every other refusal in this console: it states something
+         that was NOT done and offers the route that does it. */
+      .mbx-imgbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        border: 1px dashed #3a4052;
+        border-radius: 8px;
+        background: #101219;
+        padding: 8px 11px;
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: #8b90a0;
+      }
+      .mbx-imgbar span {
+        flex: 1;
+        min-width: 180px;
+      }
       .mbx-acts {
         display: flex;
         gap: 8px;

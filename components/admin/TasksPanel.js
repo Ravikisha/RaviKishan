@@ -643,31 +643,46 @@ export default function TasksPanel({ user }) {
                 </div>
               </header>
 
-              {/* WHICH account this shelf is showing. Hidden with one, because
-                  a chooser between one thing is chrome for a decision nobody
-                  has — the same rule as the LinkedIn shelf. The selected chip
-                  carries the amber left edge used everywhere in this admin for
-                  "this is the one", so the answer to "whose list am I about to
-                  write into" is readable without opening a menu. */}
-              {status.connected && (status.accounts || []).length > 1 ? (
-                <div className="tk-accounts" role="tablist" aria-label={`${p.label} accounts`}>
-                  {status.accounts.map((a) => {
-                    const on = (taskAccount(p.id) || defaultAccountId(status)) === a.accountId;
-                    return (
-                      <button
-                        key={a.accountId}
-                        type="button"
-                        role="tab"
-                        aria-selected={on}
-                        className={`tk-account${on ? " on" : ""}${a.needsReconnect ? " stale" : ""}`}
-                        disabled={!!busy}
-                        onClick={() => pickAccount(p.id, a.accountId)}
-                      >
-                        <span>{a.label || a.email || a.accountId}</span>
-                        {a.needsReconnect ? <em>expired</em> : null}
-                      </button>
-                    );
-                  })}
+              {/* WHICH account this shelf is acting as.
+                  Shown whenever the service is connected, INCLUDING with one
+                  account — a chip row was hidden at one, which answered "can I
+                  switch?" and never answered "whose list is this?". The head
+                  line above names the account, but it reads as a label; a
+                  control reads as a thing you can change, and that is the
+                  question people actually arrive with.
+                  A select rather than chips because this grows: two Google
+                  accounts fit as chips, six do not, and a row that reflows to
+                  three lines stops being scannable. */}
+              {status.connected ? (
+                <div className="tk-whose">
+                  <label className="tk-whose-label" htmlFor={`acct-${p.id}`}>
+                    Acting as
+                  </label>
+                  <select
+                    id={`acct-${p.id}`}
+                    className="tk-whose-select"
+                    value={taskAccount(p.id) || defaultAccountId(status)}
+                    disabled={!!busy || (status.accounts || []).length < 2}
+                    onChange={(e) => pickAccount(p.id, e.target.value)}
+                  >
+                    {(status.accounts || []).map((a) => (
+                      <option key={a.accountId} value={a.accountId}>
+                        {(a.label || a.email || a.accountId) +
+                          (a.needsReconnect ? " — expired" : "") +
+                          (a.isDefault ? " — default" : "")}
+                      </option>
+                    ))}
+                  </select>
+                  {/* The one account that cannot be used is worth saying out
+                      loud here rather than at the moment a write fails. */}
+                  {(status.accounts || []).find(
+                    (a) => a.accountId === (taskAccount(p.id) || defaultAccountId(status))
+                  )?.needsReconnect ? (
+                    <span className="tk-whose-dead">Reconnect this account before writing to it.</span>
+                  ) : null}
+                  {(status.accounts || []).length < 2 ? (
+                    <span className="tk-whose-only">the only one connected</span>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1354,49 +1369,49 @@ export function TasksStyles() {
         max-width: 62ch;
         line-height: 1.5;
       }
-      /* Which account this shelf shows. Same chip language as the Social
-         roster and the LinkedIn shelf: position carries the service, the
-         amber left edge carries the selection. */
-      .tk-accounts {
+      /* Which account this shelf is acting as. A control, not a label:
+         "whose list is this" is the question people arrive with, and a select
+         answers it and offers the change in the same object. */
+      .tk-whose {
         display: flex;
-        gap: 8px;
+        align-items: center;
+        gap: 10px;
         flex-wrap: wrap;
         margin: 0 0 14px;
       }
-      .tk-account {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        border-radius: 9px;
-        border: 1px solid var(--a-line, #2b3040);
-        border-left-width: 3px;
+      .tk-whose-label {
+        font-size: 11.5px;
+        color: var(--a-dim, #7d8496);
+      }
+      .tk-whose-select {
         background: var(--a-raise, #15171d);
-        color: var(--a-dim, #8b90a0);
+        color: var(--a-text, #e7e8ee);
+        border: 1px solid var(--a-line, #2b3040);
+        /* The amber left edge this admin uses everywhere for "this is the
+           one", kept so the control reads as part of the same system. */
+        border-left: 3px solid var(--a-amber, #ffb020);
+        border-radius: 9px;
+        padding: 7px 10px;
         font: inherit;
         font-size: 12.5px;
-        cursor: pointer;
+        max-width: 320px;
       }
-      .tk-account.on {
-        border-left-color: var(--a-amber, #ffb020);
-        color: var(--a-text, #e7e8ee);
-        font-weight: 600;
-      }
-      .tk-account.stale {
-        border-left-color: #a33b45;
-      }
-      .tk-account em {
-        font-style: normal;
-        font-size: 10.5px;
-        color: #ff8a8a;
-      }
-      .tk-account:disabled {
-        opacity: 0.6;
+      .tk-whose-select:disabled {
+        border-left-color: var(--a-line, #2b3040);
+        color: var(--a-dim, #8b90a0);
         cursor: default;
       }
-      .tk-account:focus-visible {
+      .tk-whose-select:focus-visible {
         outline: 2px solid var(--a-amber, #ffb020);
         outline-offset: 2px;
+      }
+      .tk-whose-only {
+        font-size: 11px;
+        color: var(--a-dim, #6f7687);
+      }
+      .tk-whose-dead {
+        font-size: 11.5px;
+        color: #ff8a8a;
       }
 
       .tk-shelf-actions {

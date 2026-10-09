@@ -239,7 +239,10 @@ console.log("\ntool registry contract");
 console.log("\nevery task tool can be told WHICH account");
 {
   const { TOOLS } = await import("../lib/server/mcpTools.js");
-  const task = TOOLS.filter((t) => /task/.test(t.name) && t.name !== "list_task_providers");
+  // The two that span accounts rather than acting as one are excluded: a
+  // discovery call and a cross-account read have no single account to name.
+  const SPANS_ACCOUNTS = ["list_task_providers", "list_all_tasks"];
+  const task = TOOLS.filter((t) => /task/.test(t.name) && !SPANS_ACCOUNTS.includes(t.name));
   check(task.length >= 10, "the task tools are there", String(task.length));
 
   // Several Google accounts can be connected, so `provider` alone no longer
@@ -259,6 +262,17 @@ console.log("\nevery task tool can be told WHICH account");
     required.length === 0,
     "none REQUIRES it - the directory resolves it when omitted",
     required.map((t) => t.name).join(", ")
+  );
+
+  // Reading ACROSS accounts is its own tool, not a mode on list_tasks: a
+  // groupId is only valid inside one account, so a cross-account flag would
+  // make that argument meaningless half the time.
+  const all = TOOLS.find((t) => t.name === "list_all_tasks");
+  check(!!all, "list_all_tasks spans every connected account");
+  check(all?.scope === "read", "and is a read", all?.scope);
+  check(
+    !(all?.inputSchema?.properties || {}).accountId && !(all?.inputSchema?.properties || {}).groupId,
+    "taking neither accountId nor groupId, since it spans them"
   );
 
   const lister = TOOLS.find((t) => t.name === "list_task_providers");

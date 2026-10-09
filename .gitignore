@@ -54,3 +54,4 @@ firebase-debug.*.log
 .env*.bak*
 .env.*.local
 .https-dev/
+.env*

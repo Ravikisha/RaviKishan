@@ -34,7 +34,15 @@ async function handler(req, res) {
     res.setHeader("Cache-Control", "no-store");
 
     if (action === "accounts") {
-      const boxes = await mail.everyMailbox(idToken);
+      // The default is read here rather than in a second round trip, because
+      // the panel has to SAY which mailbox an unnamed MCP call would act as --
+      // with two connected and no default the server refuses, and a panel that
+      // cannot show that leaves the refusal unexplainable.
+      const dir = await import("../../lib/server/accountDirectory.js");
+      const [boxes, defaults] = await Promise.all([
+        mail.everyMailbox(idToken),
+        dir.readDefaults(idToken).catch(() => ({})),
+      ]);
       return res.status(200).json({
         accounts: boxes.map((a) => ({
           accountId: a.accountId,
@@ -42,7 +50,9 @@ async function handler(req, res) {
           account: a.label || a.email || a.accountId,
           provider: a.provider,
           needsReconnect: !!a.needsReconnect,
+          isDefault: defaults.mail === a.key,
         })),
+        hasDefault: boxes.some((a) => defaults.mail === a.key),
         capabilities: mail.CAPABILITIES,
       });
     }

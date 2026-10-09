@@ -77,6 +77,106 @@ export default function MailStyles() {
         max-width: 46ch;
       }
 
+      /* ---------------- mailboxes ---------------- */
+      .mbx-boxes {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .mbx-box-chip {
+        position: relative;
+        display: inline-flex;
+        align-items: stretch;
+      }
+      .mbx-box-chip .mbx-chip {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        border-right: 0;
+      }
+      .mbx-more {
+        background: #101219;
+        border: 1px solid #262a35;
+        border-left: 0;
+        border-radius: 0 8px 8px 0;
+        color: #6b7080;
+        font-family: inherit;
+        font-size: 13px;
+        line-height: 1;
+        padding: 0 9px;
+        cursor: pointer;
+      }
+      .mbx-more:hover {
+        border-color: #3a4052;
+        color: #c4c7d2;
+      }
+      /* Dashed, because it is an invitation rather than a state. Same
+         vocabulary as the dashed roster entry on the Social desk. */
+      .mbx-chip.mbx-add {
+        border-style: dashed;
+        border-left-style: dashed;
+        color: #8b90a0;
+      }
+      .mbx-chip.mbx-add::before {
+        content: "+";
+        color: #6b7080;
+      }
+      .mbx-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 30;
+        min-width: 232px;
+        background: #15171e;
+        border: 1px solid #2b3040;
+        border-radius: 10px;
+        padding: 5px;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .mbx-menu button {
+        text-align: left;
+        background: transparent;
+        border: 0;
+        border-radius: 7px;
+        color: #c4c7d2;
+        font-family: inherit;
+        font-size: 12.5px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      .mbx-menu button:hover:not(:disabled) {
+        background: #1c1f29;
+        color: #e7e8ee;
+      }
+      /* The destructive item is red INSIDE the menu rather than being a third
+         equal-weight ghost button in the row -- the shape that gets
+         misclicked. Same call as the Tasks shelf menu. */
+      .mbx-menu button.mbx-danger {
+        color: #ff6b6b;
+      }
+      .mbx-menu button.mbx-danger:hover:not(:disabled) {
+        background: #2a1417;
+        color: #ff8f8f;
+      }
+      /* The Add chip is the last thing in the row, so a left-anchored menu
+         hangs off the right edge of the panel. Measured at 1440px: it reached
+         past the container. */
+      .mbx-box-chip:last-child .mbx-menu {
+        left: auto;
+        right: 0;
+      }
+      .mbx-menu-note {
+        margin: 2px 0;
+        padding: 6px 10px;
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: #6b7080;
+      }
+
       /* ---------------- lens ---------------- */
       .mbx-lens {
         display: flex;

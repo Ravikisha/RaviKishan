@@ -215,6 +215,93 @@ try {
     check(unset.tag !== "BUTTON" && !unset.inButton, "a service with no client is not a button", unset.tag);
     check(/MS_TASKS_CLIENT_ID/.test(unset.text), "it names the variables it wants instead");
 
+    /* --- adding, defaulting and dropping a mailbox --- */
+    const boxes = await page.evaluate(() => {
+      const row = document.querySelector(".mbx-boxes");
+      const chips = [...row.querySelectorAll(".mbx-box-chip")];
+      return {
+        exists: !!row,
+        chips: chips.length,
+        add: !!row.querySelector(".mbx-add"),
+        addIsButton: row.querySelector(".mbx-add")?.tagName,
+        addDashed: getComputedStyle(row.querySelector(".mbx-add")).borderLeftStyle,
+        menus: row.querySelectorAll(".mbx-menu").length,
+        text: row.innerText,
+        mores: row.querySelectorAll(".mbx-more").length,
+      };
+    });
+    // The bug this replaces: Connect buttons rendered ONLY when nothing was
+    // connected, so the first mailbox to land removed every way to add a
+    // second one.
+    check(boxes.exists && boxes.add, "there is always a way to add another mailbox");
+    check(boxes.addIsButton === "BUTTON", "and it is a real button", boxes.addIsButton);
+    check(boxes.addDashed === "dashed", "drawn dashed, because it is an invitation not a state", boxes.addDashed);
+    check(boxes.mores === 3, "every connected mailbox carries its own menu", String(boxes.mores));
+    check(/default/.test(boxes.text), "the mailbox tools act as is marked");
+    check(boxes.menus === 0, "and no menu is open until one is asked for");
+
+    // Opening the Add menu must offer the service that CAN be connected and
+    // must not offer a button for the one with no client on this deployment.
+    // Click and WAIT. These menus are React state, so reading the DOM in the
+    // same evaluate that clicked reads the frame before the render -- which is
+    // what made the first version of this block report an empty menu and then
+    // read the previous one's contents.
+    await page.click(".mbx-add");
+    await page.waitForSelector(".mbx-box-chip:last-child .mbx-menu", { timeout: 5000 });
+    const addMenu = await page.evaluate(() => {
+      const m = document.querySelector(".mbx-box-chip:last-child .mbx-menu");
+      return {
+        open: !!m,
+        buttons: [...(m?.querySelectorAll("button") || [])].map((b) => b.textContent.trim()),
+        notes: [...(m?.querySelectorAll(".mbx-menu-note") || [])].map((p) => p.textContent.trim()),
+      };
+    });
+    check(addMenu.open, "the Add menu opens");
+    check(addMenu.buttons.includes("Gmail"), "offering the service that is set up", addMenu.buttons.join(" | "));
+    check(
+      !addMenu.buttons.includes("Outlook"),
+      "and NOT the one with no client on this deployment",
+      addMenu.buttons.join(" | ")
+    );
+    check(
+      addMenu.notes.some((n) => /MS_TASKS_CLIENT_ID/.test(n)),
+      "which is named instead, with the variables it wants",
+      addMenu.notes.join(" | ")
+    );
+
+    // Escape closes it, which is also worth proving.
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector(".mbx-menu"), { timeout: 5000 });
+    check(true, "Escape closes an open menu");
+
+    await page.click(".mbx-box-chip .mbx-more");
+    await page.waitForSelector(".mbx-box-chip .mbx-menu", { timeout: 5000 });
+    const perBox = await page.evaluate(() => {
+      const m = document.querySelector(".mbx-box-chip .mbx-menu");
+      const danger = m?.querySelector(".mbx-danger");
+      return {
+        buttons: [...(m?.querySelectorAll("button") || [])].map((b) => b.textContent.trim()),
+        notes: [...(m?.querySelectorAll(".mbx-menu-note") || [])].map((p) => p.textContent.trim()),
+        dangerColour: danger ? getComputedStyle(danger).color : "",
+        dangerLast: m?.querySelector("button:last-of-type")?.classList.contains("mbx-danger"),
+      };
+    });
+    check(perBox.buttons.some((b) => /Disconnect/.test(b)), "a mailbox can be disconnected", perBox.buttons.join(" | "));
+    check(perBox.buttons.some((b) => /Reconnect/.test(b)), "and reconnected to refresh its permissions");
+    // This chip IS the default in the seed, so it must say so rather than
+    // offering to set what is already set.
+    check(
+      !perBox.buttons.some((b) => /Make this the one tools use/.test(b)),
+      "the mailbox that is already the default is not offered the choice again"
+    );
+    check(
+      perBox.notes.some((n) => /names none/.test(n)),
+      "it states what being the default means instead",
+      perBox.notes.join(" | ")
+    );
+    check(/rgb\(255,\s*107,\s*107\)/.test(perBox.dangerColour), "Disconnect is red", perBox.dangerColour);
+    check(perBox.dangerLast === true, "and sits last, not among equal-weight buttons");
+
     /* --- the quality floor --- */
     const focus = await page.evaluate(() => {
       const r = document.querySelector(".mbx-row");

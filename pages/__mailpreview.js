@@ -14,6 +14,7 @@ import React, { useEffect, useState } from "react";
 import {
   Composer,
   Headline,
+  Mailboxes,
   NotConnected,
   Outbound,
   Reader,
@@ -89,7 +90,9 @@ const FULL = {
 };
 
 const ACCOUNTS = [
-  { key: "gmail__1", accountId: "1", provider: "gmail", account: "ravikishan63392@gmail.com" },
+  // One default, one plain, one expired -- a row of three healthy mailboxes
+  // shows none of the states the chip exists to carry.
+  { key: "gmail__1", accountId: "1", provider: "gmail", account: "ravikishan63392@gmail.com", isDefault: true },
   { key: "gmail__3", accountId: "3", provider: "gmail", account: "godasap7@gmail.com" },
   {
     key: "outlook__2",
@@ -167,6 +170,26 @@ export default function MailPreview() {
               error: "The connection expired. Reconnect to read this mailbox.",
             },
           ]}
+        />
+      </Case>
+
+      <Case
+        title="Mailboxes"
+        note="Always rendered, including with one connected -- otherwise the panel goes from 'set this up' to 'here is your mail' and drops the setup it still has to offer. The ··· holds the default and the disconnect; Add is dashed because it is an invitation, not a state."
+      >
+        <Mailboxes
+          accounts={ACCOUNTS}
+          configured={{
+            gmail: true,
+            outlook: false,
+            outlookMissing: ["MS_TASKS_CLIENT_ID", "MS_TASKS_CLIENT_SECRET"],
+          }}
+          selected={"gmail__1"}
+          busy={false}
+          onSelect={() => {}}
+          onAdd={() => {}}
+          onMakeDefault={() => {}}
+          onDisconnect={() => {}}
         />
       </Case>
 

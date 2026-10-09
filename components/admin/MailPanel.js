@@ -31,7 +31,7 @@ import {
   updateMessage,
   when,
 } from "../../lib/mailClient";
-import { connectProvider } from "../../lib/accountsClient";
+import { connectProvider, forgetAccount, setDefaultAccount } from "../../lib/accountsClient";
 import { mailServicesConfigured } from "../../lib/mailClient";
 import { finishConnect } from "../../lib/socialClient";
 
@@ -56,7 +56,19 @@ const keyOf = (a) => a.key || `${a.provider}__${a.accountId}`;
 // figures that can be honest are the ones below, and they say what they
 // counted. get_mail_analytics keeps the per-day numbers because it states its
 // sample size in the same breath; a picture cannot.
-export function Headline({ unread, counted, mailboxes }) {
+export function Headline({ unread, counted, mailboxes, loading }) {
+  // A fetch in flight used to render EXACTLY like an empty account: "Nothing
+  // fetched yet -- 0 mailboxes connected", which is what the panel said in the
+  // seconds right after a consent succeeded. Saying nothing is connected while
+  // you are still finding out is the one message that must not be guessed.
+  if (loading) {
+    return (
+      <div>
+        <p className="mbx-count">Reading your mail…</p>
+        <p className="mbx-scope">Asking every connected mailbox for its newest messages.</p>
+      </div>
+    );
+  }
   if (!counted) {
     return (
       <div>
@@ -305,6 +317,182 @@ export function Composer({ accounts, from, setFrom, draft, setDraft, children })
   );
 }
 
+/* ================= the mailboxes ================= */
+
+// WHY THIS ROW EXISTS AT ALL, including with one mailbox connected.
+//
+// The first version showed Connect buttons only when NOTHING was connected, so
+// the moment the first mailbox landed there was no way to add a second -- the
+// panel went from "set this up" to "here is your mail" and quietly dropped the
+// setup it still needed to offer.
+//
+// It answers three questions that a chip row of pure filters does not:
+//   - which mailboxes do I have, and can I add another
+//   - which one does a TOOL act as when a call names none (with two connected
+//     and no default the server refuses, and a panel that cannot show that
+//     leaves the refusal unexplainable)
+//   - how do I get rid of one
+//
+// "Everything" is still hidden with a single mailbox, because a chooser
+// between one thing and itself is chrome for a decision nobody has.
+export function Mailboxes({
+  accounts,
+  configured = {},
+  selected,
+  onSelect,
+  onAdd,
+  onMakeDefault,
+  onDisconnect,
+  busy,
+}) {
+  const [menu, setMenu] = useState("");
+  const close = () => setMenu("");
+
+  useEffect(() => {
+    if (!menu) return;
+    const away = () => close();
+    const esc = (e) => e.key === "Escape" && close();
+    document.addEventListener("click", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("click", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menu]);
+
+  const stop = (e) => e.stopPropagation();
+
+  return (
+    <div className="mbx-boxes" role="group" aria-label="Mailboxes">
+      {accounts.length > 1 && (
+        <button
+          type="button"
+          className={`mbx-chip${selected === "all" ? " on" : ""}`}
+          onClick={() => onSelect("all")}
+        >
+          Everything <em>{accounts.length} mailboxes</em>
+        </button>
+      )}
+
+      {accounts.map((a) => {
+        const k = keyOf(a);
+        return (
+          <span className="mbx-box-chip" key={k}>
+            <button
+              type="button"
+              className={`mbx-chip${selected === k ? " on" : ""}${a.needsReconnect ? " mbx-gone" : ""}`}
+              onClick={() => onSelect(k)}
+            >
+              {a.account}{" "}
+              <em>
+                {a.needsReconnect ? "reconnect" : providerLabel(a.provider)}
+                {a.isDefault ? " · default" : ""}
+              </em>
+            </button>
+            <button
+              type="button"
+              className="mbx-more"
+              aria-label={`Options for ${a.account}`}
+              aria-expanded={menu === k}
+              onClick={(e) => {
+                stop(e);
+                setMenu(menu === k ? "" : k);
+              }}
+            >
+              ···
+            </button>
+            {menu === k && (
+              <div className="mbx-menu" onClick={stop}>
+                {a.isDefault ? (
+                  <p className="mbx-menu-note">
+                    Tools act as this mailbox when a call names none.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      close();
+                      onMakeDefault(a);
+                    }}
+                    disabled={busy}
+                  >
+                    Make this the one tools use
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    onAdd(a.provider);
+                  }}
+                >
+                  Reconnect{a.needsReconnect ? "" : " to refresh permissions"}
+                </button>
+                <button
+                  type="button"
+                  className="mbx-danger"
+                  onClick={() => {
+                    close();
+                    onDisconnect(a);
+                  }}
+                  disabled={busy}
+                >
+                  Disconnect
+                </button>
+              </div>
+            )}
+          </span>
+        );
+      })}
+
+      <span className="mbx-box-chip">
+        <button
+          type="button"
+          className="mbx-chip mbx-add"
+          aria-expanded={menu === "add"}
+          onClick={(e) => {
+            stop(e);
+            setMenu(menu === "add" ? "" : "add");
+          }}
+          disabled={busy}
+        >
+          Add a mailbox
+        </button>
+        {menu === "add" && (
+          <div className="mbx-menu" onClick={stop}>
+            {SERVICES.map((svc) =>
+              // A service with no OAuth client on this deployment is not a
+              // disabled button: there is nothing there to press, and a
+              // disabled button implies a permission you could go and fix.
+              configured[svc.id] === false ? (
+                <p className="mbx-menu-note" key={svc.id}>
+                  {svc.label} needs {(configured[`${svc.id}Missing`] || []).join(" and ")} on this
+                  deployment.
+                </p>
+              ) : (
+                <button
+                  key={svc.id}
+                  type="button"
+                  onClick={() => {
+                    close();
+                    onAdd(svc.id);
+                  }}
+                >
+                  {svc.label}
+                </button>
+              )
+            )}
+            <p className="mbx-menu-note">
+              You pick the account on the provider&apos;s own screen, so a second one can be added
+              at any time.
+            </p>
+          </div>
+        )}
+      </span>
+    </div>
+  );
+}
+
 /* ================= states ================= */
 
 export function Unreadable({ rows }) {
@@ -394,7 +582,6 @@ export default function MailPanel() {
     try {
       const { accounts: list } = await mailAccounts();
       setAccounts(list);
-      if (!list.length) setConfigured(await mailServicesConfigured().catch(() => ({})));
       if (list.length && !from) setFrom(keyOf(list[0]));
       if (list.length) {
         const live = list.filter((a) => !a.needsReconnect);
@@ -425,8 +612,18 @@ export default function MailPanel() {
     (async () => {
       const q = new URLSearchParams(window.location.search);
       const back = q.get("connected");
+      // Held rather than written straight to `err`, because load() clears err
+      // on its way in -- so a consent that succeeded at Google and then failed
+      // to be claimed here reported NOTHING, and the panel simply came back
+      // with the mailbox missing. That is the worst shape a connection bug can
+      // take: it looks like the provider refused.
+      let claimFailed = "";
       if (back === "gmail" || back === "outlook") {
-        await finishConnect(back).catch((e) => setErr(e.message));
+        try {
+          await finishConnect(back);
+        } catch (e) {
+          claimFailed = e.message;
+        }
         q.delete("connected");
         // `tab` is rewritten below, so leaving the old one in `rest` produced
         // ?tab=mail&tab=mail — harmless, and exactly the kind of thing that
@@ -435,7 +632,18 @@ export default function MailPanel() {
         const rest = q.toString();
         window.history.replaceState({}, "", `/admin?tab=mail${rest ? `&${rest}` : ""}`);
       }
-      load();
+      // Asked ONCE, not per refresh: it changes when a deployment variable
+      // changes, not when mail arrives. The Add menu needs it whether or not
+      // anything is connected, so it cannot hang off the empty state.
+      mailServicesConfigured()
+        .then(setConfigured)
+        .catch(() => {});
+      await load();
+      if (claimFailed) {
+        setErr(
+          `${providerLabel(back)} approved the connection, but this page could not store it: ${claimFailed} Press Add a mailbox and try again.`
+        );
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -485,6 +693,44 @@ export default function MailPanel() {
         setStream((s) => ({ ...s, messages: s.messages.filter((x) => x.id !== open.id) }));
         setOpen(null);
       }
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Consent happens on the provider's own screen in front of the person whose
+  // account it is -- which is also why no MCP tool can do this.
+  const addMailbox = (provider) =>
+    connectProvider(provider, "mail").catch((e) => setErr(e.message));
+
+  async function makeDefault(a) {
+    setBusy(true);
+    setErr("");
+    try {
+      await setDefaultAccount("mail", keyOf(a));
+      setAccounts((xs) => xs.map((x) => ({ ...x, isDefault: keyOf(x) === keyOf(a) })));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dropMailbox(a) {
+    // Disconnecting removes a stored credential and nothing else -- no mail is
+    // touched, and reconnecting restores it -- so this asks rather than
+    // demanding a typed confirmation.
+    if (!window.confirm(`Disconnect ${a.account}? Mail in that account is untouched, and you can connect it again at any time.`)) {
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      await forgetAccount(a.provider, a.accountId);
+      if (lens.account === keyOf(a)) setLens({ ...lens, account: "all" });
+      await load();
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -585,32 +831,26 @@ export default function MailPanel() {
       <MailStyles />
 
       <div className="mbx-head">
-        <Headline unread={unread} counted={stream.messages.length} mailboxes={accounts.length} />
+        <Headline
+          unread={unread}
+          counted={stream.messages.length}
+          mailboxes={accounts.length}
+          loading={!loaded}
+        />
       </div>
 
+      <Mailboxes
+        accounts={accounts}
+        configured={configured}
+        selected={lens.account}
+        busy={busy}
+        onSelect={(k) => setLens({ ...lens, account: k })}
+        onAdd={addMailbox}
+        onMakeDefault={makeDefault}
+        onDisconnect={dropMailbox}
+      />
+
       <div className="mbx-lens">
-        {accounts.length > 1 && (
-          <button
-            type="button"
-            className={`mbx-chip${lens.account === "all" ? " on" : ""}`}
-            onClick={() => setLens({ ...lens, account: "all" })}
-          >
-            Everything <em>{accounts.length} mailboxes</em>
-          </button>
-        )}
-        {accounts.length > 1 &&
-          accounts.map((a) => (
-            <button
-              type="button"
-              key={keyOf(a)}
-              className={`mbx-chip${lens.account === keyOf(a) ? " on" : ""}${
-                a.needsReconnect ? " mbx-gone" : ""
-              }`}
-              onClick={() => setLens({ ...lens, account: keyOf(a) })}
-            >
-              {a.account} <em>{a.needsReconnect ? "reconnect" : providerLabel(a.provider)}</em>
-            </button>
-          ))}
         <button
           type="button"
           className={`mbx-chip${lens.unreadOnly ? " on" : ""}`}
@@ -651,7 +891,12 @@ export default function MailPanel() {
 
       <div className={`mbx-wrap${open || mode === "new" ? " mbx-reading" : ""}`}>
         <div className="mbx-stream">
-          {!shown.length ? (
+          {!loaded ? (
+            <div className="mbx-empty">
+              <h3>Reading…</h3>
+              <p>This takes a moment on the first load of each mailbox.</p>
+            </div>
+          ) : !shown.length ? (
             <div className="mbx-empty">
               <h3>{lens.unreadOnly ? "Nothing unread" : query ? "No match" : "Nothing here"}</h3>
               <p>

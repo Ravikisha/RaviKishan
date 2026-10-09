@@ -45,6 +45,7 @@ import {
   setTaskAccount,
   taskAccount,
 } from "../../lib/taskProviders";
+import { setDefaultAccount } from "../../lib/accountsClient";
 import { logAdminAction } from "../../lib/auditLog";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -254,8 +255,27 @@ export default function TasksPanel({ user }) {
   };
 
   const pickAccount = useCallback(
-    async (provider, accountId) => {
+    async (provider, accountId, key) => {
       if (!setTaskAccount(provider, accountId)) return;
+      // Picking here SAVES the choice rather than only switching this tab.
+      // Two ideas — "acting as, for now" and "the default" — is exactly what
+      // makes people ask which one they are using, so there is one control
+      // and one meaning: what the board shows is what an unqualified MCP call
+      // will act as too.
+      //
+      // `tasks` is one job served by two providers and holds ONE default, so
+      // choosing on the Google shelf answers "which account do you mean" for
+      // the job as a whole. A call that names microsoft is unaffected —
+      // chooseAccount skips a default belonging to another provider.
+      if (key) {
+        try {
+          await setDefaultAccount("tasks", key);
+        } catch (e) {
+          // The board can still act as this account for now; only the saved
+          // part failed, and saying so beats a silent half-change.
+          setErr(`Switched for now, but the default could not be saved: ${e.message}`);
+        }
+      }
       // The board on screen belongs to the previous account. Clearing it is
       // what stops one account's lists sitting under another's name while the
       // new ones load.
@@ -622,6 +642,20 @@ export default function TasksPanel({ user }) {
                       >
                         New list
                       </button>
+                      {/* The only route to a SECOND account. Without it the
+                          header offered Connect while disconnected and then
+                          only New list / Disconnect, so a second account was
+                          reachable from the Accounts tab and nowhere near the
+                          board it would appear on. */}
+                      <button
+                        className="admin-ghost"
+                        type="button"
+                        onClick={() => connect(p.id)}
+                        disabled={!!busy}
+                        title={`Connect another ${p.label} account`}
+                      >
+                        Add another
+                      </button>
                       <button
                         className="admin-ghost"
                         type="button"
@@ -663,7 +697,10 @@ export default function TasksPanel({ user }) {
                     className="tk-whose-select"
                     value={taskAccount(p.id) || defaultAccountId(status)}
                     disabled={!!busy || (status.accounts || []).length < 2}
-                    onChange={(e) => pickAccount(p.id, e.target.value)}
+                    onChange={(e) => {
+                      const a = (status.accounts || []).find((x) => x.accountId === e.target.value);
+                      pickAccount(p.id, e.target.value, a?.key);
+                    }}
                   >
                     {(status.accounts || []).map((a) => (
                       <option key={a.accountId} value={a.accountId}>
@@ -681,8 +718,12 @@ export default function TasksPanel({ user }) {
                     <span className="tk-whose-dead">Reconnect this account before writing to it.</span>
                   ) : null}
                   {(status.accounts || []).length < 2 ? (
-                    <span className="tk-whose-only">the only one connected</span>
-                  ) : null}
+                    <span className="tk-whose-only">
+                      the only one connected — use <strong>Add another</strong> to connect a second
+                    </span>
+                  ) : (
+                    <span className="tk-whose-only">saved, and used by the MCP tools too</span>
+                  )}
                 </div>
               ) : null}
 

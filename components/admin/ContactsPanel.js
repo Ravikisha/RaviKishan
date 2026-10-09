@@ -7,9 +7,20 @@
 //
 // Nothing is uploaded anywhere except your own Firestore.
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, doc, writeBatch, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, writeBatch, deleteDoc, setDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { logAdminAction } from "../../lib/auditLog";
+// The one model, shared with the MCP tools and the tests. A second copy of
+// "what counts as the same person" would drift within a week.
+import {
+  shapeContact,
+  parseContactText,
+  dedupeChannels,
+  searchContacts,
+  contactId as makeContactId,
+  sameAs,
+  primaryEmail,
+} from "../../lib/server/contactShape";
 
 const BATCH_LIMIT = 450; // Firestore caps a batch at 500 writes
 
@@ -180,18 +191,26 @@ export default function ContactsPanel({ user }) {
     return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [rows]);
 
+  // Shaped once, so a LinkedIn import and a typed contact render identically
+  // and the search sees channels, tags and notes rather than four scalars.
+  const people = useMemo(() => (rows || []).map((r) => shapeContact(r, { id: r.id })), [rows]);
+
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return (rows || []).slice(0, 100);
-    return (rows || [])
-      .filter((r) =>
-        [r.name, r.company, r.position, r.email].filter(Boolean).join(" ").toLowerCase().includes(q)
-      )
-      .slice(0, 100);
-  }, [rows, query]);
+    const q = query.trim();
+    if (q.length < 2) return people.slice(0, 100);
+    try {
+      return searchContacts(people, q, { limit: 100 });
+    } catch (_) {
+      // Fewer than two characters: show the head of the list rather than an
+      // error, because the box is being typed into.
+      return people.slice(0, 100);
+    }
+  }, [people, query]);
 
   return (
     <main className="admin-main">
+      <AddContact people={people} user={user} onDone={(m) => setMsg(m)} onError={(e) => setErr(e)} />
+
       <section className="ops-card">
         <h3>Import from the LinkedIn export</h3>
         <p className="admin-sub">
@@ -274,8 +293,28 @@ export default function ContactsPanel({ user }) {
               <div className="vt-meta">
                 {r.position || "—"}
                 {r.connectedOn ? ` · connected ${r.connectedOn}` : ""}
-                {r.email ? ` · ${r.email}` : ""}
               </div>
+              {r.channels?.length ? (
+                <div className="ct-channels">
+                  {r.channels.map((c) => (
+                    <span className={`ct-ch ct-ch-${c.kind}`} key={`${c.kind}:${c.key}`}>
+                      <i>{c.kind}</i>
+                      {c.kind === "email" ? (
+                        <a href={`mailto:${c.value}`}>{c.value}</a>
+                      ) : c.kind === "phone" ? (
+                        <a href={`tel:${c.value.replace(/[^\d+]/g, "")}`}>{c.value}</a>
+                      ) : c.kind === "url" ? (
+                        <a href={c.value} target="_blank" rel="noreferrer noopener">
+                          {c.value.replace(/^https?:\/\//, "")}
+                        </a>
+                      ) : (
+                        c.value
+                      )}
+                      {c.label ? <b>{c.label}</b> : null}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <div className="vt-btns">
                 <button className="admin-del" type="button" onClick={remove(r)}>✕</button>
               </div>
@@ -289,7 +328,223 @@ export default function ContactsPanel({ user }) {
         </div>
       )}
 
-      <style jsx global>{`
+      <ContactsStyles />
+    </main>
+  );
+}
+
+/* ================= adding one, in any form ================= */
+
+// The point of this panel is no longer only the CSV. You can paste an e-mail
+// signature, a line from a message, or just a phone number, and the channels
+// are read out of it — the fields are there for correcting what it got, not
+// for typing everything by hand.
+export function AddContact({ people, user, onDone, onError, initialText = "" }) {
+  // `initialText` exists only so /__contactspreview can show the parser mid-read
+  // without a browser automating keystrokes into it.
+  const [text, setText] = useState(initialText);
+  const [open, setOpen] = useState(!!initialText);
+  const [saving, setSaving] = useState(false);
+
+  // Parsed on every keystroke so you can see what it understood BEFORE you
+  // save. A parser you cannot see is one you stop trusting.
+  const parsed = useMemo(() => {
+    if (!text.trim()) return null;
+    try {
+      return parseContactText(text);
+    } catch (_) {
+      return null;
+    }
+  }, [text]);
+
+  const draft = useMemo(
+    () => (parsed ? shapeContact({ ...parsed, source: "manual" }) : null),
+    [parsed]
+  );
+
+  // Checked live, because discovering the duplicate after saving means two
+  // records to merge instead of one decision to make.
+  const clash = useMemo(
+    () => (draft && draft.channels.length ? people.find((c) => sameAs(draft, c)) : null),
+    [draft, people]
+  );
+
+  const save = async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const taken = new Set(people.map((c) => c.id));
+      let id = makeContactId(draft);
+      for (let n = 2; taken.has(id); n++) id = makeContactId(draft, { suffix: String(n) });
+
+      const now = new Date().toISOString();
+      await setDoc(
+        doc(db, "contacts", id),
+        {
+          name: draft.name,
+          company: draft.company,
+          position: draft.position,
+          note: draft.note,
+          tags: draft.tags,
+          channels: draft.channels,
+          source: "manual",
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      await logAdminAction({
+        action: "contacts.add",
+        target: id,
+        detail: draft.name || primaryEmail(draft),
+        user,
+      });
+      setText("");
+      setOpen(false);
+      onDone(`Saved ${draft.name || primaryEmail(draft) || id}.`);
+    } catch (e) {
+      onError(e?.message || "Could not save that contact.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="ops-card ct-add">
+      <ContactsStyles />
+      <h3>Add a contact</h3>
+      <p className="admin-sub">
+        Paste anything — a signature, a line from a message, an address and a phone number.
+        The ways of reaching them are read out of it; whatever is left becomes the note.
+      </p>
+
+      <textarea
+        className="admin-input"
+        placeholder={"Asha Menon\nStaff Engineer, Northwind\nasha@northwind.co.in | +91 98765 43210\nMet at the Rust meetup."}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setOpen(true);
+        }}
+      />
+
+      {open && draft ? (
+        <>
+          <div className="ct-parsed">
+            <span className="ct-parsed-name">{draft.name || "(no name found)"}</span>
+            {draft.channels.map((c) => (
+              <span className={`ct-ch ct-ch-${c.kind}`} key={`${c.kind}:${c.key}`}>
+                <i>{c.kind}</i>
+                {c.value}
+              </span>
+            ))}
+            {draft.channels.length === 0 ? (
+              <span className="admin-sub">No address, phone or link found — it will be saved by name only.</span>
+            ) : null}
+          </div>
+
+          {draft.note ? (
+            <p className="admin-sub" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+              Note: {draft.note}
+            </p>
+          ) : null}
+
+          {clash ? (
+            <p className="ct-dupe">
+              {clash.name || clash.id} already has one of those — saving this would be a second
+              record for the same person. Add to them instead, or save anyway and merge later.
+            </p>
+          ) : null}
+
+          <div className="ct-import">
+            <button
+              className="admin-primary"
+              type="button"
+              onClick={save}
+              disabled={saving || (!draft.name && draft.channels.length === 0)}
+            >
+              {saving ? "Saving…" : clash ? "Save anyway" : "Save contact"}
+            </button>
+            <button className="admin-ghost" type="button" onClick={() => { setText(""); setOpen(false); }}>
+              Clear
+            </button>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+/* ================= styles ================= */
+
+// Rendered by ContactsPanel AND by AddContact, because AddContact is used on
+// its own in /__contactspreview and a stylesheet that only mounts with the
+// whole panel is one that silently does not apply there. Same reason
+// PostBodyStyles and TasksStyles exist as components.
+export function ContactsStyles() {
+  return (
+    <style jsx global>{`
+        .ct-add textarea {
+          width: 100%;
+          min-height: 132px;
+          font-family: inherit;
+          font-size: 13px;
+          line-height: 1.5;
+          resize: vertical;
+        }
+        .ct-parsed {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+          align-items: center;
+          margin-top: 10px;
+        }
+        .ct-parsed-name {
+          font-family: "Space Grotesk", sans-serif;
+          font-size: 14px;
+          color: #e7e8ee;
+          margin-right: 4px;
+        }
+        .ct-dupe {
+          margin-top: 9px;
+          font-size: 12px;
+          color: #ffb020;
+          line-height: 1.5;
+        }
+        .ct-channels {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 6px;
+        }
+        .ct-ch {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11.5px;
+          border: 1px solid #262a35;
+          border-radius: 999px;
+          padding: 2px 9px;
+          color: #b9bdca;
+        }
+        .ct-ch i {
+          font-style: normal;
+          font-size: 10px;
+          color: #6b7285;
+        }
+        .ct-ch a {
+          color: #b9bdca;
+        }
+        .ct-ch b {
+          font-weight: 500;
+          color: #6b7285;
+        }
+        .ct-ch-email {
+          border-color: #2c3a33;
+        }
+        .ct-ch-phone {
+          border-color: #3a3326;
+        }
         .ct-import {
           display: flex;
           gap: 10px;
@@ -331,6 +586,5 @@ export default function ContactsPanel({ user }) {
           color: #ffb020;
         }
       `}</style>
-    </main>
   );
 }

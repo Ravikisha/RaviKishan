@@ -59,7 +59,9 @@
     "test:mail": "node scripts/mail-check.mjs",
     "vercel:check": "node scripts/vercel-check.mjs",
     "e2e:mail": "node scripts/mail-e2e.mjs",
-    "mail:setup": "node scripts/mail-setup-check.mjs"
+    "mail:setup": "node scripts/mail-setup-check.mjs",
+"test:contactshape": "node scripts/contactshape-check.mjs",
+    "e2e:contacts": "node scripts/e2e-check.js contacts"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

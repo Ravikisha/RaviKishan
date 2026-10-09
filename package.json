@@ -56,7 +56,10 @@
     "test:activity": "node scripts/activity-check.mjs",
     "test:launch": "node scripts/launch-check.mjs",
     "test:alltasks": "node scripts/alltasks-check.mjs",
-    "vercel:check": "node scripts/vercel-check.mjs"
+    "test:mail": "node scripts/mail-check.mjs",
+    "vercel:check": "node scripts/vercel-check.mjs",
+    "e2e:mail": "node scripts/mail-e2e.mjs",
+    "mail:setup": "node scripts/mail-setup-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

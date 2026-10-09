@@ -37,6 +37,8 @@ const TAB_FOR = {
   x: "social",
   analytics: "analytics",
   notion: "notes",
+  gmail: "mail",
+  outlook: "mail",
 };
 
 // A connection started from the Accounts panel comes back to it, whatever the

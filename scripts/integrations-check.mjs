@@ -61,8 +61,9 @@ console.log("\nproviders");
 // Assert the SET, not just the count: a provider silently renamed or dropped
 // is the failure that matters, and a count passes right through it.
 check(
-  providerIds().join(",") === "google,microsoft,github,youtube,instagram,x,analytics,notion,linkedin,huggingface,kaggle",
-  "all eleven providers are registered, in order",
+  providerIds().join(",") ===
+    "google,microsoft,github,youtube,instagram,x,gmail,outlook,analytics,notion,linkedin,huggingface,kaggle",
+  "all thirteen providers are registered, in order",
   providerIds().join(", ")
 );
 // EVERY provider is multi-account. The four-and-five split was real while
@@ -537,6 +538,57 @@ console.log("\nLinkedIn is the awkward grant: refresh token for partners only");
   check(
     new ConnectionError("x", { provider: "google" }).oauthError === "",
     "and defaults to empty rather than undefined"
+  );
+}
+
+console.log("\nthe two mail grants are separate on purpose");
+{
+  const gmail = getProvider("gmail");
+  const outlook = getProvider("outlook");
+
+  // Gmail's scopes are RESTRICTED. Bolting them onto the Tasks grant would
+  // demand a whole mailbox from anybody connecting a to-do list, and would
+  // drag every existing Tasks connection into Google's restricted-scope
+  // verification rules. So they are their own provider, sharing only the
+  // OAuth CLIENT.
+  check(
+    gmail.scopes.some((s) => /gmail\.modify/.test(s)) && gmail.scopes.some((s) => /gmail\.send/.test(s)),
+    "Gmail asks for modify and send, and nothing wider"
+  );
+  check(
+    !gmail.scopes.some((s) => s === "https://mail.google.com/"),
+    "and never https://mail.google.com/, which is what a permanent delete would need"
+  );
+  check(
+    !getProvider("google").scopes.some((s) => /gmail/.test(s)),
+    "the Tasks grant carries no mail scope, so a to-do list does not ask for a mailbox"
+  );
+
+  // Without access_type=offline there is no refresh token at all; without
+  // prompt=consent a RE-authorisation returns an access token only and the
+  // connection quietly becomes an hour long. Both are load-bearing on Google.
+  check(gmail.extraAuthParams?.access_type === "offline", "Gmail asks for offline access, or there is no refresh token");
+  check(gmail.extraAuthParams?.prompt === "consent", "and forces the consent screen, or a reconnect silently lasts an hour");
+
+  check(outlook.scopes.includes("Mail.ReadWrite") && outlook.scopes.includes("Mail.Send"), "Outlook asks for the two delegated mail permissions");
+  check(outlook.scopes.includes("offline_access"), "and offline_access, or Graph issues no refresh token");
+
+  // Both borrow an existing client rather than demanding a second one that
+  // would be a copy of the first -- the same call as analytics and youtube.
+  check(gmail.borrowsFrom?.id === "GOOGLE_TASKS_CLIENT_ID", "Gmail borrows the Google client when it has none of its own");
+  check(outlook.borrowsFrom?.id === "MS_TASKS_CLIENT_ID", "and Outlook borrows the Microsoft one");
+
+  // Borrowing a client does NOT borrow its redirect URI: Google and Microsoft
+  // both match the redirect character for character, so each provider's own
+  // callback has to be registered. This is the fault that read as configured
+  // right up to redirect_uri_mismatch AFTER signing in.
+  check(
+    redirectUriFor({ headers: { host: "www.ravikishan.me" } }, "gmail").endsWith("/api/integrations/gmail/callback"),
+    "Gmail has its own callback path, which must be registered separately"
+  );
+  check(
+    redirectUriFor({ headers: { host: "www.ravikishan.me" } }, "outlook").endsWith("/api/integrations/outlook/callback"),
+    "and so does Outlook"
   );
 }
 

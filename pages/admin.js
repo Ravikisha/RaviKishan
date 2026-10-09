@@ -41,6 +41,7 @@ import EnvPanel from "../components/admin/EnvPanel";
 import ContactsPanel from "../components/admin/ContactsPanel";
 import McpPanel from "../components/admin/McpPanel";
 import TasksPanel from "../components/admin/TasksPanel";
+import MailPanel from "../components/admin/MailPanel";
 import GithubPanel from "../components/admin/GithubPanel";
 import NotesPanel from "../components/admin/NotesPanel";
 import AnalyticsPanel from "../components/admin/AnalyticsPanel";
@@ -83,6 +84,7 @@ export const TABS = [
   ["social", "Social", "Publish"],
   ["youtube", "YouTube", "Publish"],
 
+  ["mail", "Mail", "Waiting on you"],
   ["inbox", "Inbox", "Waiting on you"],
   ["jobs", "Jobs", "Waiting on you"],
   ["tasks", "Tasks", "Waiting on you"],
@@ -790,6 +792,8 @@ function Editor({ user }) {
         <GithubPanel user={user} />
       ) : view === "tasks" ? (
         <TasksPanel user={user} />
+      ) : view === "mail" ? (
+        <MailPanel user={user} />
       ) : view === "jobs" ? (
         <JobsPanel user={user} />
       ) : view === "gallery" ? (

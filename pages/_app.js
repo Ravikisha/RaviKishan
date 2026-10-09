@@ -94,6 +94,7 @@ function MyApp({ Component, pageProps }) {
     "/__adminpreview",
     "/__githubpreview",
     "/__linkedinpreview",
+    "/__mailpreview",
     "/__notespreview",
     "/__socialpreview",
     "/__taskspreview",

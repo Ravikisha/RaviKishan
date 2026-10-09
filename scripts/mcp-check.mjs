@@ -916,6 +916,15 @@ console.log("\nthe registry survived however it was last merged");
       "get_env_status", "set_env_var", "import_env_vars", "delete_env_var",
       "get_runtime_config",
     ],
+    // Reading mail is the most sensitive thing this server does and sending it
+    // is the most dangerous: a sent message is irreversible, outward-facing,
+    // reaches a real person and arrives wearing the owner's name. Nothing else
+    // here has all four at once.
+    mail: [
+      "list_mail_accounts", "read_mail", "read_all_mail", "get_mail_message",
+      "send_mail", "reply_to_mail", "update_mail", "list_mail_folders",
+      "get_mail_analytics",
+    ],
   };
 
   const byName = new Map(TOOLS.map((t) => [t.name, t]));
@@ -948,6 +957,78 @@ console.log("\nthe registry survived however it was last merged");
   const all = TOOLS.map((t) => t.name);
   const dupes = all.filter((n, i) => all.indexOf(n) !== i);
   check(dupes.length === 0, "and no tool was duplicated by one", dupes.join(", "));
+}
+
+console.log("\nMail: the guards that make sending survivable");
+{
+  const { TOOLS, listToolsFor } = await import("../lib/server/mcpTools.js");
+  const mail = TOOLS.filter((t) => /mail/.test(t.name));
+
+  // Both outward-facing verbs must be able to show the message WITHOUT sending
+  // it. A model that can only send has no way to put the text in front of the
+  // person before it goes, and the person is the only one who can catch a
+  // wrong recipient.
+  for (const n of ["send_mail", "reply_to_mail"]) {
+    const t = TOOLS.find((x) => x.name === n);
+    check(!!t?.inputSchema?.properties?.dryRun, `${n} takes dryRun, so it can be shown before it is sent`);
+    check(/CANNOT BE UNDONE/i.test(t?.description || ""), `and ${n} says in its own description that it cannot be undone`);
+    check(t?.scope === "write", `and ${n} is behind the write scope`, t?.scope);
+  }
+
+  // A reply that names no message arrives as a brand-new mail to somebody
+  // expecting an answer, which LOOKS like it worked -- the worst failure shape
+  // there is. The schema must require the target rather than hope for it.
+  const reply = TOOLS.find((t) => t.name === "reply_to_mail");
+  check(
+    (reply?.inputSchema?.required || []).includes("messageId"),
+    "reply_to_mail REQUIRES the message it answers"
+  );
+
+  // Deliberate absences. The scope that would allow a permanent delete
+  // (https://mail.google.com/) is never requested, so a tool for it could not
+  // work even if somebody wrote one -- and a tool that fails at call time is
+  // worse than no tool, because the model only finds out after telling the
+  // user it is doing it.
+  check(
+    !mail.some((t) => /permanent|purge|empty_trash|^delete_mail/.test(t.name)),
+    "no tool permanently deletes mail",
+    mail.map((t) => t.name).join(", ")
+  );
+  check(
+    !mail.some((t) => /connect|disconnect|authori[sz]e/.test(t.name)),
+    "and none connects or disconnects a mailbox"
+  );
+  // A forwarding address or a server-side rule outlives the conversation that
+  // made it and keeps sending mail somewhere after nobody is watching. That is
+  // the same class as a standing credential, and it is not on offer.
+  check(
+    !mail.some((t) => /forward|filter|rule|vacation|auto_?reply/.test(t.name)),
+    "and none creates a forwarding address, a filter or an auto-reply"
+  );
+
+  // read_all_mail spans every mailbox, so naming one would be meaningless --
+  // the same exemption list_all_tasks has.
+  const all = TOOLS.find((t) => t.name === "read_all_mail");
+  check(!all?.inputSchema?.properties?.accountId, "read_all_mail takes no accountId: it spans every mailbox");
+  const perBox = [
+    "read_mail", "get_mail_message", "send_mail", "reply_to_mail", "update_mail",
+    "list_mail_folders", "get_mail_analytics",
+  ];
+  const missing = perBox.filter((n) => !TOOLS.find((t) => t.name === n)?.inputSchema?.properties?.accountId);
+  check(missing.length === 0, "and every per-mailbox tool declares accountId", missing.join(", "));
+  const required = perBox.filter((n) =>
+    (TOOLS.find((t) => t.name === n)?.inputSchema?.required || []).includes("accountId")
+  );
+  check(required.length === 0, "while none REQUIRES it, since one mailbox is still the common case", required.join(", "));
+
+  // A read-only token must not be offered a way to send. This is the check
+  // that would have caught send_mail being given the wrong scope on a merge.
+  const readOnly = listToolsFor(["read"]).map((t) => t.name);
+  check(
+    !readOnly.some((n) => ["send_mail", "reply_to_mail", "update_mail"].includes(n)),
+    "a read-only token is offered nothing that sends or changes a message"
+  );
+  check(readOnly.includes("read_all_mail"), "but it can still read the inbox");
 }
 
 console.log("\nML lab: what must stay absent");

@@ -95,6 +95,7 @@ function MyApp({ Component, pageProps }) {
     "/__agentpreview",
     "/__contactspreview",
     "/__githubpreview",
+    "/__jarvispreview",
     "/__linkedinpreview",
     "/__mailpreview",
     "/__memorypreview",

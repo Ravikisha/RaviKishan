@@ -69,6 +69,7 @@
     "test:agent": "node agent/test/agent-check.mjs && node agent/test/chat-check.mjs && node agent/test/desktop-check.mjs",
     "e2e:agent": "node scripts/e2e-check.js agent",
     "e2e:workbench": "node scripts/e2e-check.js workbench",
+    "e2e:jarvis": "node scripts/e2e-check.js jarvis",
     "test:whatsapp": "node scripts/whatsapp-check.mjs",
     "e2e:whatsapp": "node scripts/e2e-check.js whatsapp"
   },

@@ -2113,6 +2113,226 @@ async function desktopBlogSuite(browser) {
   }
 }
 
+/* ---------------- Jarvis (owner-only desktop app) suite ---------------- */
+
+// The desktop's Jarvis app drives the agent server, so it must not exist for
+// a visitor: no launcher entry, no window on request, no chunk fetched and no
+// agent address anywhere in what the page loaded. For the owner it is driven
+// through /__jarvispreview, which mounts the REAL DesktopOS with the gate
+// forced open (ignored in production; the page 404s there) and a fake socket.
+async function jarvisSuite(browser) {
+  console.log("\njarvis: owner-only agent desktop in the OS");
+  const OWNER_CODE = /jarvis|workbench|AgentPanel|agentClient/i;
+
+  /* ---- anonymous visitor ---- */
+  {
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await withMode(page, "dev");
+    const urls = [];
+    page.on("request", (r) => urls.push(r.url()));
+    try {
+      await page.goto(BASE, { waitUntil: "networkidle2", timeout: 60000 });
+      await new Promise((r) => setTimeout(r, 3500));
+      await page.evaluate(() => document.querySelector('[aria-label*="All apps"]')?.click());
+      await new Promise((r) => setTimeout(r, 800));
+      const apps = await page.evaluate(() => Array.from(document.querySelectorAll(".os-lp-app")).map((a) => a.textContent.trim()));
+      check(apps.length > 5, "the launcher lists the public apps", String(apps.length));
+      check(!apps.some((a) => /jarvis/i.test(a)), "a visitor's launcher has no Jarvis");
+      await page.type(".os-lp-search input", "jarvis");
+      await new Promise((r) => setTimeout(r, 300));
+      const hits = await page.evaluate(() => Array.from(document.querySelectorAll(".os-sp-row")).map((r) => r.textContent));
+      check(!hits.some((h) => /jarvis/i.test(h)), "and Spotlight finds no Jarvis", JSON.stringify(hits).slice(0, 80));
+      await page.keyboard.press("Escape");
+
+      // Asking the shell for it directly must do nothing at all.
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent("os:open", { detail: "jarvis" })));
+      await new Promise((r) => setTimeout(r, 1500));
+      const after = await page.evaluate(() => ({
+        win: !!document.querySelector('.os-win[aria-label^="Jarvis"]'),
+        jv: !!document.querySelector(".jv-root"),
+        html: document.documentElement.outerHTML,
+      }));
+      check(!after.win && !after.jv, "an os:open for jarvis opens no window");
+      check(!/jarvis/i.test(after.html), "the visitor's DOM never names Jarvis");
+      check(!/agent\.ravikishan\.me|wss:\/\//i.test(after.html), "and carries no agent address");
+
+      const owned = urls.filter((u) => OWNER_CODE.test(u));
+      check(owned.length === 0, "no Jarvis or workbench chunk is requested", owned.slice(0, 3).join(" "));
+
+      // The scripts the visitor DID load must not carry the agent's address.
+      const scripts = [...new Set(urls.filter((u) => u.startsWith(BASE) && /\.js(\?|$)/.test(u)))];
+      let leaked = "";
+      for (const u of scripts) {
+        const body = await fetch(u).then((r) => r.text()).catch(() => "");
+        if (/agent\.ravikishan\.me/.test(body)) {
+          leaked = u;
+          break;
+        }
+      }
+      check(scripts.length > 0 && !leaked, "no loaded script contains the agent server's address", leaked || `${scripts.length} scripts`);
+    } catch (e) {
+      bad("jarvis anonymous", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
+  /* ---- the owner, through the preview ---- */
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const at = `@${width}`;
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await page.setViewport({ width, height });
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => {
+      if (m.type() === "error" && !/favicon|Failed to load resource/i.test(m.text())) errors.push(m.text());
+    });
+    try {
+      await page.goto(`${BASE}/__jarvispreview`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector('.os-win[aria-label^="Jarvis"] .jv-root', { timeout: 30000 });
+      await page.waitForSelector(".jv-root .wb-shot", { timeout: 20000 }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 600));
+
+      const s = await page.evaluate(() => {
+        const win = document.querySelector('.os-win[aria-label^="Jarvis"]');
+        const r = win.getBoundingClientRect();
+        const root = win.querySelector(".jv-root");
+        const body = win.querySelector(".jv-body");
+        const shot = win.querySelector(".wb-shot");
+        const sel = win.querySelector('.jv-tab[aria-selected="true"]');
+        const take = win.querySelector(".wb-take");
+        const bar = win.querySelector(".jv-bar").getBoundingClientRect();
+        return {
+          vw: innerWidth,
+          vh: innerHeight,
+          r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width, h: r.height },
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          inner: root.scrollWidth - root.clientWidth,
+          body: body.scrollWidth - body.clientWidth,
+          barFits: bar.right <= r.right + 1,
+          tab: sel && sel.dataset.tab,
+          tabs: Array.from(win.querySelectorAll(".jv-tab")).map((t) => t.dataset.tab),
+          shot: !!shot && /^data:image\//.test(shot.getAttribute("src") || ""),
+          shotW: shot ? shot.getBoundingClientRect().width : 0,
+          shotFits: !!shot && shot.getBoundingClientRect().right <= r.right + 1,
+          take: take ? take.textContent.trim() : "",
+          pressed: take ? take.getAttribute("aria-pressed") : "",
+          watching: ((win.querySelector(".wb-drive") || {}).textContent || "").trim(),
+          badge: ((win.querySelector('.jv-tab[data-tab="runs"] em') || {}).textContent || ""),
+        };
+      });
+      check(s.r.left >= 0 && s.r.right <= s.vw + 1, `${at} the window sits inside the viewport`, JSON.stringify(s.r));
+      check(s.r.w >= s.vw * 0.88 && s.r.h >= s.vh * 0.6, `${at} it opens large: most of the viewport`, `${Math.round(s.r.w)}x${Math.round(s.r.h)} of ${s.vw}x${s.vh}`);
+      check(s.overflow <= 0, `${at} nothing overflows the page sideways`, `${s.overflow}px`);
+      check(s.inner <= 1 && s.body <= 1, `${at} nothing overflows inside the window`, `${s.inner}/${s.body}px`);
+      check(s.barFits, `${at} the tab bar fits the window`);
+      check(JSON.stringify(s.tabs) === JSON.stringify(["desktop", "chat", "terminal", "runs"]), `${at} tabs: Desktop, Chat, Terminal, Runs`, s.tabs.join(","));
+      check(s.tab === "desktop", `${at} Desktop is the default tab`, s.tab);
+      check(s.shot && s.shotW > 200 && s.shotFits, `${at} the screenshot stream shows the seeded frame, inside the window`, `${Math.round(s.shotW)}px`);
+      check(s.take === "Take control" && s.pressed === "false", `${at} it opens view-only`, `${s.take} ${s.pressed}`);
+      check(/watching/i.test(s.watching), `${at} and says it is only watching`, s.watching);
+      check(s.badge === "1", `${at} Runs carries the waiting approval as a badge`, s.badge);
+
+      // View-only means a click on the picture reaches nothing.
+      await page.click(".jv-root .wb-shot");
+      await new Promise((r) => setTimeout(r, 500));
+      const quiet = await page.evaluate(() => (window.__jvActions || []).length);
+      check(quiet === 0, `${at} a click while watching sends nothing`, String(quiet));
+
+      // Taking control: a click on the picture maps to screen pixels.
+      await page.click(".jv-root .wb-take");
+      await page.click(".jv-root .wb-shot");
+      await new Promise((r) => setTimeout(r, 700));
+      const acted = await page.evaluate(() => ({
+        actions: window.__jvActions || [],
+        driving: !!document.querySelector(".jv-root .wb-screen.driving"),
+      }));
+      const a = acted.actions[0] || {};
+      check(acted.driving, `${at} Take control puts the amber driving edge on the frame`);
+      check(a.action === "click" && a.x >= 0 && a.x < 1600 && a.y >= 0 && a.y < 900, `${at} and a click there becomes a click on the box`, JSON.stringify(a));
+
+      // Runs: only what is live, the waiting one first, its approval above.
+      await page.click('.jv-tab[data-tab="runs"]');
+      await page.waitForSelector(".jv-run", { timeout: 5000 });
+      const runs = await page.evaluate(() => ({
+        rows: Array.from(document.querySelectorAll(".jv-run")).map((r) => r.dataset.state),
+        card: !!document.querySelector(".jv-asks .ag-card"),
+        shotGone: !document.querySelector(".wb-shot"),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      check(JSON.stringify(runs.rows) === JSON.stringify(["waiting", "stalled", "running"]), `${at} Runs lists only live runs, waiting first`, runs.rows.join(","));
+      check(runs.card, `${at} the waiting run's approval card is on Runs`);
+      check(runs.shotGone, `${at} leaving Desktop unmounts the stream`);
+      check(runs.overflow <= 0, `${at} Runs does not overflow`, `${runs.overflow}px`);
+      const shotsA = await page.evaluate(() => window.__jvShots || 0);
+      await new Promise((r) => setTimeout(r, 2200));
+      const shotsB = await page.evaluate(() => window.__jvShots || 0);
+      check(shotsB === shotsA, `${at} and stops polling for frames`, `${shotsA} -> ${shotsB}`);
+
+      await page.click('.jv-tab[data-tab="chat"]');
+      await page.waitForSelector(".jv-root .wb-chat", { timeout: 5000 });
+      const chat = await page.evaluate(() => ({
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        inner: (() => { const b = document.querySelector(".jv-body"); return b.scrollWidth - b.clientWidth; })(),
+      }));
+      check(chat.overflow <= 0 && chat.inner <= 1, `${at} Chat renders inside the window without overflow`, `${chat.overflow}/${chat.inner}px`);
+
+      await page.click('.jv-tab[data-tab="terminal"]');
+      await new Promise((r) => setTimeout(r, 600));
+      const term = await page.evaluate(() => ({
+        tab: (document.querySelector('.jv-tab[aria-selected="true"]') || {}).dataset?.tab,
+        text: (document.querySelector(".jv-body") || {}).innerText || "",
+      }));
+      check(term.tab === "terminal" && term.text.trim().length > 10, `${at} Terminal renders`, term.text.slice(0, 60));
+
+      // Closing the window closes the socket. Counted from here: React's
+      // StrictMode mounts, unmounts and remounts in development, which is
+      // itself one close of a socket that never got to open.
+      const before = await page.evaluate(() => window.__jvClosed || 0);
+      await page.click('.os-win[aria-label^="Jarvis"] .os-l.red');
+      await new Promise((r) => setTimeout(r, 700));
+      const closed = await page.evaluate(() => ({
+        win: !!document.querySelector('.os-win[aria-label^="Jarvis"]'),
+        closed: window.__jvClosed || 0,
+      }));
+      check(!closed.win && closed.closed === before + 1, `${at} closing the window disconnects the socket`, JSON.stringify({ ...closed, before }));
+      check(errors.length === 0, `${at} no errors in the console`, errors.slice(0, 2).join(" | "));
+    } catch (e) {
+      bad(`jarvis ${at}`, e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
+  /* ---- a socket that cannot connect says why, in the window ---- */
+  {
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await page.setViewport({ width: 390, height: 844 });
+    try {
+      await page.goto(`${BASE}/__jarvispreview?fail=1`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".jv-root .jv-down", { timeout: 30000 });
+      const d = await page.evaluate(() => ({
+        text: (document.querySelector(".jv-down") || {}).innerText || "",
+        inWin: !!document.querySelector('.os-win[aria-label^="Jarvis"] .jv-down'),
+        shot: !!document.querySelector(".wb-shot"),
+        retry: !!Array.from(document.querySelectorAll(".jv-down button")).find((b) => /try now/i.test(b.textContent)),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      check(d.inWin && /can.t reach/i.test(d.text), "an unreachable server is said inside the window");
+      check(/not allowed/i.test(d.text), "with the reason the server gave", d.text.slice(0, 90));
+      check(d.retry && !d.shot, "offering Try now instead of an empty frame");
+      check(d.overflow <= 0, "and fits a phone", `${d.overflow}px`);
+    } catch (e) {
+      bad("jarvis unreachable", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+}
+
 /* ---------------- resume variants suite ---------------- */
 
 // /resume?v=<id> serves a different cut of the CV. An unknown variant must
@@ -3280,6 +3500,7 @@ async function orgsSuite(browser) {
       await contactsSuite(browser);
       await agentSuite(browser);
       await workbenchSuite(browser);
+      await jarvisSuite(browser);
       await whatsappSuite(browser);
       await orgsSuite(browser);
       await memorySuite(browser);
@@ -3315,6 +3536,14 @@ async function orgsSuite(browser) {
     const browser = await launch({ headful: !!process.env.HEADFUL });
     try {
       await agentSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "jarvis") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await jarvisSuite(browser);
     } finally {
       await browser.close();
     }

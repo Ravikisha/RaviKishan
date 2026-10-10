@@ -5,6 +5,7 @@
 // and refresh_token, public clients, dynamic registration. No implicit grant,
 // no password grant, no client secrets — all of which OAuth 2.1 removes.
 import { withEnv } from "../../../lib/server/envStore";
+import { ALL_SCOPES } from "../../../lib/server/mcpScopes";
 function handler(req, res) {
   const host = req.headers.host || "";
   const proto =
@@ -18,7 +19,9 @@ function handler(req, res) {
     authorization_endpoint: `${base}/oauth/authorize`,
     token_endpoint: `${base}/api/oauth/token`,
     registration_endpoint: `${base}/api/oauth/register`,
-    scopes_supported: ["read", "write", "vault"],
+    // Every scope the server honours, from the one catalogue. The consent
+    // screen offers all of them; agent and secrets are never pre-ticked.
+    scopes_supported: ALL_SCOPES,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],

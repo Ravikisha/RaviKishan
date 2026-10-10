@@ -49,6 +49,7 @@ console.log(`base: ${BASE}\n`);
 
 console.log("discovery");
 let meta = null;
+const scopeMeta = {};
 {
   const r = await fetch(`${BASE}/.well-known/oauth-authorization-server`);
   check(r.ok, "authorization server metadata served", `HTTP ${r.status}`);
@@ -78,6 +79,54 @@ let meta = null;
     "protected-resource metadata now points at the authorization server",
     JSON.stringify(prj.authorization_servers)
   );
+  scopeMeta.pr = prj.scopes_supported;
+}
+
+// One scope catalogue (lib/server/mcpScopes.js) feeds the server, both
+// discovery documents and the consent screen. A client that reads
+// scopes_supported must be told about agent and secrets too, or it can never
+// ask for them; the consent screen must offer them but never tick them.
+console.log("\nscopes");
+{
+  const { ALL_SCOPES, DANGEROUS_SCOPES, consentDefaults } = await import("../lib/server/mcpScopes.js");
+  const { ALL_SCOPES: TOKEN_SCOPES } = await import("../lib/server/mcpToken.js");
+  const same = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
+  check(same(ALL_SCOPES, TOKEN_SCOPES), "mcpToken honours exactly the catalogue's scopes", TOKEN_SCOPES.join(","));
+  for (const s of ["read", "write", "vault", "secrets", "agent"]) check(ALL_SCOPES.includes(s), `the catalogue has ${s}`);
+  check(same(meta?.scopes_supported, ALL_SCOPES), "authorization server advertises every scope", JSON.stringify(meta?.scopes_supported));
+  check(same(scopeMeta.pr, ALL_SCOPES), "protected-resource metadata advertises every scope", JSON.stringify(scopeMeta.pr));
+  check(
+    Object.keys(DANGEROUS_SCOPES).sort().join(",") === "agent,secrets" &&
+      Object.values(DANGEROUS_SCOPES).every((w) => w.length > 10),
+    "agent and secrets are the dangerous ones, each with a stated reason"
+  );
+  const d = (q) => consentDefaults(q).sort().join(",");
+  check(d(undefined) === "read", "consent ticks read when nothing is asked for", d(undefined));
+  check(d("read write") === "read,write", "consent ticks the safe scopes a client asked for", d("read write"));
+  check(d("read+vault") === "read,vault", "and reads a +-joined scope list", d("read+vault"));
+  check(d("agent secrets") === "read", "never ticks agent or secrets, even when asked", d("agent secrets"));
+  check(d("write agent") === "write", "drops the dangerous half of a mixed request", d("write agent"));
+  check(d("admin root") === "read", "ignores scopes that do not exist", d("admin root"));
+
+  // The consent page is a client component; prove from its source that it
+  // offers the whole catalogue and pre-ticks only through consentDefaults.
+  const page = fs.readFileSync(path.join(root, "pages/oauth/authorize.js"), "utf8");
+  check(
+    /ALL_SCOPES\.map\(/.test(page) && page.includes('from "../../lib/server/mcpScopes"'),
+    "the consent screen offers every scope from the catalogue"
+  );
+  check(page.includes("consentDefaults(q.scope)"), "and pre-ticks only what consentDefaults allows");
+  check(
+    page.includes('type="checkbox"') && page.includes("dangerous") && page.includes("DANGEROUS_SCOPES[s]"),
+    "each scope is a checkbox; the dangerous ones say so and why"
+  );
+  check(!page.includes('["read", "write", "vault"]'), "no hard-coded three-scope list survives on the page");
+  for (const f of ["pages/api/well-known/oauth-authorization-server.js", "pages/api/well-known/oauth-protected-resource.js"]) {
+    const src = fs.readFileSync(path.join(root, f), "utf8");
+    check(src.includes("scopes_supported: ALL_SCOPES"), `${path.basename(f)} derives scopes_supported`);
+  }
+  const issue = fs.readFileSync(path.join(root, "pages/api/oauth/issue.js"), "utf8");
+  check(/filter\(\(s\) => ALL_SCOPES\.includes\(s\)\)/.test(issue), "issuing a code accepts exactly the catalogue's scopes");
 }
 
 console.log("\ndynamic client registration");

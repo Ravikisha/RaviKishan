@@ -8,6 +8,7 @@
 // empty and the documentation URL says where to get one. Publishing accurate
 // metadata that says "no AS" is better than publishing none, and better than
 // advertising an endpoint that does not exist.
+import { ALL_SCOPES } from "../../../lib/server/mcpScopes";
 import { withEnv } from "../../../lib/server/envStore";
 function handler(req, res) {
   const host = req.headers.host || "";
@@ -21,7 +22,7 @@ function handler(req, res) {
     resource: `${base}/api/mcp`,
     authorization_servers: [base],
     bearer_methods_supported: ["header"],
-    scopes_supported: ["read", "write", "vault"],
+    scopes_supported: ALL_SCOPES,
     resource_name: "Ravi Kishan — identity control plane",
     resource_documentation: `${base}/admin`,
     // Non-standard, but the only thing a human reading this actually needs.

@@ -47,6 +47,7 @@ import MailPanel from "../components/admin/MailPanel";
 import GithubPanel from "../components/admin/GithubPanel";
 import NotesPanel from "../components/admin/NotesPanel";
 import AgentPanel from "../components/admin/AgentPanel";
+import JarvisPanel from "../components/admin/JarvisPanel";
 import AnalyticsPanel from "../components/admin/AnalyticsPanel";
 import SearchPanel from "../components/admin/SearchPanel";
 import AssetsPanel from "../components/admin/AssetsPanel";
@@ -116,6 +117,10 @@ export const TABS = [
   // themselves, and every login's membership across them, are managed.
   ["orgs", "Orgs", "Access"],
   ["agent", "Agent", "Access"],
+  // Beside Agent: the same box, as a remote desktop. Agent is where runs are
+  // started and accounts managed; Jarvis is where you watch the box's screen
+  // (and take it over) with chat, shell and runs in a side panel.
+  ["jarvis", "Jarvis", "Access"],
 
   ["mcp", "MCP", "Access"],
 ];
@@ -860,6 +865,8 @@ function Editor({ user }) {
         <PostsPanel user={user} />
       ) : view === "agent" ? (
         <AgentPanel user={user} />
+      ) : view === "jarvis" ? (
+        <JarvisPanel />
       ) : view === "notes" ? (
         <NotesPanel user={user} />
       ) : view === "github" ? (

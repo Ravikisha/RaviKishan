@@ -1,17 +1,21 @@
-// Design reference for the Jarvis desktop app, rendered with the REAL shell.
+// Design reference for the admin's Jarvis tab, rendered with the REAL
+// AdminShell, the real admin Styles and the real JarvisPanel, so it cannot
+// drift from the signed-in interface. The panel is handed a FAKE agent
+// socket: a seeded screenshot frame, live runs (one waiting on an approval,
+// one gone quiet) and a chat list. Nothing here talks to the box.
 //
-// This mounts the real DesktopOS with `forceOwner` — which a production build
-// ignores, and this page is notFound there anyway — and opens the real Jarvis
-// window against a FAKE agent socket: a seeded screenshot frame, two live
-// runs (one waiting on an approval, one gone quiet) and a chat list. Nothing
-// here talks to the box.
-//
-//   /__jarvispreview          connected, Desktop tab, the seeded frame
+//   /__jarvispreview          connected, the seeded frame
 //   /__jarvispreview?fail=1   the socket never connects, with the reason
+//   /__jarvispreview?side=runs  opens with the side panel showing Runs
+//   /__jarvispreview?tab=mcp    the MCP tab, for its "Connect from anywhere"
 //
-// e2e:jarvis drives it at 390 and 1440px.
+// e2e:jarvis drives it at 390, 768 and 1440px. 404s in production: it is a
+// design tool, not a page.
 import React, { useEffect, useState } from "react";
-import DesktopOS from "../components/os/DesktopOS";
+import AdminShell from "../components/admin/AdminShell";
+import JarvisPanel from "../components/admin/JarvisPanel";
+import McpPanel from "../components/admin/McpPanel";
+import { Styles, TABS } from "./admin";
 
 const MIN = 60000;
 
@@ -104,33 +108,34 @@ function fakeClient({ fail = false } = {}) {
 }
 
 export default function JarvisPreview() {
-  const [ready, setReady] = useState(false);
+  const [opts, setOpts] = useState(null);
+  // Switching section really unmounts the panel, as in the admin, so the
+  // suite can prove leaving the tab closes the socket.
+  const [view, setView] = useState("jarvis");
 
+  // After mount: the seed is dated relative to now and the views print local
+  // times, both of which differ between the server render and the client.
   useEffect(() => {
-    try {
-      localStorage.removeItem("os:wins");
-      localStorage.setItem("os:welcomed", "1");
-    } catch (_) {}
-    setReady(true);
+    const q = new URLSearchParams(window.location.search);
+    setOpts({ fail: q.has("fail"), side: q.get("side") || "" });
+    if (q.get("tab") === "mcp") setView("mcp");
   }, []);
 
-  // The owner's app registers asynchronously (its entry is imported after the
-  // gate opens), so keep asking until the window exists.
-  useEffect(() => {
-    if (!ready) return undefined;
-    const fail = new URLSearchParams(window.location.search).has("fail");
-    const makeClient = fakeClient({ fail });
-    const t = setInterval(() => {
-      if (document.querySelector('.os-win[aria-label^="Jarvis"]')) return clearInterval(t);
-      window.dispatchEvent(new CustomEvent("os:open", { detail: { id: "jarvis", props: { makeClient } } }));
-    }, 300);
-    return () => clearInterval(t);
-  }, [ready]);
-
   return (
-    <main style={{ minHeight: "100vh", background: "#08090d" }}>
-      {ready ? <DesktopOS forceOwner /> : null}
-    </main>
+    <AdminShell tabs={TABS} view={view} onView={setView} email="ravikishan63392@gmail.com" onSignOut={() => {}}>
+      {!opts ? null : view === "jarvis" ? (
+        <JarvisPanel makeClient={fakeClient({ fail: opts.fail })} initialSide={opts.side} />
+      ) : view === "mcp" ? (
+        // The MCP tab's "Connect from anywhere" section, with no sign-in: the
+        // token list beneath it simply fails to load, which is fine here.
+        <McpPanel user={null} />
+      ) : (
+        <p className="admin-sub jp-left" style={{ padding: "0 20px" }}>
+          Left the Jarvis tab.
+        </p>
+      )}
+      <Styles />
+    </AdminShell>
   );
 }
 

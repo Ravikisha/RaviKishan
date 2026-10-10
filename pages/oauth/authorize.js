@@ -19,11 +19,19 @@ import {
 } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import { isAdminEmail } from "../../lib/adminAllowlist";
+import { ALL_SCOPES, DANGEROUS_SCOPES, isDangerousScope, consentDefaults } from "../../lib/server/mcpScopes";
 
+// Every scope the server honours is OFFERED, not just the ones the client
+// asked for, because a client that only knows "read" (most of them) should
+// not stop you granting what you meant to. What is TICKED is the client's
+// safe request, or read; agent and secrets are never ticked for you, the same
+// rule as the admin's MCP tab, because each one is a decision on its own.
 const SCOPE_TEXT = {
-  read: "Read your profile, résumé, jobs, posts, links, contacts and vault listings",
-  write: "Create and update your content, jobs, posts and short links",
-  vault: "List private documents and mint short-lived download links",
+  read: ["Read", "Your profile, résumé, jobs, posts, links, contacts and vault listings; watch the agent server"],
+  write: ["Write", "Create and update your content, jobs, posts and short links"],
+  vault: ["Vault", "List private documents and mint short-lived download links"],
+  secrets: ["Secrets", "Read and write stored passwords and API keys marked readable by agents"],
+  agent: ["Agent runs", "Start runs and chats on the agent server, drive its desktop, answer its approval requests"],
 };
 
 export default function Authorize() {
@@ -34,9 +42,13 @@ export default function Authorize() {
   const [client, setClient] = useState(null);
 
   const q = router.query;
-  const scopes = String(q.scope || "read")
-    .split(/[\s+]+/)
-    .filter((s) => ["read", "write", "vault"].includes(s));
+  const [picked, setPicked] = useState(null);
+  useEffect(() => {
+    if (!router.isReady || picked) return;
+    const on = consentDefaults(q.scope);
+    setPicked(Object.fromEntries(ALL_SCOPES.map((s) => [s, on.includes(s)])));
+  }, [router.isReady, q.scope, picked]);
+  const scopes = picked ? ALL_SCOPES.filter((s) => picked[s]) : [];
 
   useEffect(() => onAuthStateChanged(auth, (u) => setUser(u || null)), []);
 
@@ -79,6 +91,7 @@ export default function Authorize() {
 
   const approve = async () => {
     setErr("");
+    if (!scopes.length) return setErr("Tick at least one scope.");
     setBusy(true);
     try {
       const idToken = await auth.currentUser.getIdToken();
@@ -141,11 +154,37 @@ export default function Authorize() {
                 access your personal data on ravikishan.me.
               </p>
 
-              <ul className="oa-scopes">
-                {scopes.map((s) => (
-                  <li key={s}>{SCOPE_TEXT[s]}</li>
-                ))}
-              </ul>
+              <fieldset className="oa-scopes">
+                <legend>What it may do</legend>
+                {picked &&
+                  ALL_SCOPES.map((s) => {
+                    const danger = isDangerousScope(s);
+                    const [label, text] = SCOPE_TEXT[s] || [s, ""];
+                    return (
+                      <label
+                        key={s}
+                        className={`oa-scope${picked[s] ? " on" : ""}${danger ? " danger" : ""}`}
+                        data-scope={s}
+                      >
+                        <input
+                          type="checkbox"
+                          name="scope"
+                          value={s}
+                          checked={!!picked[s]}
+                          onChange={(e) => setPicked((p) => ({ ...p, [s]: e.target.checked }))}
+                        />
+                        <span>
+                          <b>
+                            {label}
+                            {danger ? <em className="oa-danger">dangerous</em> : null}
+                          </b>
+                          <i>{text}</i>
+                          {danger ? <i className="oa-warn">{DANGEROUS_SCOPES[s]}</i> : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+              </fieldset>
 
               <p className="oa-redirect">
                 You will be returned to <code>{client.redirect_uri}</code>
@@ -179,7 +218,7 @@ export default function Authorize() {
                     <button className="oa-ghost" type="button" onClick={deny} disabled={busy}>
                       Deny
                     </button>
-                    <button className="oa-primary" type="button" onClick={approve} disabled={busy}>
+                    <button className="oa-primary" type="button" onClick={approve} disabled={busy || !scopes.length}>
                       {busy ? "Authorizing…" : "Approve"}
                     </button>
                   </div>
@@ -224,21 +263,81 @@ export default function Authorize() {
           margin: 0 0 14px;
         }
         .oa-scopes {
-          list-style: none;
+          border: 0;
           padding: 0;
           margin: 0 0 14px;
           display: flex;
           flex-direction: column;
           gap: 8px;
+          min-width: 0;
         }
-        .oa-scopes li {
+        .oa-scopes legend {
+          padding: 0;
+          margin: 0 0 8px;
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #8b90a0;
+        }
+        .oa-scope {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
           background: #0f1117;
           border: 1px solid #262a35;
-          border-left: 3px solid #ffb020;
+          border-left: 3px solid #262a35;
           border-radius: 8px;
           padding: 9px 12px;
           font-size: 12.5px;
           color: #cfd3dd;
+          cursor: pointer;
+        }
+        .oa-scope input {
+          margin-top: 2px;
+          accent-color: #ffb020;
+        }
+        .oa-scope.on {
+          border-left-color: #ffb020;
+        }
+        .oa-scope.danger.on {
+          border-color: #a33b45;
+          border-left-color: #ff6b6b;
+        }
+        .oa-scope:focus-within {
+          outline: 2px solid #ffb020;
+          outline-offset: 2px;
+        }
+        .oa-scope b {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #e7e8ee;
+          font-weight: 600;
+        }
+        .oa-scope i {
+          display: block;
+          font-style: normal;
+          font-size: 11.5px;
+          color: #8b90a0;
+          margin-top: 2px;
+          line-height: 1.45;
+        }
+        .oa-danger {
+          font-style: normal;
+          font-weight: 500;
+          font-size: 10.5px;
+          color: #ff8a8a;
+          border: 1px solid #5a2a2e;
+          border-radius: 999px;
+          padding: 0 7px;
+        }
+        .oa-scope i.oa-warn {
+          color: #ff9a9a;
+        }
+        .oa-primary:focus-visible,
+        .oa-ghost:focus-visible {
+          outline: 2px solid #ffb020;
+          outline-offset: 2px;
         }
         .oa-redirect {
           font-size: 11.5px;

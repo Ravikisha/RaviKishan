@@ -134,7 +134,14 @@ console.log("\ndiscovery document");
     const m = await r.json();
     check(typeof m.resource === "string" && m.resource.endsWith("/api/mcp"), "resource points at the MCP endpoint", m.resource);
     check(Array.isArray(m.bearer_methods_supported) && m.bearer_methods_supported.includes("header"), "advertises header bearer auth");
-    check(Array.isArray(m.scopes_supported) && m.scopes_supported.length === 3, "advertises the three scopes", String(m.scopes_supported));
+    // Every scope the server honours, from the one catalogue — a client that
+    // reads this must be able to ask for agent and secrets as well.
+    const { ALL_SCOPES } = await import("../lib/server/mcpScopes.js");
+    check(
+      Array.isArray(m.scopes_supported) && [...m.scopes_supported].sort().join(",") === [...ALL_SCOPES].sort().join(","),
+      "advertises every scope in the catalogue",
+      String(m.scopes_supported)
+    );
   }
 }
 

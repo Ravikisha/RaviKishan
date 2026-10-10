@@ -2113,18 +2113,46 @@ async function desktopBlogSuite(browser) {
   }
 }
 
-/* ---------------- Jarvis (owner-only desktop app) suite ---------------- */
+/* ---------------- Jarvis (admin-only remote desktop) suite ---------------- */
 
-// The desktop's Jarvis app drives the agent server, so it must not exist for
-// a visitor: no launcher entry, no window on request, no chunk fetched and no
-// agent address anywhere in what the page loaded. For the owner it is driven
-// through /__jarvispreview, which mounts the REAL DesktopOS with the gate
-// forced open (ignored in production; the page 404s there) and a fake socket.
+// Jarvis drives the agent server, so it lives in the ADMIN and nowhere else.
+// Three halves:
+//   1. the public site has nothing: no launcher entry, no window on request,
+//      no chunk, no agent address in any script a visitor loads, and no owner
+//      code left in components/os at all
+//   2. the admin's Jarvis tab, through /__jarvispreview (the real AdminShell,
+//      the real JarvisPanel, a fake socket): the box's screen is the page, at
+//      its own ratio, view-only until Take control, with Chat / Terminal / Runs
+//      in a side panel, and leaving the tab closes the socket
+//   3. MCP from anywhere: the consent screen offers every scope and never
+//      ticks agent or secrets, and the MCP tab's "Connect from anywhere"
 async function jarvisSuite(browser) {
-  console.log("\njarvis: owner-only agent desktop in the OS");
+  console.log("\njarvis: admin-only remote desktop, public site clean, MCP from anywhere");
   const OWNER_CODE = /jarvis|workbench|AgentPanel|agentClient/i;
+  const fsx = require("fs");
+  const pathx = require("path");
 
-  /* ---- anonymous visitor ---- */
+  /* ---- the public desktop has no owner code at all, by source ---- */
+  {
+    const osDir = pathx.join(__dirname, "..", "components", "os");
+    const files = [];
+    const walk = (d) => {
+      for (const f of fsx.readdirSync(d, { withFileTypes: true })) {
+        const p = pathx.join(d, f.name);
+        if (f.isDirectory()) walk(p);
+        else if (/\.(js|jsx|ts|tsx)$/.test(f.name)) files.push(p);
+      }
+    };
+    walk(osDir);
+    const hits = files.filter((p) =>
+      /jarvis|useAdminGate|forceOwner|agentClient|admin\/workbench|AgentPanel|agent\.ravikishan\.me/i.test(fsx.readFileSync(p, "utf8"))
+    );
+    check(files.length > 5 && hits.length === 0, "components/os names no Jarvis, owner gate, workbench or agent address", hits.map((p) => pathx.basename(p)).join(","));
+    const gone = ["jarvisApp.js", "useAdminGate.js", "apps/Jarvis.js"].filter((f) => fsx.existsSync(pathx.join(osDir, f)));
+    check(gone.length === 0, "the owner-only desktop modules are deleted", gone.join(","));
+  }
+
+  /* ---- anonymous visitor on the public desktop ---- */
   {
     const page = await browser.newPage();
     await page.bringToFront();
@@ -2145,12 +2173,11 @@ async function jarvisSuite(browser) {
       check(!hits.some((h) => /jarvis/i.test(h)), "and Spotlight finds no Jarvis", JSON.stringify(hits).slice(0, 80));
       await page.keyboard.press("Escape");
 
-      // Asking the shell for it directly must do nothing at all.
       await page.evaluate(() => window.dispatchEvent(new CustomEvent("os:open", { detail: "jarvis" })));
       await new Promise((r) => setTimeout(r, 1500));
       const after = await page.evaluate(() => ({
         win: !!document.querySelector('.os-win[aria-label^="Jarvis"]'),
-        jv: !!document.querySelector(".jv-root"),
+        jv: !!document.querySelector(".jv-root, .jp-root"),
         html: document.documentElement.outerHTML,
       }));
       check(!after.win && !after.jv, "an os:open for jarvis opens no window");
@@ -2160,27 +2187,27 @@ async function jarvisSuite(browser) {
       const owned = urls.filter((u) => OWNER_CODE.test(u));
       check(owned.length === 0, "no Jarvis or workbench chunk is requested", owned.slice(0, 3).join(" "));
 
-      // The scripts the visitor DID load must not carry the agent's address.
       const scripts = [...new Set(urls.filter((u) => u.startsWith(BASE) && /\.js(\?|$)/.test(u)))];
       let leaked = "";
       for (const u of scripts) {
         const body = await fetch(u).then((r) => r.text()).catch(() => "");
-        if (/agent\.ravikishan\.me/.test(body)) {
+        if (/agent\.ravikishan\.me|JarvisPanel|useAdminGate|jarvisApp/.test(body)) {
           leaked = u;
           break;
         }
       }
-      check(scripts.length > 0 && !leaked, "no loaded script contains the agent server's address", leaked || `${scripts.length} scripts`);
+      check(scripts.length > 0 && !leaked, "no loaded script carries the agent address or any Jarvis code", leaked || `${scripts.length} scripts`);
     } catch (e) {
-      bad("jarvis anonymous", e.message);
+      bad("jarvis public", e.message);
     } finally {
       await page.close();
     }
   }
 
-  /* ---- the owner, through the preview ---- */
-  for (const [width, height] of [[390, 844], [1440, 900]]) {
+  /* ---- the admin's Jarvis tab, through the preview ---- */
+  for (const [width, height] of [[390, 844], [768, 1024], [1440, 900]]) {
     const at = `@${width}`;
+    const desk = width >= 1000;
     const page = await browser.newPage();
     await page.bringToFront();
     await page.setViewport({ width, height });
@@ -2191,142 +2218,288 @@ async function jarvisSuite(browser) {
     });
     try {
       await page.goto(`${BASE}/__jarvispreview`, { waitUntil: "networkidle2", timeout: 90000 });
-      await page.waitForSelector('.os-win[aria-label^="Jarvis"] .jv-root', { timeout: 30000 });
-      await page.waitForSelector(".jv-root .wb-shot", { timeout: 20000 }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 600));
+      await page.waitForSelector(".ad-content .jp-root", { timeout: 30000 });
+      await page.waitForSelector(".jp-root .wb-shot", { timeout: 20000 }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 800));
 
       const s = await page.evaluate(() => {
-        const win = document.querySelector('.os-win[aria-label^="Jarvis"]');
-        const r = win.getBoundingClientRect();
-        const root = win.querySelector(".jv-root");
-        const body = win.querySelector(".jv-body");
-        const shot = win.querySelector(".wb-shot");
-        const sel = win.querySelector('.jv-tab[aria-selected="true"]');
-        const take = win.querySelector(".wb-take");
-        const bar = win.querySelector(".jv-bar").getBoundingClientRect();
+        const root = document.querySelector(".jp-root");
+        const stage = document.querySelector(".jp-stage").getBoundingClientRect();
+        const shot = document.querySelector(".jp-root .wb-shot");
+        const sr = shot ? shot.getBoundingClientRect() : null;
+        const take = document.querySelector(".jp-root .wb-take");
+        const tabs = Array.from(document.querySelectorAll(".ad-item")).map((b) => b.dataset.tab);
+        const btns = Array.from(document.querySelectorAll(".jp-root .wb-desk-btns button")).map((b) => b.textContent.trim());
         return {
           vw: innerWidth,
           vh: innerHeight,
-          r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width, h: r.height },
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           inner: root.scrollWidth - root.clientWidth,
-          body: body.scrollWidth - body.clientWidth,
-          barFits: bar.right <= r.right + 1,
-          tab: sel && sel.dataset.tab,
-          tabs: Array.from(win.querySelectorAll(".jv-tab")).map((t) => t.dataset.tab),
+          title: (document.querySelector(".ad-top h1") || {}).textContent || "",
+          tabs,
+          stage: { left: stage.left, right: stage.right, w: stage.width },
           shot: !!shot && /^data:image\//.test(shot.getAttribute("src") || ""),
-          shotW: shot ? shot.getBoundingClientRect().width : 0,
-          shotFits: !!shot && shot.getBoundingClientRect().right <= r.right + 1,
+          sr: sr && { left: sr.left, right: sr.right, top: sr.top, bottom: sr.bottom, w: sr.width, h: sr.height },
           take: take ? take.textContent.trim() : "",
           pressed: take ? take.getAttribute("aria-pressed") : "",
-          watching: ((win.querySelector(".wb-drive") || {}).textContent || "").trim(),
-          badge: ((win.querySelector('.jv-tab[data-tab="runs"] em') || {}).textContent || ""),
+          watching: ((document.querySelector(".jp-root .wb-drive") || {}).textContent || "").trim(),
+          opens: Array.from(document.querySelectorAll(".jp-open")).map((b) => b.dataset.side),
+          badge: ((document.querySelector('.jp-open[data-side="runs"] em') || {}).textContent || ""),
+          side: !!document.querySelector(".jp-side"),
+          full: btns.includes("Full screen"),
         };
       });
-      check(s.r.left >= 0 && s.r.right <= s.vw + 1, `${at} the window sits inside the viewport`, JSON.stringify(s.r));
-      check(s.r.w >= s.vw * 0.88 && s.r.h >= s.vh * 0.6, `${at} it opens large: most of the viewport`, `${Math.round(s.r.w)}x${Math.round(s.r.h)} of ${s.vw}x${s.vh}`);
+      const ai = s.tabs.indexOf("agent");
+      check(s.title.trim() === "Jarvis", `${at} it is an admin section titled Jarvis`, s.title);
+      check(ai >= 0 && s.tabs[ai + 1] === "jarvis", `${at} the rail places Jarvis right after Agent`, s.tabs.slice(ai, ai + 3).join(","));
       check(s.overflow <= 0, `${at} nothing overflows the page sideways`, `${s.overflow}px`);
-      check(s.inner <= 1 && s.body <= 1, `${at} nothing overflows inside the window`, `${s.inner}/${s.body}px`);
-      check(s.barFits, `${at} the tab bar fits the window`);
-      check(JSON.stringify(s.tabs) === JSON.stringify(["desktop", "chat", "terminal", "runs"]), `${at} tabs: Desktop, Chat, Terminal, Runs`, s.tabs.join(","));
-      check(s.tab === "desktop", `${at} Desktop is the default tab`, s.tab);
-      check(s.shot && s.shotW > 200 && s.shotFits, `${at} the screenshot stream shows the seeded frame, inside the window`, `${Math.round(s.shotW)}px`);
+      check(s.inner <= 1, `${at} nothing overflows inside the panel`, `${s.inner}px`);
+      check(s.shot && !!s.sr, `${at} the box's screen streams the seeded frame`);
+      if (s.sr) {
+        const ratio = s.sr.w / s.sr.h;
+        check(Math.abs(ratio - 1600 / 900) < 0.02, `${at} at the box's own aspect ratio`, ratio.toFixed(3));
+        check(s.sr.left >= s.stage.left - 1 && s.sr.right <= s.stage.right + 1 && s.sr.right <= s.vw, `${at} inside the content area`, JSON.stringify(s.sr));
+        // Large: either the full width of the stage, or held by the height
+        // that is left — and never so tall that the frame runs off the screen.
+        const fillsW = s.sr.w >= (s.stage.w - 44) * 0.97;
+        const fillsH = s.sr.h >= s.vh * 0.55;
+        check(fillsW || fillsH, `${at} it fills the content area`, `${Math.round(s.sr.w)}x${Math.round(s.sr.h)} in a ${Math.round(s.stage.w)}px stage, ${s.vw}x${s.vh}`);
+        if (desk) check(s.sr.bottom <= s.vh + 1, `${at} and the whole frame is on screen without scrolling`, `bottom ${Math.round(s.sr.bottom)} of ${s.vh}`);
+      }
+      check(s.full, `${at} it has a Full screen button`);
       check(s.take === "Take control" && s.pressed === "false", `${at} it opens view-only`, `${s.take} ${s.pressed}`);
       check(/watching/i.test(s.watching), `${at} and says it is only watching`, s.watching);
+      check(JSON.stringify(s.opens) === JSON.stringify(["chat", "terminal", "runs"]), `${at} Chat, Terminal and Runs open a side panel`, s.opens.join(","));
+      check(!s.side, `${at} the side panel starts closed, so the screen gets the room`);
       check(s.badge === "1", `${at} Runs carries the waiting approval as a badge`, s.badge);
 
-      // View-only means a click on the picture reaches nothing.
-      await page.click(".jv-root .wb-shot");
+      await page.click(".jp-root .wb-shot");
       await new Promise((r) => setTimeout(r, 500));
       const quiet = await page.evaluate(() => (window.__jvActions || []).length);
       check(quiet === 0, `${at} a click while watching sends nothing`, String(quiet));
 
-      // Taking control: a click on the picture maps to screen pixels.
-      await page.click(".jv-root .wb-take");
-      await page.click(".jv-root .wb-shot");
+      await page.click(".jp-root .wb-take");
+      await page.click(".jp-root .wb-shot");
       await new Promise((r) => setTimeout(r, 700));
       const acted = await page.evaluate(() => ({
         actions: window.__jvActions || [],
-        driving: !!document.querySelector(".jv-root .wb-screen.driving"),
+        driving: !!document.querySelector(".jp-root .wb-screen.driving"),
       }));
       const a = acted.actions[0] || {};
       check(acted.driving, `${at} Take control puts the amber driving edge on the frame`);
       check(a.action === "click" && a.x >= 0 && a.x < 1600 && a.y >= 0 && a.y < 900, `${at} and a click there becomes a click on the box`, JSON.stringify(a));
+      await page.click(".jp-root .wb-take"); // hand back
 
-      // Runs: only what is live, the waiting one first, its approval above.
-      await page.click('.jv-tab[data-tab="runs"]');
-      await page.waitForSelector(".jv-run", { timeout: 5000 });
-      const runs = await page.evaluate(() => ({
-        rows: Array.from(document.querySelectorAll(".jv-run")).map((r) => r.dataset.state),
-        card: !!document.querySelector(".jv-asks .ag-card"),
-        shotGone: !document.querySelector(".wb-shot"),
-        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      }));
+      // Runs, in the side panel.
+      await page.click('.jp-open[data-side="runs"]');
+      await page.waitForSelector(".jp-side .jp-run", { timeout: 5000 });
+      await new Promise((r) => setTimeout(r, 300));
+      const runs = await page.evaluate(() => {
+        const side = document.querySelector(".jp-side").getBoundingClientRect();
+        const shot = document.querySelector(".jp-root .wb-shot");
+        const sr = shot && shot.getBoundingClientRect();
+        return {
+          rows: Array.from(document.querySelectorAll(".jp-side .jp-run")).map((r) => r.dataset.state),
+          card: !!document.querySelector(".jp-side .jp-asks .ag-card"),
+          side: { left: side.left, right: side.right, top: side.top, w: side.width, h: side.height },
+          shot: !!shot,
+          shotVisible: !!sr && sr.width > 100 && sr.right <= side.left + 2,
+          pressed: (document.querySelector('.jp-open[data-side="runs"]') || {}).getAttribute?.("aria-pressed"),
+          focus: document.activeElement && document.activeElement.closest(".jp-side") ? true : false,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
       check(JSON.stringify(runs.rows) === JSON.stringify(["waiting", "stalled", "running"]), `${at} Runs lists only live runs, waiting first`, runs.rows.join(","));
-      check(runs.card, `${at} the waiting run's approval card is on Runs`);
-      check(runs.shotGone, `${at} leaving Desktop unmounts the stream`);
-      check(runs.overflow <= 0, `${at} Runs does not overflow`, `${runs.overflow}px`);
-      const shotsA = await page.evaluate(() => window.__jvShots || 0);
-      await new Promise((r) => setTimeout(r, 2200));
-      const shotsB = await page.evaluate(() => window.__jvShots || 0);
-      check(shotsB === shotsA, `${at} and stops polling for frames`, `${shotsA} -> ${shotsB}`);
+      check(runs.card, `${at} the waiting run's approval card is in the panel`);
+      check(runs.pressed === "true" && runs.focus, `${at} the opener reads pressed and focus moves into the panel`);
+      check(runs.overflow <= 0, `${at} the open panel does not overflow`, `${runs.overflow}px`);
+      check(runs.side.right <= width + 1, `${at} the panel sits inside the viewport`, JSON.stringify(runs.side));
+      if (desk) {
+        check(runs.side.w >= 340 && runs.side.w <= 600, `${at} on a desk it is a side panel`, `${Math.round(runs.side.w)}px`);
+        check(runs.shot && runs.shotVisible, `${at} with the screen still streaming beside it`);
+      } else {
+        check(runs.side.w >= width - 1 && runs.side.top <= 1, `${at} on a narrow screen it is a full sheet`, JSON.stringify(runs.side));
+      }
+      check(runs.shot, `${at} the stream stays mounted while the panel is open`);
 
-      await page.click('.jv-tab[data-tab="chat"]');
-      await page.waitForSelector(".jv-root .wb-chat", { timeout: 5000 });
-      const chat = await page.evaluate(() => ({
-        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        inner: (() => { const b = document.querySelector(".jv-body"); return b.scrollWidth - b.clientWidth; })(),
+      // Chat and Terminal in the same panel.
+      if (!desk) await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.querySelector(".jp-side") || innerWidth >= 1000, { timeout: 3000 }).catch(() => {});
+      await page.click('.jp-open[data-side="chat"]');
+      await page.waitForSelector(".jp-side .wb-chat", { timeout: 5000 });
+      const chat = await page.evaluate(() => {
+        const b = document.querySelector(".jp-side-body");
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          inner: b.scrollWidth - b.clientWidth,
+          listShown: getComputedStyle(document.querySelector(".jp-side .wb-chat-list")).display !== "none",
+          toList: (() => {
+            const b = document.querySelector(".jp-side .wb-to-list");
+            return !!b && getComputedStyle(b).display !== "none";
+          })(),
+        };
+      });
+      check(chat.overflow <= 0 && chat.inner <= 1, `${at} Chat renders in the panel without overflow`, `${chat.overflow}/${chat.inner}px`);
+      check(!chat.listShown && chat.toList, `${at} one pane at a time: the composer, with a way to the list`, JSON.stringify(chat));
+      await page.click(".jp-side .wb-to-list");
+      await new Promise((r) => setTimeout(r, 200));
+      const panes = await page.evaluate(() => ({
+        list: getComputedStyle(document.querySelector(".jp-side .wb-chat-list")).display !== "none",
+        main: getComputedStyle(document.querySelector(".jp-side .wb-chat-main")).display !== "none",
+        rows: document.querySelectorAll(".jp-side .wb-chat-list li, .jp-side .wb-chat-list button").length,
       }));
-      check(chat.overflow <= 0 && chat.inner <= 1, `${at} Chat renders inside the window without overflow`, `${chat.overflow}/${chat.inner}px`);
+      check(panes.list && !panes.main && panes.rows > 0, `${at} and Conversations swaps to the list`, JSON.stringify(panes));
 
-      await page.click('.jv-tab[data-tab="terminal"]');
+      if (!desk) await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.querySelector(".jp-side") || innerWidth >= 1000, { timeout: 3000 }).catch(() => {});
+      await page.click('.jp-open[data-side="terminal"]');
       await new Promise((r) => setTimeout(r, 600));
       const term = await page.evaluate(() => ({
-        tab: (document.querySelector('.jv-tab[aria-selected="true"]') || {}).dataset?.tab,
-        text: (document.querySelector(".jv-body") || {}).innerText || "",
+        text: (document.querySelector(".jp-side-body") || {}).innerText || "",
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       }));
-      check(term.tab === "terminal" && term.text.trim().length > 10, `${at} Terminal renders`, term.text.slice(0, 60));
+      check(term.text.trim().length > 10 && term.overflow <= 0, `${at} Terminal renders in the panel`, term.text.slice(0, 60));
 
-      // Closing the window closes the socket. Counted from here: React's
-      // StrictMode mounts, unmounts and remounts in development, which is
-      // itself one close of a socket that never got to open.
-      const before = await page.evaluate(() => window.__jvClosed || 0);
-      await page.click('.os-win[aria-label^="Jarvis"] .os-l.red');
-      await new Promise((r) => setTimeout(r, 700));
-      const closed = await page.evaluate(() => ({
-        win: !!document.querySelector('.os-win[aria-label^="Jarvis"]'),
-        closed: window.__jvClosed || 0,
-      }));
-      check(!closed.win && closed.closed === before + 1, `${at} closing the window disconnects the socket`, JSON.stringify({ ...closed, before }));
+      await page.keyboard.press("Escape");
+      await new Promise((r) => setTimeout(r, 300));
+      const shut = await page.evaluate(() => !document.querySelector(".jp-side"));
+      check(shut, `${at} Escape closes the side panel`);
+
+      if (desk) {
+        // Leaving the section unmounts the panel and closes its socket.
+        // Counted from here: StrictMode in development mounts, unmounts and
+        // remounts, which is itself one close of a socket never opened.
+        const before = await page.evaluate(() => window.__jvClosed || 0);
+        await page.click('.ad-item[data-tab="agent"]');
+        await new Promise((r) => setTimeout(r, 700));
+        const left = await page.evaluate(() => ({ jp: !!document.querySelector(".jp-root"), closed: window.__jvClosed || 0 }));
+        check(!left.jp && left.closed === before + 1, `${at} leaving the tab disconnects the socket`, JSON.stringify({ ...left, before }));
+      }
       check(errors.length === 0, `${at} no errors in the console`, errors.slice(0, 2).join(" | "));
     } catch (e) {
-      bad(`jarvis ${at}`, e.message);
+      bad(`jarvis admin ${at}`, e.message);
     } finally {
       await page.close();
     }
   }
 
-  /* ---- a socket that cannot connect says why, in the window ---- */
+  /* ---- a socket that cannot connect says why, where the screen would be ---- */
   {
     const page = await browser.newPage();
     await page.bringToFront();
     await page.setViewport({ width: 390, height: 844 });
     try {
       await page.goto(`${BASE}/__jarvispreview?fail=1`, { waitUntil: "networkidle2", timeout: 90000 });
-      await page.waitForSelector(".jv-root .jv-down", { timeout: 30000 });
+      await page.waitForSelector(".jp-root .jp-down", { timeout: 30000 });
       const d = await page.evaluate(() => ({
-        text: (document.querySelector(".jv-down") || {}).innerText || "",
-        inWin: !!document.querySelector('.os-win[aria-label^="Jarvis"] .jv-down'),
+        text: (document.querySelector(".jp-down") || {}).innerText || "",
+        inStage: !!document.querySelector(".jp-stage .jp-down"),
         shot: !!document.querySelector(".wb-shot"),
-        retry: !!Array.from(document.querySelectorAll(".jv-down button")).find((b) => /try now/i.test(b.textContent)),
+        retry: !!Array.from(document.querySelectorAll(".jp-down button")).find((b) => /try now/i.test(b.textContent)),
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       }));
-      check(d.inWin && /can.t reach/i.test(d.text), "an unreachable server is said inside the window");
+      check(d.inStage && /can.t reach/i.test(d.text), "an unreachable server is said where the screen would be");
       check(/not allowed/i.test(d.text), "with the reason the server gave", d.text.slice(0, 90));
       check(d.retry && !d.shot, "offering Try now instead of an empty frame");
       check(d.overflow <= 0, "and fits a phone", `${d.overflow}px`);
     } catch (e) {
       bad("jarvis unreachable", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
+  /* ---- MCP from anywhere: the consent screen ---- */
+  {
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await page.setViewport({ width: 390, height: 844 });
+    try {
+      const reg = await fetch(`${BASE}/api/oauth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_name: "e2e-jarvis", redirect_uris: ["https://chat.example.com/callback"] }),
+      }).then((r) => r.json());
+      const challenge = require("crypto").createHash("sha256").update("x".repeat(64)).digest("base64url");
+      const q = new URLSearchParams({
+        client_id: reg.client_id,
+        redirect_uri: "https://chat.example.com/callback",
+        response_type: "code",
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        scope: "read agent secrets",
+        state: "abc",
+      });
+      await page.goto(`${BASE}/oauth/authorize?${q}`, { waitUntil: "networkidle2", timeout: 60000 });
+      await page.waitForSelector(".oa-scope", { timeout: 20000 });
+      const c = await page.evaluate(() => ({
+        rows: Array.from(document.querySelectorAll(".oa-scope")).map((l) => ({
+          s: l.dataset.scope,
+          on: l.querySelector("input").checked,
+          danger: l.classList.contains("danger"),
+          says: /dangerous/i.test(l.textContent),
+        })),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      const by = Object.fromEntries(c.rows.map((r) => [r.s, r]));
+      check(["read", "write", "vault", "secrets", "agent"].every((s) => by[s]), "the consent screen offers every scope", c.rows.map((r) => r.s).join(","));
+      check(by.read?.on && !by.write?.on && !by.vault?.on, "read is ticked, the other safe ones are not");
+      check(by.agent && !by.agent.on && by.secrets && !by.secrets.on, "agent and secrets are NOT ticked, even though the client asked");
+      check(by.agent?.danger && by.agent?.says && by.secrets?.danger && by.secrets?.says, "and both are marked dangerous");
+      check(!by.read?.danger && !by.write?.danger, "the safe scopes are not");
+      check(c.overflow <= 0, "the consent screen fits a phone", `${c.overflow}px`);
+    } catch (e) {
+      bad("jarvis consent", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
+  /* ---- MCP from anywhere: the MCP tab ---- */
+  for (const width of [390, 1440]) {
+    const at = `@${width}`;
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await page.setViewport({ width, height: 900 });
+    try {
+      await page.goto(`${BASE}/__jarvispreview?tab=mcp`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".mcp-any", { timeout: 30000 });
+      const m = await page.evaluate(() => {
+        const sec = document.querySelector("#mcp-anywhere")?.closest("section");
+        const cards = Array.from(document.querySelectorAll(".mcp-any")).map((c) => ({
+          id: c.dataset.client,
+          code: c.querySelector("pre").textContent,
+          copy: !!Array.from(c.querySelectorAll("button")).find((b) => /copy/i.test(b.textContent)),
+        }));
+        return {
+          heading: (document.querySelector("#mcp-anywhere") || {}).textContent || "",
+          cards,
+          need: (sec?.querySelector(".mcp-need") || {}).textContent || "",
+          all: sec ? sec.textContent : "",
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      const by = Object.fromEntries(m.cards.map((c) => [c.id, c]));
+      const URL_ = "https://www.ravikishan.me/api/mcp";
+      check(/connect from anywhere/i.test(m.heading), `${at} the MCP tab has Connect from anywhere`);
+      check(m.cards.length === 4 && m.cards.every((c) => c.copy), `${at} four snippets, each with a Copy button`, m.cards.map((c) => c.id).join(","));
+      check(by.endpoint?.code.trim() === URL_, `${at} the endpoint is the production one`, by.endpoint?.code);
+      check(
+        by["claude-code"]?.code.trim() === `claude mcp add --transport http portfolio ${URL_} --header "Authorization: Bearer <token>"`,
+        `${at} the Claude Code command, with a placeholder token`,
+        by["claude-code"]?.code
+      );
+      check(by["claude-connector"]?.code.trim() === URL_, `${at} Claude Desktop / claude.ai gets the URL only`);
+      check(/\[mcp_servers\.portfolio\]/.test(by.codex?.code || "") && (by.codex?.code || "").includes(`url = "${URL_}"`), `${at} the Codex config.toml snippet`, by.codex?.code);
+      check(!/rkmcp_[A-Za-z0-9_-]{20,}/.test(m.all), `${at} no real token appears in the section`);
+      check(
+        /read to watch/.test(m.need) && /agent to act/.test(m.need) && /never pre-ticked/.test(m.need),
+        `${at} it says read watches, agent acts, and agent is never pre-ticked`,
+        m.need.slice(0, 120)
+      );
+      check(m.overflow <= 0, `${at} nothing overflows`, `${m.overflow}px`);
+    } catch (e) {
+      bad(`jarvis mcp tab ${at}`, e.message);
     } finally {
       await page.close();
     }
@@ -2901,11 +3074,21 @@ async function workbenchSuite(browser) {
       // Measured before every click: anything that reflows above the frame
       // between two clicks would otherwise move the target.
       const clickAt = async (fx, fy, opts = {}) => {
-        await page.$eval('[data-section="desktop"] .wb-shot', (img) => img.scrollIntoView({ block: "center" }));
-        const b = await page.$eval('[data-section="desktop"] .wb-shot', (img) => {
+        // "instant", and then wait for the frame to hold still: a smooth scroll
+        // or the control deck still opening moves the target between reading
+        // the rect and clicking, which read as a click mapped ~4px low.
+        await page.$eval('[data-section="desktop"] .wb-shot', (img) => img.scrollIntoView({ block: "center", behavior: "instant" }));
+        const rect = () => page.$eval('[data-section="desktop"] .wb-shot', (img) => {
           const r = img.getBoundingClientRect();
           return { x: r.left, y: r.top, w: r.width, h: r.height };
         });
+        let b = await rect();
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 50));
+          const n = await rect();
+          if (n.x === b.x && n.y === b.y && n.w === b.w && n.h === b.h) break;
+          b = n;
+        }
         await page.mouse.click(b.x + b.w * fx, b.y + b.h * fy, opts);
       };
       await clickAt(0.25, 0.5);

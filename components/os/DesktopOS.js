@@ -8,7 +8,6 @@ import { Kbd, keysFor, shortcutById } from "../../lib/shortcuts";
 import { WD, MO, monthMatrix, ZONES, timeIn, pad } from "../../lib/datetime";
 import Widgets from "./Widgets";
 import Wallpaper from "./Wallpaper";
-import useAdminGate from "./useAdminGate";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const Z_CTX = 150000;
@@ -279,7 +278,7 @@ function Dock({ wins, apps, onSelect, onLaunchpad, launchOpen }) {
 }
 
 /* ============================ Spotlight / Launchpad ============================ */
-function Launchpad({ open, onClose, onLaunch, apps = APPS }) {
+function Launchpad({ open, onClose, onLaunch }) {
   const { projects } = useSiteContent();
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -308,7 +307,7 @@ function Launchpad({ open, onClose, onLaunch, apps = APPS }) {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   };
 
-  const appGrid = apps.filter(
+  const appGrid = APPS.filter(
     (a) => a.name.toLowerCase().includes(ql) || a.tag.toLowerCase().includes(ql)
   );
 
@@ -388,7 +387,7 @@ function Launchpad({ open, onClose, onLaunch, apps = APPS }) {
           </div>
         ) : (
           <div className="os-lp-grid">
-            {apps.map((a) => {
+            {APPS.map((a) => {
               const Icon = a.icon;
               return (
                 <button key={a.id} className={`os-lp-app${a.desktopOnly ? " os-desktop-only" : ""}`} onClick={() => launch(a)}>
@@ -620,21 +619,8 @@ function MenuBar({ wins, apps, onOpen, onLaunchpad }) {
 }
 
 /* ============================ DesktopOS ============================ */
-// `forceOwner` exists for /__jarvispreview only, and is ignored in a
-// production build: the preview page is notFound there anyway, and no other
-// caller passes it.
-export default function DesktopOS({ forceOwner = false } = {}) {
+export default function DesktopOS() {
   const [wins, setWins] = useState([]);
-  const signedInOwner = useAdminGate();
-  const owner = signedInOwner || (forceOwner && process.env.NODE_ENV !== "production");
-  // Apps that exist only for the signed-in owner (Jarvis). Their definitions
-  // are imported after the gate opens, so a visitor's browser never fetches
-  // them; until then the desktop is exactly the public one.
-  const [ownerApps, setOwnerApps] = useState([]);
-  const allApps = React.useMemo(() => [...APPS, ...ownerApps], [ownerApps]);
-  const appsRef = useRef(allApps);
-  appsRef.current = allApps;
-  const findApp = useCallback((id) => appsRef.current.find((a) => a.id === id), []);
   const [launch, setLaunch] = useState(false);
   const [snapHint, setSnapHint] = useState(null);
   const [ctx, setCtx] = useState(null);
@@ -652,7 +638,7 @@ export default function DesktopOS({ forceOwner = false } = {}) {
   // `props` reach the app component. Opening /blog/<slug> in desktop mode has
   // to land on THAT post, not merely on the Blog app.
   const openApp = useCallback((appId, props) => {
-    const app = findApp(appId);
+    const app = getApp(appId);
     if (!app) return;
     if (app.external) return app.external();
     setWins((ws) => {
@@ -668,24 +654,6 @@ export default function DesktopOS({ forceOwner = false } = {}) {
       const i = ws.length;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
       const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-      if (app.large) {
-        // Most of the viewport: the whole point of the app is to look at
-        // another screen. Phones get every pixel between menu bar and dock.
-        const gutter = vw < 640 ? 6 : 40;
-        const lw = vw - gutter * 2;
-        const lh = Math.max(MIN_H, vh - MENUBAR_H - DOCK_RESERVE - (vw < 640 ? 4 : 16));
-        return [
-          ...ws,
-          {
-            id: `${appId}#${++nid.current}`,
-            appId,
-            x: Math.round((vw - lw) / 2),
-            y: MENUBAR_H + (vw < 640 ? 2 : 8),
-            w: lw, h: lh, z: ++z.current, min: false, full: false,
-            props: props || undefined,
-          },
-        ];
-      }
       const w = Math.min(app.w || 720, vw - 40);
       const h = Math.min(app.h || 520, vh - 150);
       const baseX = (vw - w) / 2 - 60;
@@ -701,27 +669,7 @@ export default function DesktopOS({ forceOwner = false } = {}) {
         },
       ];
     });
-  }, [findApp]);
-
-  // Owner-only apps come and go with the sign-in. Signing out closes their
-  // windows as well as removing the entry, so nothing the owner had open is
-  // left on a shared screen.
-  useEffect(() => {
-    if (!owner) {
-      setOwnerApps((a) => (a.length ? [] : a));
-      setWins((ws) => (ws.some((w) => !getApp(w.appId)) ? ws.filter((w) => getApp(w.appId)) : ws));
-      return undefined;
-    }
-    let gone = false;
-    import("./jarvisApp")
-      .then((m) => {
-        if (!gone) setOwnerApps([m.JARVIS_APP]);
-      })
-      .catch(() => {});
-    return () => {
-      gone = true;
-    };
-  }, [owner]);
+  }, []);
 
   const close = useCallback((id) => setWins((ws) => ws.filter((w) => w.id !== id)), []);
   const minimize = useCallback((id) => setWins((ws) => ws.map((w) => (w.id === id ? { ...w, min: true } : w))), []);
@@ -824,7 +772,7 @@ export default function DesktopOS({ forceOwner = false } = {}) {
     setWins((ws) =>
       ws.map((w) => {
         if (w.id !== id) return w;
-        const app = findApp(w.appId);
+        const app = getApp(w.appId);
         const vw = window.innerWidth, vh = window.innerHeight;
         const wdt = Math.min(app?.w || 720, vw - 40);
         const hgt = Math.min(app?.h || 520, vh - MENUBAR_H - DOCK_RESERVE);
@@ -837,7 +785,7 @@ export default function DesktopOS({ forceOwner = false } = {}) {
         };
       })
     );
-  }, [findApp]);
+  }, []);
 
   // keep a live ref so the global keydown handler can read current windows
   const winsRef = useRef([]);
@@ -1015,13 +963,13 @@ export default function DesktopOS({ forceOwner = false } = {}) {
       <Wallpaper />
       {widgets && <Widgets />}
 
-      <MenuBar wins={wins} apps={allApps} onOpen={openApp} onLaunchpad={() => setLaunch(true)} />
+      <MenuBar wins={wins} apps={APPS} onOpen={openApp} onLaunchpad={() => setLaunch(true)} />
 
-      {wins.filter((w) => findApp(w.appId)).map((w) => (
+      {wins.map((w) => (
         <Win
           key={w.id}
           win={w}
-          app={findApp(w.appId)}
+          app={getApp(w.appId)}
           onClose={close}
           onMin={minimize}
           onFull={toggleFull}
@@ -1041,8 +989,8 @@ export default function DesktopOS({ forceOwner = false } = {}) {
         />
       )}
 
-      <Dock wins={wins} apps={allApps} onSelect={select} onLaunchpad={() => setLaunch((v) => !v)} launchOpen={launch} />
-      <Launchpad open={launch} onClose={() => setLaunch(false)} onLaunch={openApp} apps={allApps} />
+      <Dock wins={wins} apps={APPS} onSelect={select} onLaunchpad={() => setLaunch((v) => !v)} launchOpen={launch} />
+      <Launchpad open={launch} onClose={() => setLaunch(false)} onLaunch={openApp} />
 
       <ContextMenu
         ctx={ctx}

@@ -32,6 +32,7 @@ const SCOPES = [
     label: "Secrets",
     hint: "Read and write stored passwords and API keys — only ones marked readable by agents",
     danger: true,
+    warn: "equivalent to the passwords it can read",
   },
   // Never pre-ticked either. Starting runs and answering their approval cards
   // is the human gate on code running on your server; a writing assistant's
@@ -42,8 +43,11 @@ const SCOPES = [
     label: "Agent runs",
     hint: "Start coding runs on the agent server and answer their approval requests — never give this to AGENT_MCP_TOKEN",
     danger: true,
+    warn: "can say yes to code running on your server",
   },
 ];
+
+export const PUBLIC_MCP_URL = "https://www.ravikishan.me/api/mcp";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 
@@ -136,6 +140,40 @@ export default function McpPanel({ user }) {
   };
 
   const url = `${origin}/api/mcp`;
+
+  // "From anywhere" means the production address, whatever origin this
+  // admin happens to be open on. The token is ALWAYS a placeholder here:
+  // a real one is shown once, in the card below, and nowhere else.
+  const anywhere = [
+    {
+      id: "endpoint",
+      name: "Endpoint",
+      what: "endpoint URL",
+      note: "Streamable HTTP, JSON-RPC 2.0. Bearer token or OAuth 2.1.",
+      code: PUBLIC_MCP_URL,
+    },
+    {
+      id: "claude-code",
+      name: "Claude Code CLI",
+      what: "command",
+      note: "Run in a terminal, with a token minted below in place of <token>.",
+      code: `claude mcp add --transport http portfolio ${PUBLIC_MCP_URL} --header "Authorization: Bearer <token>"`,
+    },
+    {
+      id: "claude-connector",
+      name: "Claude Desktop / claude.ai",
+      what: "connector URL",
+      note: "Settings, Connectors, Add custom connector: paste the URL only. It registers itself and sends you to the consent screen (read is ticked; anything else is your choice).",
+      code: PUBLIC_MCP_URL,
+    },
+    {
+      id: "codex",
+      name: "Codex (~/.codex/config.toml)",
+      what: "config",
+      note: "The token is read from the environment, so it never sits in the file: export PORTFOLIO_MCP_TOKEN=<token>.",
+      code: `[mcp_servers.portfolio]\nurl = "${PUBLIC_MCP_URL}"\nbearer_token_env_var = "PORTFOLIO_MCP_TOKEN"`,
+    },
+  ];
   const tok = issued?.token || "rkmcp_YOUR_TOKEN";
 
   const snippets = [
@@ -175,49 +213,47 @@ export default function McpPanel({ user }) {
         service account and no bypass. It is shown once.
       </div>
 
-      <section className="ops-card mcp-connect">
+      <section className="ops-card mcp-connect" aria-labelledby="mcp-anywhere">
         <div className="ops-head">
-          <h3>Connect an AI client</h3>
-          <button className="admin-ghost sm" type="button" onClick={copy(url)}>
-            Copy server URL
-          </button>
+          <h3 id="mcp-anywhere">Connect from anywhere</h3>
         </div>
         <p className="admin-sub mcp-connect-copy">
-          First mint a token with <b>Read</b> and <b>Write</b> enabled. Then give
-          the client this MCP server URL and the token as a bearer header. Never
-          paste the token into a public prompt or commit it to a repository.
+          The production endpoint works from any machine. A client that takes a
+          header gets a token minted below; one that only takes a URL (Claude
+          Desktop, claude.ai) signs in through this site&apos;s OAuth consent
+          screen instead, where you tick the scopes it gets. Never paste a token
+          into a prompt or commit it.
         </p>
-        <code className="mcp-endpoint">{url}</code>
-        <div className="mcp-client-grid">
-          <div>
-            <strong>Claude Code</strong>
-            <p>Run this in a terminal after copying the token:</p>
-            <pre>{`claude mcp add --transport http ravikishan ${url} \\\n+  --header "Authorization: Bearer YOUR_TOKEN"`}</pre>
-          </div>
-          <div>
-            <strong>Codex</strong>
-            <p>Add this server to your MCP configuration:</p>
-            <pre>{JSON.stringify({
-              mcpServers: {
-                ravikishan: {
-                  type: "http",
-                  url,
-                  headers: { Authorization: "Bearer YOUR_TOKEN" },
-                },
-              },
-            }, null, 2)}</pre>
-          </div>
-          <div>
-            <strong>Other AI clients</strong>
-            <p>Choose a remote HTTP MCP server and use:</p>
-            <pre>{`URL: ${url}\nAuthorization: Bearer YOUR_TOKEN`}</pre>
-          </div>
+        <div className="mcp-anywhere">
+          {anywhere.map((c) => (
+            <div key={c.id} className="mcp-any" data-client={c.id}>
+              <div className="mcp-any-head">
+                <strong>{c.name}</strong>
+                <button
+                  className="admin-ghost sm"
+                  type="button"
+                  onClick={copy(c.code)}
+                  aria-label={`Copy the ${c.name} ${c.what}`}
+                >
+                  Copy
+                </button>
+              </div>
+              <p>{c.note}</p>
+              <pre>{c.code}</pre>
+            </div>
+          ))}
         </div>
-        <p className="admin-sub mcp-connect-note">
-          The server supports Streamable HTTP MCP. The token must include the
-          scopes required by the tools you call. Revoke it here if it is ever
-          exposed.
-        </p>
+        <div className="mcp-need">
+          <strong>Scopes the workbench tools need</strong>
+          <p>
+            <b>read</b> to watch: agent status, runs, chat history, the desktop
+            screenshot, previews and the ops log. <b>agent</b> to act: start a run
+            or a chat, send or interrupt a message, drive the desktop, answer an
+            approval. <b>agent</b> is implied by nothing and is never pre-ticked,
+            here or on the consent screen; never give it to{" "}
+            <code>AGENT_MCP_TOKEN</code>, or a job could approve itself.
+          </p>
+        </div>
       </section>
 
       <section className="ops-card">
@@ -234,6 +270,7 @@ export default function McpPanel({ user }) {
               <label
                 key={s.id}
                 className={`mcp-scope${picked[s.id] ? " on" : ""}${s.danger ? " danger" : ""}`}
+                data-warn={s.warn || undefined}
               >
                 <input
                   type="checkbox"
@@ -331,53 +368,74 @@ export default function McpPanel({ user }) {
           line-height: 1.55;
           margin: 10px 0;
         }
-        .mcp-endpoint {
-          display: block;
-          overflow-x: auto;
-          padding: 10px 12px;
-          border: 1px solid #2b3040;
-          border-radius: 8px;
-          background: #0a0b0f;
-          color: #ffb020;
-          font: 12px "JetBrains Mono", monospace;
-          white-space: nowrap;
+        .mcp-connect-note {
+          margin: 12px 0 0;
         }
-        .mcp-client-grid {
+        .mcp-anywhere {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
           margin-top: 12px;
         }
-        .mcp-client-grid > div {
+        .mcp-any {
           min-width: 0;
           padding: 12px;
           border: 1px solid #262a35;
           border-radius: 9px;
           background: #101219;
         }
-        .mcp-client-grid strong {
+        .mcp-any-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .mcp-any strong,
+        .mcp-need strong {
           color: #e7e8ee;
           font-size: 13px;
         }
-        .mcp-client-grid p {
+        .mcp-any p,
+        .mcp-need p {
           margin: 6px 0;
           color: #8b90a0;
           font-size: 11.5px;
-          line-height: 1.45;
+          line-height: 1.5;
         }
-        .mcp-client-grid pre {
+        .mcp-any pre {
           margin: 0;
-          overflow-x: auto;
+          padding: 9px 11px;
+          border: 1px solid #1d212b;
+          border-radius: 8px;
+          background: #0a0b0f;
           color: #cfd3dd;
-          font: 10.5px/1.55 "JetBrains Mono", monospace;
+          font: 11px/1.55 "JetBrains Mono", monospace;
           white-space: pre-wrap;
           overflow-wrap: anywhere;
         }
-        .mcp-connect-note {
-          margin: 12px 0 0;
+        .mcp-any[data-client="endpoint"] pre {
+          color: #ffb020;
+        }
+        .mcp-need {
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-left: 3px solid #ffb020;
+          background: #101219;
+          border-radius: 0 9px 9px 0;
+        }
+        .mcp-need b,
+        .mcp-need code {
+          color: #e7e8ee;
+          font-family: "JetBrains Mono", monospace;
+          font-size: 11px;
+        }
+        .mcp-connect button:focus-visible,
+        .mcp-scope:focus-within {
+          outline: 2px solid #ffb020;
+          outline-offset: 2px;
         }
         @media (max-width: 860px) {
-          .mcp-client-grid {
+          .mcp-anywhere {
             grid-template-columns: 1fr;
           }
         }
@@ -464,7 +522,7 @@ export default function McpPanel({ user }) {
           color: #ff9a9a;
         }
         .mcp-scope.danger.on::after {
-          content: "equivalent to the passwords it can read";
+          content: attr(data-warn);
           display: block;
           margin-top: 4px;
           font-size: 10.5px;

@@ -72,7 +72,8 @@
     "e2e:jarvis": "node scripts/e2e-check.js jarvis",
     "e2e:servermon": "node scripts/e2e-check.js servermon",
     "test:whatsapp": "node scripts/whatsapp-check.mjs",
-    "e2e:whatsapp": "node scripts/e2e-check.js whatsapp"
+    "e2e:whatsapp": "node scripts/e2e-check.js whatsapp",
+    "test:remotedesk": "node scripts/remotedesk-check.mjs"
   },
   "dependencies": {
     "@headlessui/react": "1.6.5",

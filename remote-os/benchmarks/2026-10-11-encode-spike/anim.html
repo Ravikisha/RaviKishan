@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;overflow:hidden;background:#f4f4f2;font:14px/1.4 sans-serif;color:#222}
+#stage{position:absolute;inset:0}
+.box #stage{inset:auto;left:120px;top:120px;width:800px;height:600px;border:1px solid #888;overflow:hidden}
+.feed{position:absolute;left:0;right:0;top:0;animation:scroll 6s linear infinite}
+.card{margin:10px;padding:12px;border-radius:6px;background:#fff;box-shadow:0 1px 3px #0003}
+.card b{color:#c60}.spin{position:absolute;right:40px;top:40px;width:220px;height:220px;border-radius:50%;
+background:conic-gradient(#e33,#3a3,#33e,#ee3,#e33);animation:rot 2s linear infinite}
+@keyframes scroll{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+@keyframes rot{to{transform:rotate(360deg)}}
+.idle .feed,.idle .spin{animation-play-state:paused}
+</style></head><body><div id="stage"><div class="feed" id="f"></div><div class="spin"></div></div>
+<script>
+const m=(location.hash||'#full').slice(1);document.body.className=m;
+let h='';for(let i=0;i<120;i++){h+='<div class="card"><b>Item '+i+'</b> — Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. '+'#'.repeat(i%40)+'</div>'}
+document.getElementById('f').innerHTML=h+h;
+</script></body></html>

@@ -1,0 +1,58 @@
+  ✓ GET /health -> 200 through the tunnel
+
+== origin / auth ==
+  ✓ foreign Origin upgrade refused before WS (close 1006)
+  ✓ no auth within 5 s -> close 4401 (4401 error:auth/timeout)
+  ✓ forged token -> close 4401 (4401 error:auth/malformed)
+  ✓ authenticated, unknown session -> close 4404 (4404 error:session/not-found)
+  ✓ REST without token -> 401
+  ✓ preflight 204 + echoed origin
+  ✓ unknown session -> 404 session/not-found
+
+== 1080p60 ==
+  ✓ POST /sessions 1080p60 -> 201
+  ✓ session READY on create (READY)
+  ✓ video decoding 1920x1080 after 3385 ms
+  ✓ first server message is ice-servers
+  ✓ session CONNECTED with viewer
+  idle: {"seconds":10.1,"resolution":"1920x1080","decodedFps":59.9,"framesDropped":0,"packetsLost":0,"mbitPerS":1,"rttMsP50":32,"rttMsP95":35,"jitterMs":1,"decodeMsPerFrame":1.8,"jitterBufferMs":14.9,"keyframesDecoded":3,"pliSent":0,"nackSent":0,"retransmittedPacketsReceived":0,"path":"prflx/tcp :49168 via turn:92.4.83.196:443?transport=tcp -> prflx :60405","server":{"fps":60.1,"mbitPerS":1.1,"encodeMs":4.6,"droppedInWindow":0,"bitrateCapKbps":7000,"samples":10}}
+  motion: {"seconds":20.2,"resolution":"1920x1080","decodedFps":51.9,"framesDropped":0,"packetsLost":926,"mbitPerS":6.4,"rttMsP50":33,"rttMsP95":374,"jitterMs":2,"decodeMsPerFrame":3.3,"jitterBufferMs":16.5,"keyframesDecoded":5,"pliSent":0,"nackSent":185,"retransmittedPacketsReceived":824,"path":"prflx/tcp :49168 via turn:92.4.83.196:443?transport=tcp -> prflx :60405","server":{"fps":60,"mbitPerS":6.4,"encodeMs":8.3,"droppedInWindow":1,"bitrateCapKbps":5950,"samples":19},"supervisorCpuCores":1.61,"sessionCpuCores":0.27}
+  ✓ media path is the TURN relay over TCP 443 (prflx/tcp :49168 via turn:92.4.83.196:443?transport=tcp -> prflx :60405; tcp/443 legs 1)
+  ✓ decoded fps 51.9 near target
+  input->display ms: {"click":{"p50":96.6,"p95":113.4,"min":67.8,"missed":0,"n":15},"key":{"p50":95.4,"p95":106,"min":80.2,"missed":0,"n":15}}
+  ✓ every click reached the display
+  ✓ every key reached the display
+  input abuse: {"rejected":586,"clipRoundTrip":true,"errors":["profile/needs-restart"],"framesDecodedMeanwhile":259}
+  ✓ malformed/oversized/replayed/flooded input refused (586 rejected)
+  ✓ stream kept flowing through the abuse (259 frames)
+  ✓ clipboard set + pull round trip
+  ✓ res 1080p60->720p30 refused as needs-restart
+  ✓ supervisor healthy after the abuse
+  ✓ GET /stats carries live stream numbers
+  ✓ first viewer replaced -> {type:"replaced"} + 4409 (4409 ice,replaced)
+  ✓ stop -> STOPPED (STOPPED)
+
+== 720p30 ==
+  ✓ POST /sessions 720p30 -> 201
+  ✓ session READY on create (READY)
+  ✓ video decoding 1280x720 after 2177 ms
+  ✓ first server message is ice-servers
+  ✓ session CONNECTED with viewer
+  idle: {"seconds":10.1,"resolution":"1280x720","decodedFps":29.9,"framesDropped":0,"packetsLost":0,"mbitPerS":0.5,"rttMsP50":42,"rttMsP95":43,"jitterMs":2,"decodeMsPerFrame":1.1,"jitterBufferMs":3.3,"keyframesDecoded":3,"pliSent":0,"nackSent":0,"retransmittedPacketsReceived":0,"path":"prflx/tcp :49175 via turn:92.4.83.196:443?transport=tcp -> prflx :51597","server":{"fps":30.1,"mbitPerS":0.5,"encodeMs":2.2,"droppedInWindow":-1,"bitrateCapKbps":2500,"samples":10}}
+  motion: {"seconds":20.2,"resolution":"1280x720","decodedFps":0,"framesDropped":0,"packetsLost":0,"mbitPerS":0,"rttMsP50":43,"rttMsP95":43,"jitterMs":2,"decodeMsPerFrame":0,"jitterBufferMs":0,"keyframesDecoded":0,"pliSent":0,"nackSent":0,"retransmittedPacketsReceived":0,"path":"unknown","server":{"fps":null,"mbitPerS":0,"encodeMs":null,"droppedInWindow":null,"bitrateCapKbps":null,"samples":0},"supervisorCpuCores":0.41,"sessionCpuCores":0.11000000000000001}
+  ✗ media path is the TURN relay over TCP 443 (unknown; tcp/443 legs 2)
+  ✗ decoded fps 0 near target
+  input->display ms: {"click":{"p50":null,"p95":null,"min":null,"missed":15,"n":15},"key":{"p50":null,"p95":null,"min":null,"missed":15,"n":15}}
+  ✗ every click reached the display
+  ✗ every key reached the display
+  input abuse: {"rejected":0,"clipRoundTrip":false,"errors":[],"framesDecodedMeanwhile":0}
+  ✗ malformed/oversized/replayed/flooded input refused (0 rejected)
+  ✗ stream kept flowing through the abuse (0 frames)
+  ✗ clipboard set + pull round trip
+  ✗ res 720p30->1080p30 refused as needs-restart
+  ✓ supervisor healthy after the abuse
+  ✓ GET /stats carries live stream numbers
+  ✓ first viewer replaced -> {type:"replaced"} + 4409 (4409 ice,replaced)
+  ✓ stop -> STOPPED (STOPPED)
+
+34 passed, 8 failed; results -> /D:/personal_sync/RaviKishan/remote-os/tests/e2e-results.json

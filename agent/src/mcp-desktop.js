@@ -78,7 +78,7 @@ export function mcpDesktopConfig({ desktopUrl = `http://127.0.0.1:${process.env.
 // structured browsing happens where the owner can watch it. Its tools are MCP
 // tools like any other and go through the permission prompt.
 export function playwrightMcpConfig({ cdp = `http://127.0.0.1:${process.env.AGENT_CDP_PORT || 9222}`, pkg = process.env.AGENT_PLAYWRIGHT_MCP_PKG || "@playwright/mcp@latest" } = {}) {
-  return { command: "npx", args: ["-y", pkg, "--cdp-endpoint", cdp], env: { DISPLAY: process.env.AGENT_DISPLAY || ":1" } };
+  return { command: "npx", args: ["-y", pkg, "--cdp-endpoint", cdp], env: { DISPLAY: process.env.AGENT_DISPLAY || ":1", XAUTHORITY: process.env.AGENT_XAUTHORITY || process.env.XAUTHORITY || "/run/agentd-desktop/Xauthority" } };
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

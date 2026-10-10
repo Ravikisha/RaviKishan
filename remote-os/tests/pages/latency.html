@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>latency probe</title><style>
+html,body{margin:0;height:100%;overflow:hidden;cursor:none}
+#p{position:fixed;inset:0;background:#000}
+</style></head><body><div id="p"></div><script>
+// Input-to-display probe: every click or key press flips the whole screen
+// between black and white, so the viewer can time the flip in decoded video.
+let on = false;
+const p = document.getElementById('p');
+function flip() { on = !on; p.style.background = on ? '#fff' : '#000'; }
+addEventListener('mousedown', flip);
+addEventListener('keydown', (e) => { if (!e.repeat) flip(); });
+</script></body></html>

@@ -1,0 +1,3 @@
+Throwaway RSA keys generated for unit tests only (openssl genpkey, 11 Oct 2026).
+They sign nothing outside `cargo test`; the verifier never trusts them in a
+real deployment because keys come only from Google's published key set.

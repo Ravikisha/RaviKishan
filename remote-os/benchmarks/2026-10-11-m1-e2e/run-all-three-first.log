@@ -1,0 +1,71 @@
+  ✓ GET /health -> 200 through the tunnel
+
+== origin / auth ==
+  ✓ foreign Origin upgrade refused before WS (close 1006)
+  ✓ no auth within 5 s -> close 4401 (4401 error:auth/timeout)
+  ✓ forged token -> close 4401 (4401 error:auth/malformed)
+  ✓ authenticated, unknown session -> close 4404 (4404 error:session/not-found)
+  ✓ REST without token -> 401
+  ✓ preflight 204 + echoed origin
+  ✓ unknown session -> 404 session/not-found
+
+== 720p30 ==
+  ✓ POST /sessions 720p30 -> 201
+  ✓ session READY on create (READY)
+  ✓ video decoding 1280x720 after 3950 ms
+  ✓ first server message is ice-servers
+  ✓ session CONNECTED with viewer
+  idle: {"seconds":10.1,"resolution":"1280x720","decodedFps":30,"framesDropped":0,"packetsLost":0,"mbitPerS":0.5,"rttMsP50":32,"rttMsP95":33,"jitterMs":0,"decodeMsPerFrame":0.9,"jitterBufferMs":0.8,"keyframesDecoded":3,"pliSent":0,"path":"prflx/tcp :49173 via turn:92.4.83.196:443?transport=tcp -> prflx :45354","server":{"fps":30.1,"mbitPerS":0.5,"encodeMs":2.3,"droppedInWindow":0,"bitrateCapKbps":2500,"samples":10}}
+  motion: {"seconds":20.2,"resolution":"1280x720","decodedFps":30,"framesDropped":0,"packetsLost":0,"mbitPerS":2.5,"rttMsP50":31,"rttMsP95":32,"jitterMs":1,"decodeMsPerFrame":2.1,"jitterBufferMs":7.9,"keyframesDecoded":6,"pliSent":0,"path":"prflx/tcp :49173 via turn:92.4.83.196:443?transport=tcp -> prflx :45354","server":{"fps":30,"mbitPerS":2.5,"encodeMs":3.3,"droppedInWindow":0,"bitrateCapKbps":2500,"samples":20},"supervisorCpuCores":0.41,"sessionCpuCores":0.12}
+  ✓ media path is the TURN relay over TCP 443 (prflx/tcp :49173 via turn:92.4.83.196:443?transport=tcp -> prflx :45354; tcp/443 legs 1)
+  ✓ decoded fps 30 near target
+  ✗ 720p30 run — Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.
+  ✓ stop -> STOPPED (STOPPED)
+
+== 1080p30 ==
+  ✓ POST /sessions 1080p30 -> 201
+  ✓ session READY on create (READY)
+  ✓ video decoding 1920x1080 after 1919 ms
+  ✓ first server message is ice-servers
+  ✓ session CONNECTED with viewer
+  idle: {"seconds":10.1,"resolution":"1920x1080","decodedFps":29.9,"framesDropped":0,"packetsLost":0,"mbitPerS":1,"rttMsP50":33,"rttMsP95":34,"jitterMs":1,"decodeMsPerFrame":2.6,"jitterBufferMs":5.8,"keyframesDecoded":3,"pliSent":0,"path":"prflx/tcp :49170 via turn:92.4.83.196:443?transport=tcp -> prflx :39676","server":{"fps":30.1,"mbitPerS":1,"encodeMs":4.8,"droppedInWindow":-1,"bitrateCapKbps":4500,"samples":10}}
+  motion: {"seconds":20.2,"resolution":"1920x1080","decodedFps":30,"framesDropped":0,"packetsLost":0,"mbitPerS":4.5,"rttMsP50":33,"rttMsP95":36,"jitterMs":3,"decodeMsPerFrame":4.2,"jitterBufferMs":11.6,"keyframesDecoded":6,"pliSent":0,"path":"prflx/tcp :49170 via turn:92.4.83.196:443?transport=tcp -> prflx :39676","server":{"fps":30,"mbitPerS":4.5,"encodeMs":8.9,"droppedInWindow":-1,"bitrateCapKbps":4500,"samples":20},"supervisorCpuCores":0.85,"sessionCpuCores":0.24}
+  ✓ media path is the TURN relay over TCP 443 (prflx/tcp :49170 via turn:92.4.83.196:443?transport=tcp -> prflx :39676; tcp/443 legs 1)
+  ✓ decoded fps 30 near target
+  input->display ms: {"click":{"p50":115.1,"p95":168.8,"min":76,"missed":0,"n":15},"key":{"p50":111.7,"p95":114.6,"min":109.9,"missed":0,"n":15}}
+  ✓ every click reached the display
+  ✓ every key reached the display
+  input abuse: {"rejected":585,"clipRoundTrip":true,"errors":["profile/needs-restart"],"framesDecodedMeanwhile":129}
+  ✓ malformed/oversized/replayed/flooded input refused (585 rejected)
+  ✓ stream kept flowing through the abuse (129 frames)
+  ✓ clipboard set + pull round trip
+  ✓ res 1080p30->720p30 refused as needs-restart
+  ✓ supervisor healthy after the abuse
+  ✓ first viewer replaced -> {type:"replaced"} + 4409 (4409 ice,replaced)
+  ✗ GET /stats carries live stream numbers
+  ✓ stop -> STOPPED (STOPPED)
+
+== 1080p60 ==
+  ✓ POST /sessions 1080p60 -> 201
+  ✓ session READY on create (READY)
+  ✓ video decoding 1920x1080 after 2931 ms
+  ✓ first server message is ice-servers
+  ✓ session CONNECTED with viewer
+  idle: {"seconds":10.1,"resolution":"1920x1080","decodedFps":14.3,"framesDropped":0,"packetsLost":39,"mbitPerS":1,"rttMsP50":31,"rttMsP95":33,"jitterMs":2,"decodeMsPerFrame":2.3,"jitterBufferMs":0.1,"keyframesDecoded":0,"pliSent":2,"path":"prflx/tcp :49171 via turn:92.4.83.196:443?transport=tcp -> prflx :59414","server":{"fps":60,"mbitPerS":1,"encodeMs":4.6,"droppedInWindow":0,"bitrateCapKbps":5057,"samples":10}}
+  motion: {"seconds":20.2,"resolution":"1920x1080","decodedFps":60,"framesDropped":0,"packetsLost":0,"mbitPerS":7,"rttMsP50":33,"rttMsP95":39,"jitterMs":3,"decodeMsPerFrame":3.7,"jitterBufferMs":14.1,"keyframesDecoded":5,"pliSent":0,"path":"prflx/tcp :49171 via turn:92.4.83.196:443?transport=tcp -> prflx :59414","server":{"fps":60.1,"mbitPerS":7,"encodeMs":8.8,"droppedInWindow":0,"bitrateCapKbps":7000,"samples":20},"supervisorCpuCores":1.6199999999999999,"sessionCpuCores":0.27999999999999997}
+  ✓ media path is the TURN relay over TCP 443 (prflx/tcp :49171 via turn:92.4.83.196:443?transport=tcp -> prflx :59414; tcp/443 legs 1)
+  ✓ decoded fps 60 near target
+  input->display ms: {"click":{"p50":92.4,"p95":111,"min":77.6,"missed":0,"n":15},"key":{"p50":92.7,"p95":110.3,"min":78.4,"missed":0,"n":15}}
+  ✓ every click reached the display
+  ✓ every key reached the display
+  input abuse: {"rejected":588,"clipRoundTrip":true,"errors":["profile/needs-restart"],"framesDecodedMeanwhile":258}
+  ✓ malformed/oversized/replayed/flooded input refused (588 rejected)
+  ✓ stream kept flowing through the abuse (258 frames)
+  ✓ clipboard set + pull round trip
+  ✓ res 1080p60->720p30 refused as needs-restart
+  ✓ supervisor healthy after the abuse
+  ✓ first viewer replaced -> {type:"replaced"} + 4409 (4409 ice,replaced)
+  ✗ GET /stats carries live stream numbers
+  ✓ stop -> STOPPED (STOPPED)
+
+48 passed, 3 failed; results -> /D:/personal_sync/RaviKishan/remote-os/tests/e2e-results.json

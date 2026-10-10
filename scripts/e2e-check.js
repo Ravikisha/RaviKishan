@@ -2218,7 +2218,9 @@ async function jarvisSuite(browser) {
       if (m.type() === "error" && !/favicon|Failed to load resource/i.test(m.text())) errors.push(m.text());
     });
     try {
-      await page.goto(`${BASE}/__jarvispreview`, { waitUntil: "networkidle2", timeout: 90000 });
+      // The legacy push stream over the agent socket (the remote desk is the
+      // default screen and has its own block below).
+      await page.goto(`${BASE}/__jarvispreview?legacy=1`, { waitUntil: "networkidle2", timeout: 90000 });
       await page.waitForSelector(".ad-content .jp-root", { timeout: 30000 });
 
       // Nothing connects until the owner asks.
@@ -2469,13 +2471,574 @@ async function jarvisSuite(browser) {
     }
   }
 
+  /* ---- the remote desk (WebRTC): the default screen ---- */
+  // /__jarvispreview hands the panel a fake supervisor and a fake
+  // RTCPeerConnection playing a canvas.captureStream(); the viewer, the
+  // DeskConnection and the InputSender are the real ones.
+  for (const [width, height] of [[390, 844], [768, 1024], [1440, 900]]) {
+    const at = `@${width} desk`;
+    const desk = width >= 1000;
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await page.setViewport({ width, height });
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => {
+      if (m.type() === "error" && !/favicon|Failed to load resource/i.test(m.text())) errors.push(m.text());
+    });
+    // Scrolled to the middle first: the admin's phone/tablet footer is
+    // sticky, and a control under it would take the click.
+    const tap = async (sel) => {
+      await page.evaluate((q) => document.querySelector(q)?.scrollIntoView({ block: "center", behavior: "instant" }), sel);
+      await page.click(sel);
+    };
+    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const sent = () => page.evaluate(() => window.__rd.sent.slice());
+    // a point at fractions (fx, fy) of the PICTURE, in page coordinates
+    const picturePoint = (fx, fy) =>
+      page.evaluate(
+        (fx, fy) => {
+          const v = document.querySelector(".rd-video");
+          const r = v.getBoundingClientRect();
+          const s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+          const w = v.videoWidth * s;
+          const h = v.videoHeight * s;
+          return { x: r.left + (r.width - w) / 2 + fx * w, y: r.top + (r.height - h) / 2 + fy * h, bandTop: r.top + (r.height - h) / 2, rectTop: r.top };
+        },
+        fx,
+        fy
+      );
+    try {
+      await page.goto(`${BASE}/__jarvispreview`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".jp-root .rd-root", { timeout: 30000 });
+      await new Promise((r) => setTimeout(r, 600));
+      const pre = await page.evaluate(() => ({
+        screen: document.querySelector(".jp-root")?.dataset.screen,
+        phase: document.querySelector(".rd-root")?.dataset.phase,
+        calls: window.__rd.calls.length,
+        ws: window.__rd.wsUrls.length,
+        agent: window.__jvConnects || 0,
+        video: !!document.querySelector(".rd-video"),
+        btn: (document.querySelector(".rd-idle .rd-connect") || {}).textContent || "",
+      }));
+      check(pre.screen === "desk" && pre.phase === "idle", `${at} the remote desk is the default screen`, JSON.stringify(pre));
+      check(pre.calls === 0 && pre.ws === 0 && pre.agent === 0 && !pre.video, `${at} opening the tab calls nothing: no REST, no signalling, no agent socket`, JSON.stringify(pre));
+      check(/^Connect/.test(pre.btn) && /desk\.example\.test/.test(pre.btn), `${at} one Connect, naming the desk`, pre.btn);
+      check((await overflow()) <= 0, `${at} the idle desk fits`);
+
+      await page.click(".rd-connect");
+      await page.waitForSelector(".rd-sess", { timeout: 10000 });
+      const list = await page.evaluate(() => ({
+        rows: Array.from(document.querySelectorAll(".rd-sess")).map((r) => r.dataset.state),
+        failedView: !!document.querySelector('.rd-sess[data-state="FAILED"] .rd-view'),
+        edges: Array.from(document.querySelectorAll(".rd-sess")).map((r) => getComputedStyle(r).borderLeftStyle + " " + getComputedStyle(r).borderLeftColor),
+        cap: (document.querySelector(".rd-cap") || {}).textContent || "",
+        calls: window.__rd.calls.map((c) => `${c.method} ${c.path}`),
+        ws: window.__rd.wsUrls.length,
+        agent: window.__jvConnects || 0,
+        sixty: (Array.from(document.querySelectorAll(".rd-new-prof option")).find((o) => o.value === "1080p60") || {}).disabled,
+      }));
+      check(JSON.stringify(list.rows) === JSON.stringify(["READY", "IDLE", "FAILED"]), `${at} Connect lists the sessions with their state`, list.rows.join(","));
+      check(list.edges[0] !== list.edges[1] && /dashed/.test(list.edges[1]) && /255, 107, 107/.test(list.edges[2]), `${at} state is on the left edge: solid ready, dashed idle, red failed`, list.edges.join(" | "));
+      check(!list.failedView, `${at} a failed session offers no View`);
+      check(/2 of 3 running/.test(list.cap) && /1080p60/.test(list.cap), `${at} capacity is said plainly`, list.cap);
+      check(list.sixty === true, `${at} 1080p60 cannot be started beside other sessions`);
+      check(list.calls.includes("GET /sessions") && list.calls.includes("GET /capacity") && list.ws === 0, `${at} Connect reads the list and opens no signalling yet`, list.calls.join(","));
+      check(list.agent === 1, `${at} and brings up the agent socket for the drawers, once`, String(list.agent));
+      check((await overflow()) <= 0, `${at} the session list fits`);
+
+      await page.click('.rd-sess[data-id="s_kontainer"] .rd-view');
+      await page.waitForFunction(() => document.querySelector(".rd-root")?.dataset.conn === "live" && document.querySelector(".rd-video")?.videoWidth > 0, { timeout: 15000 });
+      await new Promise((r) => setTimeout(r, 2300));
+      const live = await page.evaluate(() => {
+        const v = document.querySelector(".rd-video");
+        const r = v.getBoundingClientRect();
+        const stage = document.querySelector(".jp-stage").getBoundingClientRect();
+        const bars = document.querySelectorAll(".jp-root .wb-bar");
+        const bar = bars[0];
+        const vis = (el) => !!el && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 2;
+        return {
+          sig: window.__rd.signal.map((m) => m.type),
+          token: window.__rd.signal[0] && window.__rd.signal[0].token,
+          cfg: window.__rd.pcConfigs[0] || {},
+          ws: window.__rd.wsUrls[0] || "",
+          attrs: { auto: v.autoplay, inline: v.playsInline, muted: v.muted, fit: getComputedStyle(v).objectFit, playing: !v.paused },
+          size: [v.videoWidth, v.videoHeight],
+          r: { w: r.width, h: r.height, left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+          stage: { left: stage.left, right: stage.right, w: stage.width },
+          vw: innerWidth,
+          vh: innerHeight,
+          bars: bars.length,
+          barHas: !!bar && ["ag-conn", "wb-meter", "wb-rate", "wb-mode", "jp-opens"].every((c) => !!bar.querySelector("." + c)),
+          barUnder: !!bar && bar.getBoundingClientRect().top >= r.bottom - 1,
+          barText: bar ? bar.innerText : "",
+          meter: parseFloat((document.querySelector(".rd-root .wb-meter i") || { style: {} }).style.width) || 0,
+          rate: (document.querySelector(".rd-rate") || {}).textContent || "",
+          take: document.querySelector(".rd-root .wb-take")?.getAttribute("aria-pressed"),
+          hb: window.__rd.sent.filter((m) => m.t === "hb").length,
+          listHidden: !vis(document.querySelector(".rd-sess-body")),
+          toggle: vis(document.querySelector(".rd-sess-toggle")),
+        };
+      });
+      check(live.sig[0] === "auth" && live.token === "fake-id-token", `${at} the first signalling message is the auth, carrying the ID token`, live.sig.join(","));
+      check(live.sig.indexOf("ready") === 1 && live.sig.includes("answer") && live.sig.includes("ice"), `${at} then ready, the answer, and trickled ICE`, live.sig.join(","));
+      check(/^wss:\/\/desk\.example\.test\/api\/v1\/sessions\/s_kontainer\/signal$/.test(live.ws), `${at} signalling goes to /api/v1/sessions/:id/signal over wss`, live.ws);
+      check(live.cfg.iceTransportPolicy === "relay" && /^turn:/.test(((live.cfg.iceServers || [])[0] || {}).urls[0] || ""), `${at} the peer connection is relay-only, with the server's TURN`, JSON.stringify(live.cfg));
+      check(live.attrs.auto && live.attrs.inline && live.attrs.muted && live.attrs.fit === "contain" && live.attrs.playing, `${at} a native <video autoplay playsinline muted>, object-fit contain, playing`, JSON.stringify(live.attrs));
+      check(live.size[0] === 1920 && live.size[1] === 1080 && Math.abs(live.r.w / live.r.h - 16 / 9) < 0.02, `${at} at the stream's own aspect ratio`, `${live.size} in ${Math.round(live.r.w)}x${Math.round(live.r.h)}`);
+      check(live.r.left >= live.stage.left - 1 && live.r.right <= live.stage.right + 1 && live.r.right <= live.vw, `${at} inside the content area`);
+      check(live.r.w >= (live.stage.w - 44) * 0.97 || live.r.h >= live.vh * 0.55, `${at} the remote screen is the hero`, `${Math.round(live.r.w)}x${Math.round(live.r.h)}`);
+      if (desk) check(live.r.bottom <= live.vh + 1, `${at} and on screen without scrolling`, `bottom ${Math.round(live.r.bottom)} of ${live.vh}`);
+      check(live.bars === 1 && live.barHas && live.barUnder, `${at} ONE bar under the picture: state, meter, readout, Watch / Drive, drawers`, JSON.stringify({ bars: live.bars, has: live.barHas, under: live.barUnder }));
+      check(!/·/.test(live.barText), `${at} the bar joins nothing with middots`);
+      check(live.meter > 0 && live.meter <= 100 && /fps/.test(live.rate) && /Mbit\/s|kbit\/s/.test(live.rate) && /ms/.test(live.rate), `${at} the link meter and readout come from getStats`, `${live.meter}% ${live.rate}`);
+      check(live.take === "false", `${at} it opens on Watch`);
+      check(live.hb >= 2, `${at} heartbeats go every 2 s while the channel is open`, String(live.hb));
+      if (width <= 640) {
+        check(live.listHidden && live.toggle, `${at} a phone shows one view at a time: the list folds under its heading`, JSON.stringify(live));
+        await tap(".rd-sess-toggle");
+        const shown = await page.evaluate(() => document.querySelector(".rd-sess-body").getBoundingClientRect().height > 20);
+        check(shown, `${at} and opens on a tap`);
+        await tap(".rd-sess-toggle");
+      } else {
+        check(!live.listHidden, `${at} on a wider screen the list stays under the picture`);
+      }
+      check((await overflow()) <= 0, `${at} live, nothing overflows sideways`);
+
+      // Watching: a click sends nothing.
+      const watchPt = await picturePoint(0.5, 0.5);
+      await page.mouse.click(watchPt.x, watchPt.y);
+      await new Promise((r) => setTimeout(r, 300));
+      check(!(await sent()).some((m) => m.t === "pd" || m.t === "pu" || m.t === "pm"), `${at} a click while watching sends nothing`);
+
+      // Drive.
+      await page.click(".rd-root .wb-take");
+      await page.waitForSelector(".rd-screen.driving", { timeout: 5000 });
+      const amber = await page.evaluate(() => getComputedStyle(document.querySelector(".rd-root .wb-take")).backgroundColor);
+      check(amber === "rgb(255, 176, 32)", `${at} Drive is amber only while driving`, amber);
+      const n0 = (await sent()).length;
+      const pt = await picturePoint(0.25, 0.75);
+      await page.mouse.click(pt.x, pt.y);
+      await new Promise((r) => setTimeout(r, 300));
+      const click = (await sent()).slice(n0).filter((m) => m.t === "pd" || m.t === "pu");
+      const pd = click.find((m) => m.t === "pd") || {};
+      const pu = click.find((m) => m.t === "pu") || {};
+      check(pd.b === 1 && Math.abs(pd.x - 0.25) < 0.01 && Math.abs(pd.y - 0.75) < 0.01, `${at} a click becomes pd at the picture's own fraction`, JSON.stringify(pd));
+      check(pu.b === 1 && Math.abs(pu.x - 0.25) < 0.01, `${at} and pu`, JSON.stringify(pu));
+      const focused = await page.evaluate(() => document.activeElement === document.querySelector(".rd-screen"));
+      check(focused, `${at} clicking the picture gives it the keys`);
+
+      // Letterboxed: make the box taller than the picture.
+      await page.evaluate(() => {
+        document.querySelector(".rd-screen").style.aspectRatio = "4 / 3";
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      const lb = await picturePoint(0.5, 0.1);
+      check(lb.bandTop - lb.rectTop > 10, `${at} (letterbox set up: ${Math.round(lb.bandTop - lb.rectTop)}px bars)`);
+      const n1 = (await sent()).length;
+      await page.mouse.click(lb.x, lb.y);
+      await new Promise((r) => setTimeout(r, 250));
+      const lbd = (await sent()).slice(n1).find((m) => m.t === "pd") || {};
+      check(Math.abs(lbd.x - 0.5) < 0.01 && Math.abs(lbd.y - 0.1) < 0.01, `${at} letterboxed, a click still maps to the picture, not the element`, JSON.stringify(lbd));
+      const n2 = (await sent()).length;
+      await page.mouse.click(lb.x, lb.rectTop + 3);
+      await new Promise((r) => setTimeout(r, 250));
+      check(!(await sent()).slice(n2).some((m) => m.t === "pd"), `${at} and a click in the letterbox band clicks nothing`);
+      await page.evaluate(() => {
+        document.querySelector(".rd-screen").style.aspectRatio = "";
+      });
+
+      // Coalescing: fifty moves in one task are one or two pm.
+      const n3 = (await sent()).length;
+      await page.evaluate(() => {
+        const v = document.querySelector(".rd-video");
+        const r = v.getBoundingClientRect();
+        for (let i = 0; i < 50; i += 1) {
+          v.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: r.left + r.width * (0.2 + i / 200), clientY: r.top + r.height / 2, pointerId: 1 }));
+        }
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      const pms = (await sent()).slice(n3).filter((m) => m.t === "pm");
+      check(pms.length >= 1 && pms.length <= 2, `${at} fifty pointer moves in a frame go as one`, String(pms.length));
+      check(pms.length && pms[pms.length - 1].x > 0.4, `${at} and it is the newest position`, JSON.stringify(pms[pms.length - 1]));
+
+      // Keys: passthrough, and browser-reserved shortcuts are not sent.
+      await page.focus(".rd-screen");
+      const n4 = (await sent()).length;
+      await page.keyboard.press("KeyA");
+      await page.keyboard.press("Enter");
+      await page.evaluate(() => {
+        const el = document.querySelector(".rd-screen");
+        el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "KeyW", key: "w", ctrlKey: true }));
+        el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "Tab", key: "Tab", ctrlKey: true }));
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      const keys = (await sent()).slice(n4).filter((m) => m.t === "kd" || m.t === "ku");
+      check(keys.map((m) => `${m.t}:${m.code}`).join(",") === "kd:KeyA,ku:KeyA,kd:Enter,ku:Enter", `${at} keys go as code + key, and Ctrl+W / Ctrl+Tab stay with the browser`, keys.map((m) => `${m.t}:${m.code}`).join(","));
+      check(keys[0] && keys[0].key === "a", `${at} with the key as typed`, JSON.stringify(keys[0]));
+
+      // Release-all on blur.
+      await page.keyboard.down("ShiftLeft");
+      const n5 = (await sent()).length;
+      await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+      await new Promise((r) => setTimeout(r, 150));
+      const afterBlur = (await sent()).slice(n5);
+      check(afterBlur.some((m) => m.t === "rel"), `${at} a window blur sends release-all`, afterBlur.map((m) => m.t).join(","));
+      await page.keyboard.up("ShiftLeft");
+      check(!(await sent()).slice(n5).some((m) => m.t === "ku" && m.code === "ShiftLeft"), `${at} and a key let go after it is not sent again`);
+
+      // The wire discipline across everything sent so far.
+      const all = await sent();
+      const seqOk = all.every((m, i) => m.seq === i + 1);
+      check(seqOk, `${at} seq runs 1, 2, 3… with no gap or repeat across ${all.length} messages`, all.slice(0, 6).map((m) => m.seq).join(","));
+      check(all.every((m) => m.v === 1 && JSON.stringify(m).length <= 512), `${at} every message is v:1 and within 512 bytes`);
+
+      // Stats in full.
+      await tap(".rd-rate");
+      const det = await page.evaluate(() => (document.querySelector("#rd-stats") || {}).textContent || "");
+      check(/RTT \d+ ms/.test(det) && /jitter/.test(det) && /loss/.test(det) && /decode/.test(det) && /1920×1080/.test(det) && /encode/.test(det), `${at} the readout opens every measurement`, det);
+      check(/box 2\.4 Mbit\/s/.test(det) && !/2400 Mbit/.test(det), `${at} the box's bitrate is read as bit/s: 2,400,000 shows as 2.4 Mbit/s`, det);
+      check(/encoded \d+(\.\d)? fps/.test(det) && /dropped \d+(\.\d)?\/s/.test(det), `${at} the box's cumulative counters show as rates`, det);
+      await tap(".rd-rate");
+
+      // Profile change to a new SIZE: the box refuses it (Xvfb cannot
+      // resize: profile/needs-restart) and the viewer offers a new session.
+      const n6 = (await sent()).length;
+      await page.select(".rd-prof-sel", "720p30");
+      await page.waitForSelector(".rd-restart", { timeout: 5000 });
+      const res = (await sent()).slice(n6).find((m) => m.t === "res");
+      check(res && res.profile === "720p30", `${at} the profile selector asks with t:res`, JSON.stringify(res));
+      const offer = await page.evaluate(() => ({
+        text: document.querySelector(".rd-restart").innerText,
+        go: (document.querySelector(".rd-restart-go") || {}).textContent || "",
+        sel: document.querySelector(".rd-prof-sel").value,
+        w: document.querySelector(".rd-video").videoWidth,
+        conn: document.querySelector(".rd-root").dataset.conn,
+      }));
+      check(/cannot change size/.test(offer.text) && /needs a new session/.test(offer.text) && /keeps running/.test(offer.text), `${at} needs-restart: says plainly that this size needs a new session`, offer.text.slice(0, 140));
+      check(/720p30 session/.test(offer.go) && offer.sel === "1080p30" && offer.w === 1920 && offer.conn === "live", `${at} one button for it; the selector and the picture stay as they are`, JSON.stringify(offer));
+      check((await overflow()) <= 0, `${at} the offer fits`);
+      await tap(".rd-restart-go");
+      await page.waitForFunction(
+        () =>
+          document.querySelector(".rd-sess.current")?.dataset.id === "s_kontainer720p30" &&
+          document.querySelector(".rd-root")?.dataset.conn === "live" &&
+          document.querySelector(".rd-video")?.videoWidth === 1280,
+        { timeout: 10000 }
+      );
+      const moved = await page.evaluate(() => ({
+        posts: window.__rd.calls.filter((c) => c.method === "POST" && c.path === "/sessions"),
+        old: (document.querySelector('.rd-sess[data-id="s_kontainer"]') || { dataset: {} }).dataset.state,
+        text: (document.querySelector(".rd-restart.moved") || {}).innerText || "",
+        ws: window.__rd.wsUrls.slice(-1)[0] || "",
+      }));
+      check(
+        moved.posts.length === 1 && moved.posts[0].body.name === "kontainer-720p30" && moved.posts[0].body.profile === "720p30" && !!moved.posts[0].idem,
+        `${at} it creates a 720p30 session with an Idempotency-Key`,
+        JSON.stringify(moved.posts)
+      );
+      check(/s_kontainer720p30\/signal$/.test(moved.ws), `${at} and connects to it, at 1280×720`, moved.ws);
+      check(moved.old === "READY" && /still running/.test(moved.text), `${at} the old session is left running, and the page says so`, `${moved.old} ${moved.text.slice(0, 100)}`);
+      const nStop0 = await page.evaluate(() => window.__rd.calls.filter((c) => /stop$/.test(c.path)).length);
+      await tap(".rd-restart-stop");
+      const armedOld = await page.evaluate(() => (document.querySelector(".rd-restart-stop") || {}).textContent || "");
+      check(/tap again to stop kontainer/i.test(armedOld) && (await page.evaluate(() => window.__rd.calls.filter((c) => /stop$/.test(c.path)).length)) === nStop0, `${at} stopping the old one: the first tap only arms`, armedOld);
+      await tap(".rd-restart-stop");
+      await page.waitForFunction(() => window.__rd.calls.some((c) => c.path === "/sessions/s_kontainer/stop"), { timeout: 5000 }).catch(() => {});
+      check(await page.evaluate(() => window.__rd.calls.some((c) => c.path === "/sessions/s_kontainer/stop") && !document.querySelector(".rd-restart")), `${at} the second stops it, and the offer goes`);
+      const opts = await page.evaluate(() => Array.from(document.querySelectorAll(".rd-prof-sel option")).map((o) => `${o.value}:${o.disabled}`));
+      check(opts.includes("1080p60:true"), `${at} 1080p60 is offered only to the only session`, opts.join(","));
+      // A new connection starts on Watch: drive again for what follows.
+      await page.waitForFunction(() => !document.querySelector(".rd-root .wb-take")?.disabled, { timeout: 5000 });
+      await tap(".rd-root .wb-take");
+      await page.waitForSelector(".rd-screen.driving", { timeout: 5000 });
+
+      // Clipboard: pull.
+      await tap('.rd-root .wb-icon[aria-label="Clipboard"]');
+      await tap(".rd-clip-pull");
+      await page.waitForSelector(".rd-clip-got", { timeout: 5000 });
+      const got = await page.evaluate(() => document.querySelector(".rd-clip-got").textContent);
+      check(/docker compose/.test(got), `${at} Get the desktop's clipboard shows what the box copied`, got);
+      const sentClip = (await sent()).filter((m) => m.t === "clip?").length;
+      check(sentClip === 1, `${at} via one t:clip? on the input channel`);
+      await page.type(".rd-clip-text", "hello box");
+      await tap(".rd-clip-go");
+      await new Promise((r) => setTimeout(r, 150));
+      const clip = (await sent()).filter((m) => m.t === "clip").pop();
+      check(clip && clip.text === "hello box", `${at} and Send puts text on the desktop's clipboard`, JSON.stringify(clip));
+      check((await overflow()) <= 0, `${at} the clipboard row fits`);
+
+      // Watch releases.
+      const n7 = (await sent()).length;
+      await tap(".rd-root .wb-watch");
+      await new Promise((r) => setTimeout(r, 150));
+      check((await sent()).slice(n7).some((m) => m.t === "rel"), `${at} handing back (Watch) sends release-all`);
+
+      // Stop: two taps.
+      if (width <= 640) await tap(".rd-sess-toggle");
+      await tap('.rd-sess[data-id="s_notes"] .rd-stop');
+      await new Promise((r) => setTimeout(r, 150));
+      const armed = await page.evaluate(() => ({
+        text: document.querySelector('.rd-sess[data-id="s_notes"] .rd-stop').textContent,
+        calls: window.__rd.calls.filter((c) => c.path === "/sessions/s_notes/stop").length,
+      }));
+      check(/tap again/i.test(armed.text) && armed.calls === 0, `${at} the first tap on Stop only arms it`, JSON.stringify(armed));
+      await tap('.rd-sess[data-id="s_notes"] .rd-stop');
+      await page.waitForFunction(() => window.__rd.calls.some((c) => c.path === "/sessions/s_notes/stop"), { timeout: 5000 }).catch(() => {});
+      check(await page.evaluate(() => window.__rd.calls.some((c) => c.path === "/sessions/s_notes/stop")), `${at} the second stops it`);
+
+      // Create, with an idempotency key.
+      await page.evaluate(() => document.querySelector(".rd-new-name").scrollIntoView({ block: "center", behavior: "instant" }));
+      await page.type(".rd-new-name", `e2e${width}`);
+      await page.select(".rd-new-prof", "720p30");
+      await tap(".rd-new-go");
+      await page.waitForFunction((w) => !!document.querySelector(`.rd-sess[data-id="s_e2e${w}"]`), { timeout: 5000 }, width).catch(() => {});
+      const made = await page.evaluate((w) => window.__rd.calls.filter((c) => c.method === "POST" && c.path === "/sessions" && c.body.name === `e2e${w}`), width);
+      check(made.length === 1 && made[0].body.profile === "720p30" && /^[0-9a-f-]{20,}$|^k/.test(made[0].idem || ""), `${at} Start session posts name + profile with an Idempotency-Key`, JSON.stringify(made));
+      check(await page.evaluate((w) => !!document.querySelector(`.rd-sess[data-id="s_e2e${w}"]`), width), `${at} and the new session appears in the list`);
+      check((await overflow()) <= 0, `${at} the list with the new row fits`);
+
+      // Disconnect: release, bye, close, back to idle.
+      const n8 = (await sent()).length;
+      await tap(".rd-disconnect");
+      await new Promise((r) => setTimeout(r, 400));
+      const off = await page.evaluate(() => ({
+        phase: document.querySelector(".rd-root")?.dataset.phase,
+        bye: window.__rd.bye,
+        closed: window.__rd.closed,
+        agent: document.querySelector(".jp-root")?.dataset.status,
+      }));
+      check((await sent()).slice(n8).some((m) => m.t === "rel") && off.bye >= 1 && off.closed >= 1, `${at} Disconnect sends release-all, says bye and closes the peer`, JSON.stringify(off));
+      check(off.phase === "idle" && off.agent === "closed", `${at} and returns to Connect, with the agent socket closed too`, JSON.stringify(off));
+      check(errors.length === 0, `${at} no errors in the console`, errors.slice(0, 2).join(" | "));
+    } catch (e) {
+      bad(`jarvis desk ${at}`, e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
+  /* ---- the remote desk: step-up, unreachable, relay failure ---- */
+  {
+    const page = await browser.newPage();
+    await page.bringToFront();
+    await page.setViewport({ width: 768, height: 1024 });
+    try {
+      // Drive needs a recent sign-in.
+      await page.goto(`${BASE}/__jarvispreview?stale=1`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".rd-connect", { timeout: 30000 });
+      await page.click(".rd-connect");
+      await page.waitForSelector('.rd-sess[data-id="s_kontainer"] .rd-view', { timeout: 10000 });
+      await page.click('.rd-sess[data-id="s_kontainer"] .rd-view');
+      await page.waitForFunction(() => document.querySelector(".rd-root")?.dataset.conn === "live", { timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector(".rd-root .wb-take")?.disabled, { timeout: 5000 });
+      await page.click(".rd-root .wb-take");
+      await page.waitForSelector(".rd-stepup", { timeout: 5000 });
+      const gate = await page.evaluate(() => ({ driving: !!document.querySelector(".rd-screen.driving"), text: document.querySelector(".rd-stepup").textContent }));
+      check(!gate.driving && /30 minutes/.test(gate.text), "desk: Drive with a stale sign-in asks for a fresh one first", gate.text.slice(0, 80));
+      await page.click(".rd-stepup .admin-primary");
+      await page.waitForSelector(".rd-screen.driving", { timeout: 5000 }).catch(() => {});
+      check(await page.evaluate(() => !!document.querySelector(".rd-screen.driving") && window.__rd.reauths === 1), "desk: and drives once you have signed in again");
+
+      // The desk does not answer: say so, offer the legacy stream.
+      await page.goto(`${BASE}/__jarvispreview?deskfail=1`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".rd-connect", { timeout: 30000 });
+      await page.click(".rd-connect");
+      await page.waitForSelector(".rd-down", { timeout: 10000 });
+      const down = await page.evaluate(() => ({
+        text: document.querySelector(".rd-down").innerText,
+        legacy: !!document.querySelector(".rd-down .rd-legacy"),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      check(/did not answer/.test(down.text) && /legacy/i.test(down.text), "desk unreachable: says what happened and what to do", down.text.slice(0, 120));
+      check(down.legacy && down.overflow <= 0, "desk unreachable: offers the legacy stream", JSON.stringify(down));
+      await page.click(".rd-down .rd-legacy");
+      await page.waitForSelector('.jp-root[data-screen="legacy"]', { timeout: 5000 });
+      await page.waitForSelector(".jp-root .wb-shot", { timeout: 15000 }).catch(() => {});
+      const leg = await page.evaluate(() => ({ shot: !!document.querySelector(".jp-root .wb-shot"), back: !!document.querySelector(".jp-to-desk"), connects: window.__jvConnects }));
+      check(leg.shot && leg.connects === 1, "desk unreachable: Legacy stream shows the push stream over the already-open agent socket", JSON.stringify(leg));
+      check(leg.back, "desk unreachable: and one click goes back to the remote desk");
+      await page.click(".jp-to-desk");
+      await page.waitForSelector(".rd-root", { timeout: 5000 });
+      check(await page.evaluate(() => !document.querySelector(".jp-root .wb-shot") && document.querySelector(".rd-root").dataset.phase === "idle"), "desk: going back stops the legacy stream and waits for Connect");
+
+      // The relay fails: three tries, then it stops and says so.
+      await page.goto(`${BASE}/__jarvispreview?deskfail=ice`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".rd-connect", { timeout: 30000 });
+      await page.click(".rd-connect");
+      await page.waitForSelector('.rd-sess[data-id="s_kontainer"] .rd-view', { timeout: 10000 });
+      await page.click('.rd-sess[data-id="s_kontainer"] .rd-view');
+      const tries = await page
+        .waitForFunction(() => /try \d of 3/i.test(document.querySelector(".rd-root .ag-conn")?.textContent || ""), { timeout: 5000 })
+        .then(() => true, () => false);
+      await page.waitForSelector(".rd-fail", { timeout: 15000 });
+      const ice = await page.evaluate(() => ({
+        text: document.querySelector(".rd-fail").innerText,
+        ws: window.__rd.wsUrls.length,
+        legacy: !!document.querySelector(".rd-fail .rd-legacy"),
+      }));
+      check(tries, "relay failure: the bar counts the reconnect tries");
+      check(/relay/.test(ice.text) && /443/.test(ice.text) && ice.legacy, "relay failure: names the relay and its port, offers Reconnect and the legacy stream", ice.text.slice(0, 120));
+      await new Promise((r) => setTimeout(r, 2500));
+      check((await page.evaluate(() => window.__rd.wsUrls.length)) === 3 && ice.ws === 3, "relay failure: three attempts, then nothing retries on its own", String(ice.ws));
+
+      // A refused origin: the upgrade is answered 403, which a browser sees
+      // as close 1006 with no open. Three tries, then say so and stop.
+      await page.goto(`${BASE}/__jarvispreview?deskfail=origin`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".rd-connect", { timeout: 30000 });
+      await page.click(".rd-connect");
+      await page.waitForSelector('.rd-sess[data-id="s_kontainer"] .rd-view', { timeout: 10000 });
+      await page.click('.rd-sess[data-id="s_kontainer"] .rd-view');
+      const oTries = await page
+        .waitForFunction(() => /try \d of 3/i.test(document.querySelector(".rd-root .ag-conn")?.textContent || ""), { timeout: 5000 })
+        .then(() => true, () => false);
+      await page.waitForSelector(".rd-fail", { timeout: 15000 });
+      const origin = await page.evaluate(() => ({ text: document.querySelector(".rd-fail").innerText, ws: window.__rd.wsUrls.length, legacy: !!document.querySelector(".rd-fail .rd-legacy") }));
+      check(oTries, "refused origin: the usual tries are counted");
+      check(/refused this page/.test(origin.text) && /could not be reached/.test(origin.text) && /localhost:3000/.test(origin.text), "refused origin: says the desk refused this origin or is unreachable", origin.text.slice(0, 160));
+      check(origin.legacy, "refused origin: and offers the legacy stream");
+      await new Promise((r) => setTimeout(r, 2500));
+      check((await page.evaluate(() => window.__rd.wsUrls.length)) === 3 && origin.ws === 3, "refused origin: three attempts, then it stops", String(origin.ws));
+
+      // A frame-rate-only change (1080p30 → 1080p60, alone on the box):
+      // {type:"renegotiate"} drops the peer, keeps the socket and the
+      // session, says ready again, and input re-arms on the new channel.
+      await page.goto(`${BASE}/__jarvispreview?desk=solo`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".rd-connect", { timeout: 30000 });
+      await page.click(".rd-connect");
+      await page.waitForSelector('.rd-sess[data-id="s_kontainer"] .rd-view', { timeout: 10000 });
+      await page.click('.rd-sess[data-id="s_kontainer"] .rd-view');
+      await page.waitForFunction(() => document.querySelector(".rd-root")?.dataset.conn === "live" && !document.querySelector(".rd-root .wb-take")?.disabled, { timeout: 15000 });
+      await page.click(".rd-root .wb-take");
+      await page.waitForSelector(".rd-screen.driving", { timeout: 5000 });
+      const sixtyOk = await page.evaluate(() => !(Array.from(document.querySelectorAll(".rd-prof-sel option")).find((o) => o.value === "1080p60") || {}).disabled);
+      check(sixtyOk, "renegotiate: alone on the box, 1080p60 is on offer");
+      await page.select(".rd-prof-sel", "1080p60");
+      const switching = await page
+        .waitForFunction(() => /Switching to 1080p60/.test(document.querySelector(".rd-root .ag-conn")?.textContent || "") && document.querySelector(".rd-root")?.dataset.conn === "switching", { timeout: 5000 })
+        .then(() => true, () => false);
+      const during = await page.evaluate(() => ({
+        veil: (document.querySelector(".rd-veil") || {}).innerText || "",
+        take: document.querySelector(".rd-root .wb-take")?.disabled,
+        driving: !!document.querySelector(".rd-screen.driving"),
+      }));
+      check(switching, "renegotiate: the bar says Switching to 1080p60");
+      check(/Switching to 1080p60/.test(during.veil) && /60 fps/.test(during.veil) && during.take === true && during.driving, "renegotiate: the picture says what is happening, input waits, Drive stays on", JSON.stringify(during));
+      await page.waitForFunction(() => document.querySelector(".rd-root")?.dataset.conn === "live" && !document.querySelector(".rd-root .wb-take")?.disabled, { timeout: 8000 });
+      const after = await page.evaluate(() => {
+        const sig = window.__rd.signal.map((m) => m.type);
+        const sent = window.__rd.sent;
+        const resAt = sent.findIndex((m) => m.t === "res" && m.profile === "1080p60");
+        return {
+          sig,
+          ws: window.__rd.wsUrls.length,
+          pcs: window.__rd.pcConfigs.length,
+          relay: window.__rd.pcConfigs.every((c) => c.iceTransportPolicy === "relay"),
+          closed: window.__rd.closed,
+          afterRes: sent.slice(resAt + 1).map((m) => m.t),
+          driving: !!document.querySelector(".rd-screen.driving"),
+          sel: document.querySelector(".rd-prof-sel").value,
+          conn: document.querySelector(".rd-root .ag-conn").textContent,
+          note: (document.querySelector(".rd-note") || {}).textContent || "",
+        };
+      });
+      check(after.ws === 1 && after.sig.filter((t) => t === "auth").length === 1, "renegotiate: the same signalling socket, not re-authenticated", JSON.stringify(after.sig));
+      check(after.sig.filter((t) => t === "ready").length === 2 && after.sig.filter((t) => t === "answer").length === 2, "renegotiate: ready again, and a second answer", after.sig.join(","));
+      check(after.pcs === 2 && after.closed >= 1 && after.relay, "renegotiate: the old peer closed, a new relay-only one built", JSON.stringify({ pcs: after.pcs, closed: after.closed }));
+      // The box tears its pipeline (and the old input channel) down before it
+      // sends renegotiate, and releases on teardown; the viewer's own
+      // release on the dying channel is covered by test:remotedesk. What the
+      // box SEES is the new channel opening with release-all first.
+      check(after.afterRes[0] === "rel" && after.afterRes[1] === "hb", "renegotiate: the new input channel opens with release-all, then heartbeats", after.afterRes.slice(0, 6).join(","));
+      check(after.driving && after.sel === "1080p60" && /Live/.test(after.conn), "renegotiate: live again at 1080p60, still driving", JSON.stringify(after));
+      const nAcc = await page.evaluate(() => window.__rd.accepted.length);
+      const vr = await page.evaluate(() => {
+        const r = document.querySelector(".rd-video").getBoundingClientRect();
+        return { x: r.left + r.width * 0.6, y: r.top + r.height * 0.4 };
+      });
+      await page.mouse.click(vr.x, vr.y);
+      await page.waitForFunction((n) => window.__rd.accepted.length > n, { timeout: 3000 }, nAcc).catch(() => {});
+      check(await page.evaluate((n) => window.__rd.accepted.slice(n).some((m) => m.t === "pd"), nAcc), "renegotiate: and input goes through on the new channel");
+
+      // The desk itself refuses input from a stale sign-in: step up, send
+      // the fresh token on the open socket, Drive resumes.
+      await page.goto(`${BASE}/__jarvispreview?stale=server`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".rd-connect", { timeout: 30000 });
+      await page.click(".rd-connect");
+      await page.waitForSelector('.rd-sess[data-id="s_kontainer"] .rd-view', { timeout: 10000 });
+      await page.click('.rd-sess[data-id="s_kontainer"] .rd-view');
+      await page.waitForFunction(() => document.querySelector(".rd-root")?.dataset.conn === "live" && !document.querySelector(".rd-root .wb-take")?.disabled, { timeout: 15000 });
+      await page.click(".rd-root .wb-take");
+      await page.waitForSelector(".rd-screen.driving", { timeout: 5000 });
+      const sp = await page.evaluate(() => {
+        const r = document.querySelector(".rd-video").getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      });
+      await page.mouse.click(sp.x, sp.y);
+      await page.waitForSelector('.rd-stepup[data-why="server"]', { timeout: 5000 });
+      const stale = await page.evaluate(() => ({
+        text: document.querySelector(".rd-stepup").innerText,
+        driving: !!document.querySelector(".rd-screen.driving"),
+        rejected: window.__rd.rejected.length,
+        rel: window.__rd.sent.slice(-3).some((m) => m.t === "rel"),
+      }));
+      check(stale.rejected >= 1 && /30 minutes/.test(stale.text) && /desk/.test(stale.text), "stale sign-in: the desk's refusal is explained", stale.text.slice(0, 120));
+      check(!stale.driving && stale.rel, "stale sign-in: driving stops and everything is released", JSON.stringify(stale));
+      await page.click(".rd-stepup .admin-primary");
+      await page.waitForSelector(".rd-screen.driving", { timeout: 5000 }).catch(() => {});
+      const resumed = await page.evaluate(() => ({
+        driving: !!document.querySelector(".rd-screen.driving"),
+        reauths: window.__rd.reauths,
+        auths: window.__rd.signal.filter((m) => m.type === "auth").map((m) => m.token),
+        ws: window.__rd.wsUrls.length,
+        pcs: window.__rd.pcConfigs.length,
+        gone: !document.querySelector(".rd-stepup"),
+      }));
+      check(resumed.reauths === 1 && resumed.auths.length === 2 && resumed.auths[1] === "fresh-id-token", "stale sign-in: after the sign-in, a FRESH token goes as {type:auth} on the open socket", JSON.stringify(resumed.auths));
+      check(resumed.ws === 1 && resumed.pcs === 1 && resumed.driving && resumed.gone, "stale sign-in: nothing reconnects, and Drive resumes", JSON.stringify(resumed));
+      const nAcc2 = await page.evaluate(() => window.__rd.accepted.length);
+      await page.mouse.click(sp.x, sp.y);
+      await page.waitForFunction((n) => window.__rd.accepted.length > n, { timeout: 3000 }, nAcc2).catch(() => {});
+      check(await page.evaluate((n) => window.__rd.accepted.slice(n).some((m) => m.t === "pd"), nAcc2), "stale sign-in: and the desk takes input again");
+
+      // The session is stopped elsewhere: bye {reason: "session stopped"},
+      // then 1000. Say so; nothing retries.
+      await page.evaluate(() => window.__rdServer.stopViewed());
+      await page.waitForSelector(".rd-fail", { timeout: 5000 });
+      const stopped = await page.evaluate(() => ({
+        text: document.querySelector(".rd-fail").innerText,
+        conn: document.querySelector(".rd-root").dataset.conn,
+        reconnect: Array.from(document.querySelectorAll(".rd-fail button")).some((b) => /Reconnect/.test(b.textContent)),
+      }));
+      check(stopped.conn === "stopped" && /This session was stopped/.test(stopped.text) && !stopped.reconnect, "stopped: says This session was stopped, with no Reconnect", JSON.stringify(stopped));
+      await new Promise((r) => setTimeout(r, 2500));
+      const st2 = await page.evaluate(() => ({ ws: window.__rd.wsUrls.length, row: (document.querySelector('.rd-sess[data-id="s_kontainer"]') || { dataset: {} }).dataset.state }));
+      check(st2.ws === 1, "stopped: and nothing retries", String(st2.ws));
+      check(st2.row === "STOPPED", "stopped: the list catches up", String(st2.row));
+
+      // 4404 is "not found OR not running": a refusal, not a drop.
+      await page.click('.rd-sess[data-id="s_notes"] .rd-view');
+      await page.waitForFunction(() => document.querySelector(".rd-root")?.dataset.conn === "live", { timeout: 15000 });
+      await page.evaluate(() => window.__rdServer.close(4404, "not running"));
+      await page.waitForSelector(".rd-fail", { timeout: 5000 });
+      const nf = await page.evaluate(() => ({ text: document.querySelector(".rd-fail").innerText, ws: window.__rd.wsUrls.length }));
+      check(/not running/.test(nf.text) && /does not exist/.test(nf.text), "4404: says the session is not running, or does not exist", nf.text.slice(0, 120));
+      await new Promise((r) => setTimeout(r, 2500));
+      check((await page.evaluate(() => window.__rd.wsUrls.length)) === nf.ws, "4404: and it is not retried");
+    } catch (e) {
+      bad("jarvis desk failures", e.message);
+    } finally {
+      await page.close();
+    }
+  }
+
   /* ---- a socket that cannot connect says why, where the screen would be ---- */
   {
     const page = await browser.newPage();
     await page.bringToFront();
     await page.setViewport({ width: 390, height: 844 });
     try {
-      await page.goto(`${BASE}/__jarvispreview?fail=1`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.goto(`${BASE}/__jarvispreview?legacy=1&fail=1`, { waitUntil: "networkidle2", timeout: 90000 });
       await page.waitForSelector(".jp-root .jp-idle .jp-connect-btn", { timeout: 30000 });
       await page.click(".jp-idle .jp-connect-btn");
       // Watched on the way: the strip says which try it is on.
@@ -2503,7 +3066,7 @@ async function jarvisSuite(browser) {
       check((await page.evaluate(() => window.__jvConnects)) === 2, "Connect again is one more attempt, when asked");
 
       // An agentd from before the push stream: Jarvis still shows the screen, by polling.
-      await page.goto(`${BASE}/__jarvispreview?poll=1`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.goto(`${BASE}/__jarvispreview?legacy=1&poll=1`, { waitUntil: "networkidle2", timeout: 90000 });
       await page.waitForSelector(".jp-idle .jp-connect-btn", { timeout: 30000 });
       await page.click(".jp-idle .jp-connect-btn");
       await page.waitForSelector(".jp-root img.wb-shot", { timeout: 15000 });
@@ -3115,8 +3678,22 @@ function connectOnDemandChecks() {
   const files = [...walk(path.join(__dirname, "..", "components")), ...walk(path.join(__dirname, "..", "lib")), ...walk(path.join(__dirname, "..", "pages"))];
   const makers = files.filter((p) => /new AgentClient\(/.test(fs.readFileSync(p, "utf8"))).map((p) => path.basename(p)).sort();
   check(makers.join(",") === "AgentPanel.js,JarvisPanel.js", "only the Workbench and Jarvis construct an agent client", makers.join(","));
-  const sockets = files.filter((p) => /new WebSocket\(/.test(fs.readFileSync(p, "utf8"))).map((p) => path.basename(p));
-  check(sockets.join(",") === "agentClient.js", "and only agentClient.js opens a WebSocket", sockets.join(","));
+  // agentClient.js (the agent socket) and remoteDesk.js (the remote desk's
+  // signalling socket, opened only from DeskConnection.connect).
+  const sockets = files.filter((p) => /new (WebSocket|this\.WebSocketImpl)\(/.test(fs.readFileSync(p, "utf8"))).map((p) => path.basename(p)).sort();
+  check(sockets.join(",") === "agentClient.js,remoteDesk.js", "and only agentClient.js and remoteDesk.js open a WebSocket", sockets.join(","));
+  const desk = src("lib/remoteDesk.js");
+  const deskCtor = desk.slice(desk.indexOf("class DeskConnection"), desk.indexOf("  connect() {", desk.indexOf("class DeskConnection")));
+  check(!/new this\.WebSocketImpl|_open\(/.test(deskCtor), "constructing a DeskConnection opens nothing");
+  const deskPanel = src("components/admin/RemoteDesk.js");
+  {
+    const head = before(deskPanel, "const connectNow");
+    const onlyGuarded = head.replace(/if \(phase !== "ready"\) return undefined;[\s\S]*?\}, \[phase, load\]\);/, "");
+    check(
+      deskPanel.includes("const connectNow") && !/\.connect\(\)/.test(head) && !/\bload\(\)/.test(onlyGuarded.replace(/const load = useCallback/, "")),
+      "the remote desk touches the network only from Connect (the 10 s refresh runs only once connected)"
+    );
+  }
 }
 
 async function workbenchSuite(browser) {

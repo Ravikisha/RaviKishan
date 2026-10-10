@@ -29,7 +29,7 @@ import { spawn as nodeSpawn } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { profileEnv, profileDir, ensureProfile, paths, assertProfileName } from "./profiles.js";
+import { profileEnv, profileDir, ensureProfile, paths, assertProfileName, desktopXauthority } from "./profiles.js";
 import { POLICIES, PolicyError, assertYoloAllowed, decide, redact } from "./policy.js";
 import { makeParser } from "./stream.js";
 import { mcpConfigFor, settingsFor, siteMcpFor, CODEX_SITE_TOKEN_ENV, prepareWorkspace as runnerPrepare } from "./runner.js";
@@ -684,7 +684,7 @@ export class ChatRegistry {
   }
 
   envFor(c) {
-    const env = { ...profileEnv(c.profile, { tool: c.tool }), DISPLAY: DISPLAY() };
+    const env = { ...profileEnv(c.profile, { tool: c.tool }), DISPLAY: DISPLAY(), XAUTHORITY: desktopXauthority() };
     return env;
   }
 

@@ -174,6 +174,10 @@ WorkingDirectory=${REPO_DIR}/agent
 # ~/.npm-global/bin. systemd's default PATH has neither, so every chat and job
 # failed to spawn even though the doctor, run from a login shell, said fine.
 Environment=PATH=/home/${AGENT_USER}/.local/bin:/home/${AGENT_USER}/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+# The shared desktop's X cookie (see agentd-desktop below). Screenshots,
+# xdotool, the ffmpeg stream and every job/chat/terminal that gets DISPLAY=:1
+# need it, because Xvfb :1 refuses any client without it.
+Environment=XAUTHORITY=/run/agentd-desktop/Xauthority
 EnvironmentFile=/etc/agentd.env
 ExecStart=/usr/bin/node src/server.js
 Restart=always
@@ -255,15 +259,28 @@ else
 
   install -d -o "$AGENT_USER" -g "$AGENT_USER" -m 700 "/home/${AGENT_USER}/browser-profile"
 
+  # X authorization. Without -auth, Xvfb accepts ANY local uid — the
+  # remote-os session users, the supervisor, anything — and a client on :1
+  # can watch and drive the agent's screen and its signed-in browser. So a
+  # fresh MIT-MAGIC-COOKIE is written at every start into a runtime dir only
+  # ${AGENT_USER} can read (0700 dir, 0600 file), and every legitimate client
+  # (agentd, the browser, the session, x11vnc) is pointed at it.
+  command -v xauth >/dev/null || { [ "$PKG" = apt ] && apt-get install -y -qq xauth || dnf install -y -q xorg-x11-xauth; } || true
   cat > /usr/local/bin/agentd-desktop-session <<EOF
 #!/usr/bin/env bash
 # Started by agentd-desktop.service as ${AGENT_USER}. Xvfb on :1, then the
 # session on top; when the session exits the unit (and Xvfb) goes with it.
 set -u
+AUTH="\${XAUTHORITY:-/run/agentd-desktop/Xauthority}"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true
-Xvfb :1 -screen 0 1600x900x24 -nolisten tcp -dpi 96 &
+# A new cookie per start, written 0600 before Xvfb reads it.
+umask 077
+rm -f "\$AUTH"; : > "\$AUTH"
+xauth -q -f "\$AUTH" add :1 MIT-MAGIC-COOKIE-1 "\$(mcookie)" || { echo "xauth failed — refusing to start an open display" >&2; exit 1; }
+umask 022
+Xvfb :1 -screen 0 1600x900x24 -auth "\$AUTH" -nolisten tcp -dpi 96 &
 for _ in \$(seq 1 100); do [ -e /tmp/.X11-unix/X1 ] && break; sleep 0.1; done
-export DISPLAY=:1
+export DISPLAY=:1 XAUTHORITY="\$AUTH"
 # No screen lock and no blanking: nobody is sitting at this screen.
 xset s off -dpms 2>/dev/null || true
 ${WM_CMD}
@@ -279,6 +296,12 @@ After=network.target
 Type=simple
 User=${AGENT_USER}
 Environment=HOME=/home/${AGENT_USER}
+# /run/agentd-desktop, 0700 ${AGENT_USER}: holds the X cookie. Preserved across
+# a restart so the path agentd and the browser read never disappears.
+RuntimeDirectory=agentd-desktop
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+Environment=XAUTHORITY=/run/agentd-desktop/Xauthority
 ExecStart=/usr/local/bin/agentd-desktop-session
 Restart=always
 RestartSec=3
@@ -301,7 +324,8 @@ Environment=HOME=/home/${AGENT_USER}
 # -localhost binds loopback ONLY. -nopw is safe solely because of that:
 # the one way in is agentd's ticketed /desktop socket.
 ExecStartPre=/bin/bash -c 'for i in \$(seq 1 100); do [ -e /tmp/.X11-unix/X1 ] && exit 0; sleep 0.1; done; exit 1'
-ExecStart=/usr/bin/x11vnc -display :1 -localhost -rfbport 5901 -nopw -forever -shared -noxdamage -quiet
+Environment=XAUTHORITY=/run/agentd-desktop/Xauthority
+ExecStart=/usr/bin/x11vnc -display :1 -auth /run/agentd-desktop/Xauthority -localhost -rfbport 5901 -nopw -forever -shared -noxdamage -quiet
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
@@ -332,6 +356,7 @@ Type=simple
 User=${AGENT_USER}
 Environment=HOME=/home/${AGENT_USER}
 Environment=DISPLAY=:1
+Environment=XAUTHORITY=/run/agentd-desktop/Xauthority
 EnvironmentFile=-/etc/agentd.env
 ExecStartPre=/bin/bash -c 'for i in \$(seq 1 100); do [ -e /tmp/.X11-unix/X1 ] && exit 0; sleep 0.1; done; exit 1'
 ExecStart=${BROWSER_EXEC}
@@ -345,6 +370,8 @@ EOF
 
   ensure_env AGENT_DISPLAY "# The shared desktop. Jobs, chats and terminals get DISPLAY set to it.
 AGENT_DISPLAY=:1"
+  ensure_env AGENT_XAUTHORITY "# The shared desktop's X cookie (Xvfb :1 runs with -auth). Set alongside DISPLAY everywhere agentd spawns.
+AGENT_XAUTHORITY=/run/agentd-desktop/Xauthority"
   ensure_env AGENT_PUBLIC_URL "# Where the admin reaches this box (preview links are built on it).
 AGENT_PUBLIC_URL=https://agent.ravikishan.me"
   ensure_env AGENT_DESKTOP_API_POLICY "# Desktop actions from the SITE's MCP (desktop_action): allowlist asks the owner for every click/type/key/open_url
@@ -355,14 +382,86 @@ AGENT_DESKTOP_API_POLICY=allowlist"
   chmod 600 "$ENV_FILE"
 
   systemctl daemon-reload
-  systemctl enable --now agentd-desktop agentd-vnc || true
-  [ -f /etc/systemd/system/agentd-browser.service ] && systemctl enable --now agentd-browser || true
+  # restart, not just start: an Xvfb started by an older unit has no -auth.
+  systemctl enable agentd-desktop || true
+  # VNC is optional: under SELinux enforcing (Oracle Linux) x11vnc, labelled
+  # xserver_exec_t, cannot exec from systemd and the unit restart-loops. The
+  # desktop is served by the ffmpeg push stream and the remote-os WebRTC
+  # supervisor instead, so VNC is enabled only where SELinux is not enforcing.
+  if [ "$(getenforce 2>/dev/null)" = "Enforcing" ]; then
+    systemctl disable --now agentd-vnc 2>/dev/null || true
+  else
+    systemctl enable agentd-vnc || true
+  fi
+  systemctl restart agentd-desktop || true
+  [ -f /etc/systemd/system/agentd-browser.service ] && { systemctl enable agentd-browser; systemctl restart agentd-browser; } || true
   # agentd learns the new routes and DISPLAY on restart.
   systemctl restart agentd || true
   sleep 2
   ss -tlnH 2>/dev/null | grep -E ':(5901|9222)\b' | sed 's/^/    /' || true
 fi
 # --- /desktop ---
+
+say "Loopback guard (who may connect to 9222 / 5901 / 7777 / 7780)"
+# Binding to 127.0.0.1 keeps the internet out, NOT the box's other local users.
+# The browser's debugger (9222) has no auth at all — CDP is full control of a
+# signed-in browser — and x11vnc (5901) runs -nopw. agentd (7777) and the
+# remote-os supervisor (7780) authenticate, but trust a few loopback-only
+# shapes (job tokens on /internal/*, cloudflared's headers). So connections to
+# them over lo are filtered by the CONNECTING socket's uid (meta skuid on
+# OUTPUT):
+#   9222, 5901  only ${AGENT_USER}
+#   7777        ${AGENT_USER} (jobs' approval bridge, the doctor) + root (cloudflared)
+#   7780        root (cloudflared) + remoteos
+# The rule set is a table of its own (inet agentd_loopback), so firewalld's
+# reloads leave it alone, and it is rebuilt at every boot by a oneshot unit that
+# resolves the uids then — a user created later (remote-os) is picked up on the
+# next start: systemctl restart agentd-loopback-guard.
+cat > /usr/local/sbin/agentd-loopback-guard <<'GUARD'
+#!/usr/bin/env bash
+# Loads the inet agentd_loopback nftables table. Idempotent: replaces the table.
+set -euo pipefail
+AGENT_USER="${AGENT_USER:-agent}"
+uid() { id -u "$1" 2>/dev/null || true; }
+A="$(uid "$AGENT_USER")"; R="$(uid remoteos)"
+[ -n "$A" ] || { echo "no user $AGENT_USER" >&2; exit 1; }
+ALLOW_7780="0"; [ -n "$R" ] && ALLOW_7780="0, $R"
+nft -f - <<NFT
+table inet agentd_loopback
+delete table inet agentd_loopback
+table inet agentd_loopback {
+  chain output {
+    type filter hook output priority filter - 5; policy accept;
+    oif "lo" tcp dport 9222 meta skuid != $A counter reject with tcp reset comment "CDP: agent only"
+    oif "lo" tcp dport 5901 meta skuid != $A counter reject with tcp reset comment "x11vnc: agent only"
+    oif "lo" tcp dport 7777 meta skuid != { 0, $A } counter reject with tcp reset comment "agentd: agent + root (cloudflared)"
+    oif "lo" tcp dport 7780 meta skuid != { $ALLOW_7780 } counter reject with tcp reset comment "remote-os: root (cloudflared) + remoteos"
+  }
+}
+NFT
+GUARD
+chmod 755 /usr/local/sbin/agentd-loopback-guard
+
+cat > /etc/systemd/system/agentd-loopback-guard.service <<EOF
+[Unit]
+Description=agentd loopback guard (uid-filtered 127.0.0.1:9222/5901/7777/7780)
+After=firewalld.service nftables.service
+Before=agentd.service agentd-browser.service agentd-vnc.service remote-os.service cloudflared.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=AGENT_USER=${AGENT_USER}
+ExecStart=/usr/local/sbin/agentd-loopback-guard
+ExecStop=/usr/sbin/nft delete table inet agentd_loopback
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable agentd-loopback-guard
+systemctl restart agentd-loopback-guard
+nft list table inet agentd_loopback | sed 's/^/    /'
 
 say "Cloudflare Tunnel"
 if ! command -v cloudflared >/dev/null; then

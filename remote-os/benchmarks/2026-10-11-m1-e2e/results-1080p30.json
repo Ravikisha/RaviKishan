@@ -1,0 +1,92 @@
+{
+  "at": "2026-10-10T20:15:09.355Z",
+  "results": [
+    {
+      "profile": "1080p30",
+      "id": "3bcd058333f5438ab1ea16c4feb9dcda",
+      "slot": 1,
+      "connectMs": 4460,
+      "profileLevelId": "42c028",
+      "offerHasRtx": true,
+      "idle": {
+        "seconds": 10.1,
+        "resolution": "1920x1080",
+        "decodedFps": 30,
+        "framesDropped": 0,
+        "packetsLost": 0,
+        "mbitPerS": 1,
+        "rttMsP50": 33,
+        "rttMsP95": 33,
+        "jitterMs": 1,
+        "decodeMsPerFrame": 1.8,
+        "jitterBufferMs": 4.1,
+        "keyframesDecoded": 3,
+        "pliSent": 0,
+        "nackSent": 0,
+        "retransmittedPacketsReceived": 0,
+        "path": "prflx/tcp :49178 via turn:92.4.83.196:443?transport=tcp -> prflx :59647",
+        "server": {
+          "fps": 30,
+          "mbitPerS": 1,
+          "encodeMs": 4.8,
+          "droppedInWindow": 0,
+          "bitrateCapKbps": 4500,
+          "samples": 10
+        }
+      },
+      "motion": {
+        "seconds": 20.2,
+        "resolution": "1920x1080",
+        "decodedFps": 30,
+        "framesDropped": 0,
+        "packetsLost": 0,
+        "mbitPerS": 4.5,
+        "rttMsP50": 33,
+        "rttMsP95": 35,
+        "jitterMs": 3,
+        "decodeMsPerFrame": 3.8,
+        "jitterBufferMs": 9.8,
+        "keyframesDecoded": 5,
+        "pliSent": 0,
+        "nackSent": 0,
+        "retransmittedPacketsReceived": 0,
+        "path": "prflx/tcp :49178 via turn:92.4.83.196:443?transport=tcp -> prflx :59647",
+        "server": {
+          "fps": 30,
+          "mbitPerS": 4.5,
+          "encodeMs": 8.9,
+          "droppedInWindow": 0,
+          "bitrateCapKbps": 4500,
+          "samples": 20
+        },
+        "supervisorCpuCores": 0.86,
+        "sessionCpuCores": 0.24,
+        "turnTcp443Connections": 1
+      },
+      "latency": {
+        "click": {
+          "p50": 82.5,
+          "p95": 125.7,
+          "min": 78.2,
+          "missed": 0,
+          "n": 15
+        },
+        "key": {
+          "p50": 80.6,
+          "p95": 109.4,
+          "min": 75.4,
+          "missed": 0,
+          "n": 15
+        }
+      },
+      "abuse": {
+        "rejected": 587,
+        "clipRoundTrip": true,
+        "errors": [
+          "profile/needs-restart"
+        ],
+        "framesDecodedMeanwhile": 130
+      }
+    }
+  ]
+}

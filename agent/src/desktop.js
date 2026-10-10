@@ -33,6 +33,9 @@ export class DesktopError extends Error {
 
 export const DISPLAY = process.env.AGENT_DISPLAY || ":1";
 export const VNC_PORT = Number(process.env.AGENT_VNC_PORT || 5901);
+// Xvfb :1 requires this cookie (see profiles.js); every capture and input
+// tool agentd spawns carries it.
+export const XAUTHORITY = () => process.env.AGENT_XAUTHORITY || process.env.XAUTHORITY || "/run/agentd-desktop/Xauthority";
 export const CDP_PORT = Number(process.env.AGENT_CDP_PORT || 9222);
 export const SCREEN = { width: 1600, height: 900 };
 
@@ -468,7 +471,7 @@ export function probePort(port, { host = "127.0.0.1", timeoutMs = 1000, connect 
 }
 
 const desktopEnv = (display) => {
-  const env = { ...process.env, DISPLAY: display };
+  const env = { ...process.env, DISPLAY: display, XAUTHORITY: XAUTHORITY() };
   for (const k of ["AGENT_MCP_TOKEN", "AGENT_ADMIN_EMAILS", "AGENT_PREVIEW_SECRET"]) delete env[k];
   return env;
 };
@@ -1096,7 +1099,7 @@ export class DesktopStream {
   startFfmpeg() {
     this.source = "ffmpeg";
     const gen = this.gen;
-    const env = { ...process.env, DISPLAY: this.display };
+    const env = { ...process.env, DISPLAY: this.display, XAUTHORITY: XAUTHORITY() };
     for (const k of ["AGENT_MCP_TOKEN", "AGENT_ADMIN_EMAILS", "AGENT_PREVIEW_SECRET"]) delete env[k];
     let child;
     try {

@@ -66,6 +66,15 @@ export function storedToken(name, tool) {
   }
 }
 
+// The shared desktop's X cookie. Xvfb :1 runs with -auth (agentd-desktop
+// writes a fresh MIT-MAGIC-COOKIE there at every start, mode 600, owner agent),
+// so a client without this file is refused — which is what keeps the box's
+// other local users (the remote-os session users, the supervisor) off the
+// agent's screen and its signed-in browser. Everything that sets DISPLAY sets
+// this too.
+export const DESKTOP_XAUTHORITY = "/run/agentd-desktop/Xauthority";
+export const desktopXauthority = () => process.env.AGENT_XAUTHORITY || process.env.XAUTHORITY || DESKTOP_XAUTHORITY;
+
 // Variables that belong to agentd and must not reach a job. The job is code
 // written by a model acting on a phone instruction; the site's MCP token is
 // handed to it deliberately, through its MCP config, and only when the policy
@@ -86,6 +95,7 @@ export function profileEnv(name, { tool = "claude" } = {}) {
     // The shared desktop (agentd-desktop.service). A GUI app a job or chat
     // launches appears where the owner is watching, never on a hidden screen.
     DISPLAY: process.env.AGENT_DISPLAY || ":1",
+    XAUTHORITY: desktopXauthority(),
   };
 
   if (tool === "claude") {

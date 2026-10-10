@@ -1,0 +1,177 @@
+{
+  "at": "2026-10-10T20:20:16.267Z",
+  "results": [
+    {
+      "profile": "1080p60",
+      "id": "80cd28be1ac84a22bf616f37beb92e77",
+      "slot": 1,
+      "connectMs": 3385,
+      "profileLevelId": "42c02a",
+      "offerHasRtx": true,
+      "idle": {
+        "seconds": 10.1,
+        "resolution": "1920x1080",
+        "decodedFps": 59.9,
+        "framesDropped": 0,
+        "packetsLost": 0,
+        "mbitPerS": 1,
+        "rttMsP50": 32,
+        "rttMsP95": 35,
+        "jitterMs": 1,
+        "decodeMsPerFrame": 1.8,
+        "jitterBufferMs": 14.9,
+        "keyframesDecoded": 3,
+        "pliSent": 0,
+        "nackSent": 0,
+        "retransmittedPacketsReceived": 0,
+        "path": "prflx/tcp :49168 via turn:92.4.83.196:443?transport=tcp -> prflx :60405",
+        "server": {
+          "fps": 60.1,
+          "mbitPerS": 1.1,
+          "encodeMs": 4.6,
+          "droppedInWindow": 0,
+          "bitrateCapKbps": 7000,
+          "samples": 10
+        }
+      },
+      "motion": {
+        "seconds": 20.2,
+        "resolution": "1920x1080",
+        "decodedFps": 51.9,
+        "framesDropped": 0,
+        "packetsLost": 926,
+        "mbitPerS": 6.4,
+        "rttMsP50": 33,
+        "rttMsP95": 374,
+        "jitterMs": 2,
+        "decodeMsPerFrame": 3.3,
+        "jitterBufferMs": 16.5,
+        "keyframesDecoded": 5,
+        "pliSent": 0,
+        "nackSent": 185,
+        "retransmittedPacketsReceived": 824,
+        "path": "prflx/tcp :49168 via turn:92.4.83.196:443?transport=tcp -> prflx :60405",
+        "server": {
+          "fps": 60,
+          "mbitPerS": 6.4,
+          "encodeMs": 8.3,
+          "droppedInWindow": 1,
+          "bitrateCapKbps": 5950,
+          "samples": 19
+        },
+        "supervisorCpuCores": 1.61,
+        "sessionCpuCores": 0.27,
+        "turnTcp443Connections": 1
+      },
+      "latency": {
+        "click": {
+          "p50": 96.6,
+          "p95": 113.4,
+          "min": 67.8,
+          "missed": 0,
+          "n": 15
+        },
+        "key": {
+          "p50": 95.4,
+          "p95": 106,
+          "min": 80.2,
+          "missed": 0,
+          "n": 15
+        }
+      },
+      "abuse": {
+        "rejected": 586,
+        "clipRoundTrip": true,
+        "errors": [
+          "profile/needs-restart"
+        ],
+        "framesDecodedMeanwhile": 259
+      }
+    },
+    {
+      "profile": "720p30",
+      "id": "7f2bf34b5c1249f0a97f77a7fd3bfdb5",
+      "slot": 1,
+      "connectMs": 2177,
+      "profileLevelId": "42c01f",
+      "offerHasRtx": true,
+      "idle": {
+        "seconds": 10.1,
+        "resolution": "1280x720",
+        "decodedFps": 29.9,
+        "framesDropped": 0,
+        "packetsLost": 0,
+        "mbitPerS": 0.5,
+        "rttMsP50": 42,
+        "rttMsP95": 43,
+        "jitterMs": 2,
+        "decodeMsPerFrame": 1.1,
+        "jitterBufferMs": 3.3,
+        "keyframesDecoded": 3,
+        "pliSent": 0,
+        "nackSent": 0,
+        "retransmittedPacketsReceived": 0,
+        "path": "prflx/tcp :49175 via turn:92.4.83.196:443?transport=tcp -> prflx :51597",
+        "server": {
+          "fps": 30.1,
+          "mbitPerS": 0.5,
+          "encodeMs": 2.2,
+          "droppedInWindow": -1,
+          "bitrateCapKbps": 2500,
+          "samples": 10
+        }
+      },
+      "motion": {
+        "seconds": 20.2,
+        "resolution": "1280x720",
+        "decodedFps": 0,
+        "framesDropped": 0,
+        "packetsLost": 0,
+        "mbitPerS": 0,
+        "rttMsP50": 43,
+        "rttMsP95": 43,
+        "jitterMs": 2,
+        "decodeMsPerFrame": 0,
+        "jitterBufferMs": 0,
+        "keyframesDecoded": 0,
+        "pliSent": 0,
+        "nackSent": 0,
+        "retransmittedPacketsReceived": 0,
+        "path": "unknown",
+        "server": {
+          "fps": null,
+          "mbitPerS": 0,
+          "encodeMs": null,
+          "droppedInWindow": null,
+          "bitrateCapKbps": null,
+          "samples": 0
+        },
+        "supervisorCpuCores": 0.41,
+        "sessionCpuCores": 0.11000000000000001,
+        "turnTcp443Connections": 2
+      },
+      "latency": {
+        "click": {
+          "p50": null,
+          "p95": null,
+          "min": null,
+          "missed": 15,
+          "n": 15
+        },
+        "key": {
+          "p50": null,
+          "p95": null,
+          "min": null,
+          "missed": 15,
+          "n": 15
+        }
+      },
+      "abuse": {
+        "rejected": 0,
+        "clipRoundTrip": false,
+        "errors": [],
+        "framesDecodedMeanwhile": 0
+      }
+    }
+  ]
+}

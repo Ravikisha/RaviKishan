@@ -1,0 +1,61 @@
+# remote-os supervisor: REST + WebRTC signalling on 127.0.0.1:7780 (the
+# Cloudflare tunnel's target for desk.ravikishan.me), media pipelines in-process.
+[Unit]
+Description=remote-os supervisor (WebRTC desktop sessions)
+After=network-online.target coturn.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=remoteos
+Group=remoteos
+# coturn: read /etc/remote-os/turn.secret (root:coturn 0640).
+# rdeskN: read each session's X cookie (rdeskN:rdeskN 0640).
+SupplementaryGroups=coturn rdesk1 rdesk2 rdesk3
+RuntimeDirectory=remote-os
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+StateDirectory=remote-os
+StateDirectoryMode=0700
+# Only the allow-list leaves /etc/agentd.env: agentd's other variables are its
+# own secrets and must not land in this process's environment.
+ExecStartPre=+/bin/sh -c 'umask 077; grep -E "^AGENT_ADMIN_EMAILS=" /etc/agentd.env > /run/remote-os/admin.env || : ; chown remoteos:remoteos /run/remote-os/admin.env'
+EnvironmentFile=-/run/remote-os/admin.env
+# Benchmark-only token; the file exists only during a benchmark run.
+EnvironmentFile=-/etc/remote-os/bench.env
+Environment=GST_PLUGIN_PATH=/usr/local/lib64/gstreamer-1.0
+Environment=XAUTHORITY=/run/remote-os/xauthority
+Environment=REMOTE_OS_BIND=127.0.0.1:7780
+Environment=RUST_LOG=info
+ExecStart=/opt/remote-os/bin/remote-os-supervisor
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=10
+KillMode=mixed
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+UMask=0022
+# Encoding runs here, not in the session units: 3 x 720p30 ~ 1.2 cores,
+# 1080p60 alone ~ 1.6-2 cores.
+CPUQuota=300%
+MemoryMax=3G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

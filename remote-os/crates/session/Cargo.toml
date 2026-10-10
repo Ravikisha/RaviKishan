@@ -1,0 +1,15 @@
+[package]
+name = "session"
+description = "Session lifecycle: state machine, capacity, slot allocation, SQLite metadata, systemd unit control."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protocol.workspace = true
+rusqlite.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# ExecStart of remote-os-session@N.service, as rdeskN. Xvfb at the profile's
+# resolution with a fresh MIT cookie, then XFCE and Chromium on top. Exits
+# (taking the unit with it) when Xvfb exits.
+set -euo pipefail
+N="${SESSION_INDEX:?}"
+[[ "$N" =~ ^[1-9]$ ]] || { echo "bad SESSION_INDEX" >&2; exit 64; }
+W="${RO_WIDTH:?}"; H="${RO_HEIGHT:?}"
+[[ "$W" =~ ^[0-9]{3,4}$ && "$H" =~ ^[0-9]{3,4}$ ]] || { echo "bad geometry" >&2; exit 64; }
+DISP=":2$N"
+AUTH="${RUNTIME_DIRECTORY:?}/Xauthority"
+
+umask 027
+: > "$AUTH"
+xauth -q -f "$AUTH" add "$DISP" MIT-MAGIC-COOKIE-1 "$(mcookie)"
+# xauth rewrites the file 0600; the supervisor reads it via group rdesk$N.
+chmod 0640 "$AUTH"
+
+rm -f "/tmp/.X2$N-lock" "/tmp/.X11-unix/X2$N" 2>/dev/null || true
+Xvfb "$DISP" -screen 0 "${W}x${H}x24" -auth "$AUTH" -nolisten tcp -dpi 96 -noreset &
+XPID=$!
+for _ in $(seq 1 100); do [ -S "/tmp/.X11-unix/X2$N" ] && break; sleep 0.05; done
+
+export DISPLAY="$DISP" XAUTHORITY="$AUTH"
+# Nobody sits at this screen: no saver, no DPMS. Server auto-repeat off — the
+# viewer forwards the browser's own key repeats.
+xset s off -dpms 2>/dev/null || true
+xset r off 2>/dev/null || true
+
+umask 077
+eval "$(dbus-launch --sh-syntax)"
+export DBUS_SESSION_BUS_ADDRESS
+xfce4-session >/dev/null 2>&1 &
+sleep 1
+chromium-browser --no-first-run --no-default-browser-check --password-store=basic \
+  --disable-dev-shm-usage --user-data-dir="$HOME/.config/chromium-remote-os" \
+  --window-position=0,0 --window-size="$W,$H" about:blank >/dev/null 2>&1 &
+
+wait "$XPID"

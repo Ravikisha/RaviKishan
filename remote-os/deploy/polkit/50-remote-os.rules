@@ -1,0 +1,16 @@
+// remote-os: the supervisor (user remoteos) may start, stop or restart ONLY
+// the desktop session units it owns — remote-os-session@1..3.service — and
+// nothing else. Every other systemd action falls through to the default
+// (denied for a system user with no session).
+polkit.addRule(function (action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units" || subject.user !== "remoteos") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    var verb = action.lookup("verb");
+    if (unit && /^remote-os-session@[1-3]\.service$/.test(unit) &&
+        (verb === "start" || verb === "stop" || verb === "restart")) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NO;
+});

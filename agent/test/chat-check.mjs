@@ -309,6 +309,7 @@ console.log("\na claude chat, turn by turn");
   check(call.opts.cwd === path.join(profiles.paths.work, "chats", out.chatId), "cwd defaults to work/chats/<id>");
   check(fs.existsSync(call.opts.cwd), "and the workspace exists");
   check(call.opts.env.DISPLAY === ":1", "DISPLAY=:1, so a GUI it opens is on the shared desktop");
+  check(call.opts.env.XAUTHORITY === "/run/agentd-desktop/Xauthority", "XAUTHORITY set with it, or the -auth desktop refuses the GUI");
   check(call.opts.env.CLAUDE_CONFIG_DIR === path.join(profiles.profileDir("personal"), "claude"), "env is the profile's");
   check(!("AGENT_MCP_TOKEN" in call.opts.env), "the daemon's own token is not inherited");
   const cfgPath = after(call.args, "--mcp-config");

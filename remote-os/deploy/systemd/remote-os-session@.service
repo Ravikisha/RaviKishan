@@ -1,0 +1,44 @@
+# One isolated desktop: Xvfb :2%i at the profile's resolution + XFCE +
+# Chromium, as the unprivileged user rdesk%i. Started/stopped only by the
+# supervisor (polkit: remoteos may start/stop remote-os-session@[1-3] only).
+[Unit]
+Description=remote-os desktop session %i
+After=network.target
+
+[Service]
+Type=simple
+User=rdesk%i
+Group=rdesk%i
+Environment=SESSION_INDEX=%i
+Environment=HOME=/home/rdesk%i
+EnvironmentFile=/run/remote-os/session-%i.env
+# rdesk%i:rdesk%i 0750 — the supervisor reads the X cookie through its
+# supplementary group rdesk%i; no other session user can traverse it.
+RuntimeDirectory=remote-os-session-%i
+RuntimeDirectoryMode=0750
+ExecStart=/opt/remote-os/bin/remote-os-session-run
+KillMode=control-group
+TimeoutStopSec=10
+Restart=no
+
+# Xvfb also listens on the abstract socket @/tmp/.X11-unix/X2%i (network
+# namespace, not mount namespace), which is how the supervisor reaches it, so
+# /tmp can stay private.
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/rdesk%i
+ReadWritePaths=/home/rdesk%i
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+UMask=0077
+MemoryMax=4G
+CPUQuota=150%
+TasksMax=1024

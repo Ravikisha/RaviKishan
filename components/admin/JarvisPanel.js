@@ -30,6 +30,7 @@ import DesktopView, { DeskBar } from "./workbench/DesktopView";
 import TerminalView from "./workbench/TerminalView";
 import { ApprovalCard } from "./workbench/ApprovalCard";
 import { AgentStyles, ConnectionDot, useArmed } from "./AgentPanel";
+import RemoteDesk from "./RemoteDesk";
 
 export const SIDE_TABS = [
   ["chat", "Chat"],
@@ -59,9 +60,15 @@ function useNow(ms = 1000) {
 }
 
 // `makeClient` exists for /__jarvispreview, which hands in a fake socket with
-// a seeded frame. The admin gets the real AgentClient.
-export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
+// a seeded frame. The admin gets the real AgentClient. `deskDeps` is the same
+// idea for the remote desk (a fake supervisor and a fake RTCPeerConnection).
+//
+// The screen is the REMOTE DESK (WebRTC, desk.ravikishan.me) by default. The
+// old push/poll stream over the agent socket stays as "the legacy stream",
+// offered when the desk does not answer, and one click back from there.
+export default function JarvisPanel({ makeClient = null, initialSide = "", initialScreen = "desk", deskDeps = null }) {
   const [side, setSide] = useState(initialSide);
+  const [screen, setScreen] = useState(initialScreen === "legacy" ? "legacy" : "desk");
   // "idle" until the owner presses Connect — nothing opens a socket on mount.
   const [status, setStatus] = useState("idle");
   const [conn, setConn] = useState({});
@@ -76,6 +83,8 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
   const [host, setHost] = useState("");
   const now = useNow();
   const client = useRef(null);
+  const statusRef = useRef("idle");
+  statusRef.current = status;
   const wb = useWorkbench(client);
   const wbRef = useRef(wb);
   wbRef.current = wb;
@@ -229,6 +238,11 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
     } catch (_) {}
     setStatus("closed");
   };
+  // The remote desk's Connect also brings up the agent socket for the
+  // drawers — once: a second Connect while it is up must not open another.
+  const connectAgent = () => {
+    if (!["connecting", "connected", "reconnecting"].includes(statusRef.current)) connectNow();
+  };
 
   // The owner asked for a connection and has not withdrawn it.
   const wanted = ["connecting", "connected", "reconnecting"].includes(status);
@@ -253,6 +267,9 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
           Disconnect
         </button>
       ) : null}
+      <button type="button" className="jp-link jp-to-desk" onClick={() => setScreen("desk")} title="Back to the WebRTC remote desk">
+        Remote desk
+      </button>
     </span>
   );
 
@@ -281,10 +298,12 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
   );
 
   return (
-    <div className={`jp-root wb-root${side ? " has-side" : ""}`} data-side={side || "none"} data-status={status}>
+    <div className={`jp-root wb-root${side ? " has-side" : ""}`} data-side={side || "none"} data-status={status} data-screen={screen}>
       <div className="jp-layout">
         <section className="jp-stage" aria-label="Server desktop">
-          {down || idle ? (
+          {screen === "desk" ? (
+            <RemoteDesk deps={deskDeps} trail={opensEl} onConnectAgent={connectAgent} onDisconnectAgent={disconnectNow} onLegacy={() => setScreen("legacy")} />
+          ) : down || idle ? (
             <>
               {/* Not connected, or given up: said where the screen will be,
                   in a frame of the screen's own shape. */}
@@ -336,6 +355,7 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
               <h3 tabIndex={-1} ref={sideHead}>
                 {sideLabel}
               </h3>
+              {screen === "desk" && !connected ? <ConnectionDot status={status} detail={conn} /> : null}
               <button type="button" className="ag-ghost jp-side-x" onClick={() => setSide("")} aria-label="Close the side panel">
                 Close
               </button>
@@ -771,6 +791,12 @@ export function JarvisStyles() {
         bottom: -14px;
         z-index: 4;
       }
+      /* the composer's cover reaches the panel's padding edge, not 20px
+         past it: past it, the side panel scrolled sideways by the gap */
+      .jp-side .wb-composer::after {
+        left: -16px;
+        right: -16px;
+      }
       .jp-side .wb-term-frame {
         height: calc(100vh - 300px);
         height: calc(100dvh - 300px);
@@ -826,6 +852,10 @@ export function JarvisStyles() {
         }
         .jp-side .wb-composer {
           bottom: -12px;
+        }
+        .jp-side .wb-composer::after {
+          left: -12px;
+          right: -12px;
         }
         .jp-blank {
           aspect-ratio: auto;

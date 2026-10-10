@@ -1,0 +1,13 @@
+[package]
+name = "turn"
+description = "coturn use-auth-secret (TURN REST) credentials."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hmac.workspace = true
+sha1.workspace = true
+base64.workspace = true
+thiserror.workspace = true

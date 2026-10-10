@@ -1,0 +1,18 @@
+[package]
+name = "media"
+description = "The WebRTC media path: capture → videoconvert → x264enc (zerolatency) → rtph264pay → webrtcbin, with data channels, PLI handling, stats and adaptive bitrate."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protocol.workspace = true
+capture.workspace = true
+gst.workspace = true
+gst-webrtc.workspace = true
+gst-sdp.workspace = true
+gst-video.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde_json.workspace = true

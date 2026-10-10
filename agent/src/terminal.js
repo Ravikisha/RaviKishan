@@ -16,7 +16,7 @@ import fs from "fs";
 import path from "path";
 import { record as recordOp } from "./oplog.js";
 import { assertRecentSignIn } from "./auth.js";
-import { paths } from "./profiles.js";
+import { paths, desktopXauthority } from "./profiles.js";
 
 export class TerminalError extends Error {
   constructor(message, status = 400) {
@@ -42,6 +42,7 @@ export function shellEnv(base = process.env, { cols = 120, rows = 32 } = {}) {
   env.TERM = "xterm-256color";
   env.COLORTERM = "truecolor";
   env.DISPLAY = process.env.AGENT_DISPLAY || ":1";
+  env.XAUTHORITY = desktopXauthority();
   env.COLUMNS = String(cols);
   env.LINES = String(rows);
   return env;

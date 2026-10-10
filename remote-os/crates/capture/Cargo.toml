@@ -1,0 +1,13 @@
+[package]
+name = "capture"
+description = "Capture backends. M1: X11 via ximagesrc (Xvfb at the profile's own resolution, no scaling)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gst.workspace = true
+x11rb.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

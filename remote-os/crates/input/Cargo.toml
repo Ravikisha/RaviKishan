@@ -1,0 +1,13 @@
+[package]
+name = "input"
+description = "Input backends. M1: X11 XTest in-process via x11rb (no xdotool spawn), KeyboardEvent.code keysym map, X clipboard."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+protocol.workspace = true
+x11rb.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

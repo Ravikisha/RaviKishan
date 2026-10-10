@@ -4,10 +4,24 @@
 // socket: a seeded desktop pushed as real binary JPEG frames, live runs (one waiting on an approval,
 // one gone quiet) and a chat list. Nothing here talks to the box.
 //
-//   /__jarvispreview          "Not connected" until Connect is pressed — as
-//                             in the admin — then the seeded stream
-//   /__jarvispreview?fail=1   Connect fails three times, with the reason
-//   /__jarvispreview?poll=1   an agentd from before the push stream (polls)
+//   /__jarvispreview          the REMOTE DESK (WebRTC): "Not connected" until
+//                             Connect is pressed, then a fake supervisor's
+//                             sessions; View plays a canvas.captureStream()
+//                             through the real DeskConnection + a fake
+//                             RTCPeerConnection (components/admin/fakeRemoteDesk)
+//   /__jarvispreview?deskfail=1    the desk does not answer (offers legacy)
+//   /__jarvispreview?deskfail=ice  ICE through the relay fails, 3 tries
+//   /__jarvispreview?deskfail=origin  the socket upgrade is refused (1006,
+//                             never opened): 3 tries, then "refused this page"
+//   /__jarvispreview?desk=solo   one session only, so 1080p30 to 1080p60 is a
+//                             live switch (renegotiate)
+//   /__jarvispreview?stale=server  the desk itself drops input as stale until
+//                             a fresh {type:"auth"} arrives
+//   /__jarvispreview?stale=1  Drive asks for a fresh sign-in first
+//   /__jarvispreview?legacy=1 the legacy push stream over the agent socket:
+//                             "Not connected" until Connect, then the seed
+//   /__jarvispreview?legacy=1&fail=1   Connect fails three times, with the reason
+//   /__jarvispreview?legacy=1&poll=1   an agentd from before the push stream (polls)
 //   /__jarvispreview?side=runs  opens with the side panel showing Runs
 //   /__jarvispreview?tab=mcp    the MCP tab, for its "Connect from anywhere"
 //
@@ -19,6 +33,7 @@ import JarvisPanel from "../components/admin/JarvisPanel";
 import McpPanel from "../components/admin/McpPanel";
 import { Styles, TABS } from "./admin";
 import { fakeDesktopStream } from "../components/admin/workbench/fakeDesktopStream";
+import { fakeRemoteDesk } from "../components/admin/fakeRemoteDesk";
 
 const MIN = 60000;
 
@@ -128,14 +143,27 @@ export default function JarvisPreview() {
   // times, both of which differ between the server render and the client.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    setOpts({ fail: q.has("fail"), poll: q.has("poll"), side: q.get("side") || "" });
+    setOpts({
+      fail: q.has("fail"),
+      poll: q.has("poll"),
+      side: q.get("side") || "",
+      screen: q.has("legacy") ? "legacy" : "desk",
+      desk: fakeRemoteDesk({
+        unreachable: q.get("deskfail") === "1",
+        iceFail: q.get("deskfail") === "ice",
+        originRefused: q.get("deskfail") === "origin",
+        solo: q.get("desk") === "solo",
+        stale: q.has("stale") && q.get("stale") !== "server",
+        staleServer: q.get("stale") === "server",
+      }),
+    });
     if (q.get("tab") === "mcp") setView("mcp");
   }, []);
 
   return (
     <AdminShell tabs={TABS} view={view} onView={setView} email="ravikishan63392@gmail.com" onSignOut={() => {}}>
       {!opts ? null : view === "jarvis" ? (
-        <JarvisPanel makeClient={fakeClient({ fail: opts.fail, poll: opts.poll })} initialSide={opts.side} />
+        <JarvisPanel makeClient={fakeClient({ fail: opts.fail, poll: opts.poll })} initialSide={opts.side} initialScreen={opts.screen} deskDeps={opts.desk} />
       ) : view === "mcp" ? (
         // The MCP tab's "Connect from anywhere" section, with no sign-in: the
         // token list beneath it simply fails to load, which is fine here.

@@ -1,11 +1,13 @@
 // Design reference for the admin's Jarvis tab, rendered with the REAL
 // AdminShell, the real admin Styles and the real JarvisPanel, so it cannot
 // drift from the signed-in interface. The panel is handed a FAKE agent
-// socket: a seeded screenshot frame, live runs (one waiting on an approval,
+// socket: a seeded desktop pushed as real binary JPEG frames, live runs (one waiting on an approval,
 // one gone quiet) and a chat list. Nothing here talks to the box.
 //
-//   /__jarvispreview          connected, the seeded frame
-//   /__jarvispreview?fail=1   the socket never connects, with the reason
+//   /__jarvispreview          "Not connected" until Connect is pressed — as
+//                             in the admin — then the seeded stream
+//   /__jarvispreview?fail=1   Connect fails three times, with the reason
+//   /__jarvispreview?poll=1   an agentd from before the push stream (polls)
 //   /__jarvispreview?side=runs  opens with the side panel showing Runs
 //   /__jarvispreview?tab=mcp    the MCP tab, for its "Connect from anywhere"
 //
@@ -16,6 +18,7 @@ import AdminShell from "../components/admin/AdminShell";
 import JarvisPanel from "../components/admin/JarvisPanel";
 import McpPanel from "../components/admin/McpPanel";
 import { Styles, TABS } from "./admin";
+import { fakeDesktopStream } from "../components/admin/workbench/fakeDesktopStream";
 
 const MIN = 60000;
 
@@ -34,8 +37,10 @@ const SHOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="9
 <text x="230" y="470" font-family="monospace" font-size="20" fill="#e9ebf2">$ mkdir /sys/fs/cgroup/demo</text>
 </svg>`;
 
-function fakeClient({ fail = false } = {}) {
+function fakeClient({ fail = false, poll = false } = {}) {
   return ({ onState, onEvent }) => {
+    const stream = fakeDesktopStream({ svg: SHOT_SVG, key: "__jvStream" });
+    window.__jvConnects = window.__jvConnects || 0;
     const now = Date.now();
     const data = window.btoa(SHOT_SVG);
     const jobs = [
@@ -53,11 +58,15 @@ function fakeClient({ fail = false } = {}) {
     return {
       url: "wss://agent.example.test",
       connect: async () => {
+        window.__jvConnects += 1;
+        closed = false;
+        onState({ status: "connecting" });
         if (fail) {
-          setTimeout(() => {
-            onEvent({ type: "error", error: "That account is not allowed to use the agent server." });
-            onState({ status: "reconnecting" });
-          }, 50);
+          // What AgentClient does: three refused attempts, then it gives up.
+          onEvent({ type: "error", error: "That account is not allowed to use the agent server." });
+          setTimeout(() => onState({ status: "reconnecting", attempt: 2, of: 3, delayMs: 50 }), 30);
+          setTimeout(() => onState({ status: "reconnecting", attempt: 3, of: 3, delayMs: 100 }), 90);
+          setTimeout(() => onState({ status: "failed", attempts: 3 }), 160);
           return;
         }
         setTimeout(() => !closed && onState({ status: "connected", jobs, approvals, profiles: [{ name: "personal" }, { name: "work" }] }), 50);
@@ -65,8 +74,10 @@ function fakeClient({ fail = false } = {}) {
       retryNow: async () => {},
       close: () => {
         closed = true;
+        stream.stopStream();
         window.__jvClosed = (window.__jvClosed || 0) + 1;
       },
+      ...(poll ? {} : stream),
       send: () => {},
       chatList: () =>
         emit({
@@ -117,14 +128,14 @@ export default function JarvisPreview() {
   // times, both of which differ between the server render and the client.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    setOpts({ fail: q.has("fail"), side: q.get("side") || "" });
+    setOpts({ fail: q.has("fail"), poll: q.has("poll"), side: q.get("side") || "" });
     if (q.get("tab") === "mcp") setView("mcp");
   }, []);
 
   return (
     <AdminShell tabs={TABS} view={view} onView={setView} email="ravikishan63392@gmail.com" onSignOut={() => {}}>
       {!opts ? null : view === "jarvis" ? (
-        <JarvisPanel makeClient={fakeClient({ fail: opts.fail })} initialSide={opts.side} />
+        <JarvisPanel makeClient={fakeClient({ fail: opts.fail, poll: opts.poll })} initialSide={opts.side} />
       ) : view === "mcp" ? (
         // The MCP tab's "Connect from anywhere" section, with no sign-in: the
         // token list beneath it simply fails to load, which is fine here.

@@ -37,34 +37,172 @@ export default function WorkbenchStyles() {
         margin: 8px 0;
       }
 
+      /* ---- the headline: one sentence, then the thing that needs you ---- */
+      .wb-head {
+        display: grid;
+        gap: 14px;
+        margin: 4px 0 18px;
+        min-width: 0;
+      }
+      .wb-head-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px 24px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .wb-head-say {
+        flex: 1 1 420px;
+        min-width: 0;
+        padding-left: 14px;
+        border-left: 3px solid var(--a-line, #2b3040);
+      }
+      .wb-head.t-ask .wb-head-say {
+        border-left-color: var(--a-amber, #ffb020);
+      }
+      .wb-head.t-fail .wb-head-say,
+      .wb-head.t-stuck .wb-head-say,
+      .wb-head.t-halt .wb-head-say {
+        border-left-color: #ff6b6b;
+      }
+      .wb-head.t-quiet .wb-head-say {
+        border-left-color: #4ade80;
+      }
+      .wb-head.t-wait .wb-head-say {
+        border-left-style: dashed;
+        border-left-color: #8b90a0;
+      }
+      .wb-head-line {
+        margin: 0;
+        max-width: 30ch;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: clamp(24px, 3.4vw, 34px);
+        font-weight: 600;
+        line-height: 1.12;
+        letter-spacing: -0.015em;
+        color: var(--a-text, #e9ebf2);
+        overflow-wrap: anywhere;
+        animation: wb-head-in 260ms ease-out;
+      }
+      .wb-head-sub {
+        margin: 8px 0 0;
+        max-width: 64ch;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--a-dim, #8b90a0);
+        overflow-wrap: anywhere;
+      }
+      @keyframes wb-head-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .wb-head-line {
+          animation: none;
+        }
+      }
+      .wb-head-acts {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .wb-head > .ag-connect-btn {
+        justify-self: start;
+        min-height: 48px;
+        padding-inline: 20px;
+        font-size: 14px;
+      }
+      .wb-strip {
+        display: grid;
+        gap: 10px;
+        max-width: 820px;
+        min-width: 0;
+      }
+      .wb-strip.is-empty {
+        display: none;
+      }
+      .wb-head-link {
+        justify-self: start;
+        background: none;
+        border: 0;
+        padding: 6px 0;
+        font: inherit;
+        font-size: 13px;
+        color: var(--a-amber, #ffb020);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+      }
+      .wb-head-link:focus-visible,
+      .wb-head > .ag-connect-btn:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: 2px;
+      }
+
       /* ---- switcher ---- */
       .wb-switch {
         position: relative;
-        margin: 14px 0 12px;
+        margin: 0 0 16px;
       }
       .wb-switch-in {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 10px 20px;
         align-items: center;
+        min-width: 0;
+      }
+      .wb-prime {
+        display: inline-flex;
+        border: 1px solid var(--a-line, #2b3040);
+        border-radius: 10px;
+        overflow: hidden;
+        min-width: 0;
+      }
+      .wb-setup {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px 16px;
+        margin-left: auto;
+        min-width: 0;
       }
       .wb-sw {
         display: inline-flex;
         align-items: center;
         gap: 7px;
         background: none;
-        border: 1px solid var(--a-line, #2b3040);
-        border-radius: 999px;
+        border: 0;
         color: var(--a-dim, #8b90a0);
-        padding: 6px 14px;
+        padding: 9px 16px;
         font: inherit;
-        font-size: 12.5px;
+        font-size: 13px;
         cursor: pointer;
         white-space: nowrap;
       }
-      .wb-sw.on {
-        border-color: var(--a-amber, #ffb020);
+      .wb-prime .wb-sw + .wb-sw {
+        border-left: 1px solid var(--a-line, #2b3040);
+      }
+      .wb-sw:hover {
         color: var(--a-text, #e9ebf2);
+      }
+      .wb-sw.on {
+        color: var(--a-text, #e9ebf2);
+        background: var(--a-raise, #171a22);
+        box-shadow: inset 0 -2px 0 var(--a-text, #e9ebf2);
+      }
+      .wb-sw.wb-sw-sec {
+        padding: 6px 0;
+        font-size: 12.5px;
+      }
+      .wb-sw.wb-sw-sec.on {
+        background: none;
+        box-shadow: inset 0 -1px 0 var(--a-text, #e9ebf2);
       }
       .wb-sw em,
       .wb-more-sheet em {
@@ -84,12 +222,6 @@ export default function WorkbenchStyles() {
       .wb-more-sheet em.t-bad {
         color: #ff8a8a;
       }
-      .wb-sw-rule {
-        width: 1px;
-        height: 18px;
-        background: var(--a-line, #2b3040);
-        margin: 0 4px;
-      }
       .wb-sw-more {
         display: none;
       }
@@ -102,7 +234,7 @@ export default function WorkbenchStyles() {
       .wb-chip select:focus-visible,
       .wb-op-detail summary:focus-visible {
         outline: 2px solid var(--a-amber, #ffb020);
-        outline-offset: 2px;
+        outline-offset: -2px;
       }
       .wb-more-sheet {
         display: none;
@@ -111,6 +243,17 @@ export default function WorkbenchStyles() {
       @media (max-width: 999px) {
         .wb-root {
           padding-bottom: 72px;
+        }
+        .wb-head {
+          margin-bottom: 14px;
+        }
+        .wb-head-say {
+          flex-basis: 100%;
+          padding-left: 12px;
+        }
+        .wb-head > .ag-connect-btn {
+          justify-self: stretch;
+          justify-content: center;
         }
         /* One view at a time on a phone: the switcher is a bar at the
            bottom, above the admin's own section bar. */
@@ -132,6 +275,9 @@ export default function WorkbenchStyles() {
           flex-wrap: nowrap;
           gap: 2px;
         }
+        .wb-prime {
+          display: contents;
+        }
         .wb-sw {
           flex: 1 1 0;
           min-width: 0;
@@ -144,20 +290,24 @@ export default function WorkbenchStyles() {
           padding: 7px 2px 6px;
           font-size: 11.5px;
         }
+        .wb-prime .wb-sw + .wb-sw {
+          border-left: 0;
+        }
         .wb-sw span {
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: 100%;
         }
         .wb-sw.on {
-          border-top-color: var(--a-amber, #ffb020);
+          border-top-color: var(--a-text, #e9ebf2);
           background: var(--a-raise, #171a22);
+          box-shadow: none;
         }
         .wb-sw em {
           font-size: 10px;
         }
-        .wb-sw.wb-sw-sec,
-        .wb-sw-rule {
+        .wb-setup,
+        .wb-sw.wb-sw-sec {
           display: none;
         }
         .wb-sw-more {
@@ -193,7 +343,7 @@ export default function WorkbenchStyles() {
           cursor: pointer;
         }
         .wb-more-sheet button.on {
-          border-left-color: var(--a-amber, #ffb020);
+          border-left-color: var(--a-text, #e9ebf2);
         }
       }
 
@@ -382,7 +532,9 @@ export default function WorkbenchStyles() {
         text-align: left;
         background: none;
         border: 0;
-        border-left: 3px solid transparent;
+        /* state on the left edge: dashed = finished, solid = running,
+           amber = needs you */
+        border-left: 3px dashed #2f3442;
         border-bottom: 1px solid var(--a-line, #1e222c);
         color: inherit;
         font: inherit;
@@ -394,14 +546,17 @@ export default function WorkbenchStyles() {
         background: rgba(255, 255, 255, 0.02);
       }
       .wb-srow.live {
-        border-left-color: #3a3f4d;
+        border-left: 3px solid #c9cdd8;
       }
       .wb-srow.on {
-        border-left-color: #c9cdd8;
         background: var(--a-raise, #171a22);
       }
       .wb-srow.ask {
-        border-left-color: var(--a-amber, #ffb020);
+        border-left: 3px solid var(--a-amber, #ffb020);
+        background: linear-gradient(90deg, rgba(255, 176, 32, 0.08), transparent 60%);
+      }
+      .wb-srow.ask.on {
+        background: linear-gradient(90deg, rgba(255, 176, 32, 0.08), transparent 60%), var(--a-raise, #171a22);
       }
       .wb-srow-title {
         font-size: 13px;
@@ -886,6 +1041,78 @@ export default function WorkbenchStyles() {
         cursor: crosshair;
         touch-action: manipulation;
       }
+      /* The picture and its click markers: one positioned box. */
+      .wb-pic {
+        position: relative;
+        display: block;
+        line-height: 0;
+      }
+      /* The push stream draws on a canvas whose pixel size is the STREAM's
+         (often half the screen); CSS sizes it to the pane. */
+      .wb-screen.pushed .wb-shot {
+        width: 100%;
+        height: auto;
+      }
+      .wb-screen.pushed:fullscreen {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+      }
+      .wb-screen.pushed:fullscreen .wb-pic {
+        width: min(100vw, calc(100vh * var(--wb-ar, 1.7778)));
+      }
+      /* "You clicked here" — drawn the instant you click, held until a frame
+         from after the action arrives. Dashed while it crosses the tunnel,
+         solid once the box has done it. */
+      .wb-mark {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        margin: -11px 0 0 -11px;
+        border: 2px dashed var(--a-amber, #ffb020);
+        border-radius: 50%;
+        pointer-events: none;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+        animation: wb-mark-in 160ms ease-out;
+      }
+      .wb-mark.sent {
+        border-style: solid;
+      }
+      .wb-mark.k-right {
+        border-radius: 4px;
+      }
+      .wb-mark.k-double {
+        box-shadow: 0 0 0 4px rgba(255, 176, 32, 0.35);
+      }
+      @keyframes wb-mark-in {
+        from {
+          transform: scale(1.8);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .wb-mark {
+          animation: none;
+        }
+      }
+      .wb-rate {
+        font-size: 11.5px;
+        color: var(--a-dim, #8b90a0);
+        font-variant-numeric: tabular-nums;
+      }
+      .wb-rate b {
+        font-weight: 600;
+        color: var(--a-text, #e9ebf2);
+      }
+      .wb-rate.l-slow,
+      .wb-rate.l-slow b {
+        color: #ff8a8a;
+      }
       .wb-desk-mode {
         display: flex;
         flex-wrap: wrap;
@@ -896,8 +1123,7 @@ export default function WorkbenchStyles() {
         min-width: 0;
       }
       .wb-desk-how {
-        font-family: "JetBrains Mono", ui-monospace, monospace;
-        font-size: 11px;
+        font-size: 11.5px;
         overflow-wrap: anywhere;
       }
       .wb-age {
@@ -905,6 +1131,212 @@ export default function WorkbenchStyles() {
       }
       .wb-age.stale {
         color: #ff8a8a;
+      }
+      /* facts in a line: hairlines between, never middots */
+      .wb-rate,
+      .wb-desk-how {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        min-width: 0;
+      }
+      .wb-rate > span + span,
+      .wb-desk-how > span + span {
+        border-left: 1px solid #2f3442;
+        margin-left: 8px;
+        padding-left: 8px;
+      }
+      /* read by a screen reader, not drawn */
+      .wb-sr {
+        position: absolute !important;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* ---- the one slim bar under the frame (Jarvis) ---- */
+      .wb-bar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 8px 14px;
+        min-width: 0;
+        padding: 8px 0 2px;
+      }
+      .wb-bar-l {
+        display: flex;
+        align-items: center;
+        gap: 6px 12px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .wb-bar-c {
+        grid-column: 2;
+        display: flex;
+        align-items: center;
+      }
+      .wb-bar-r {
+        grid-column: 3;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .wb-tools {
+        display: inline-flex;
+        gap: 2px;
+        padding-right: 8px;
+        margin-right: 2px;
+        border-right: 1px solid var(--a-line, #2b3040);
+      }
+      .wb-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        background: none;
+        border: 0;
+        border-radius: 8px;
+        color: var(--a-dim, #8b90a0);
+        cursor: pointer;
+      }
+      .wb-icon svg {
+        width: 19px;
+        height: 19px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.5;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+      .wb-icon:hover:not(:disabled) {
+        color: var(--a-text, #e9ebf2);
+        background: var(--a-raise, #171a22);
+      }
+      .wb-icon:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .wb-mode {
+        display: inline-flex;
+        border: 1px solid var(--a-line, #2b3040);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .wb-mode button {
+        min-width: 76px;
+        min-height: 40px;
+        padding: 0 16px;
+        background: none;
+        border: 0;
+        color: var(--a-dim, #8b90a0);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .wb-mode button + button {
+        border-left: 1px solid var(--a-line, #2b3040);
+      }
+      .wb-mode .wb-watch.on {
+        color: var(--a-text, #e9ebf2);
+        background: var(--a-raise, #171a22);
+      }
+      /* amber only while you are driving */
+      .wb-mode .wb-take.on {
+        color: #1a1300;
+        background: var(--a-amber, #ffb020);
+        font-weight: 600;
+      }
+      .wb-mode button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .wb-icon:focus-visible,
+      .wb-mode button:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: -2px;
+      }
+      /* the link meter: a thin line whose length and colour are the
+         stream's measured rate and delay */
+      .wb-meter {
+        position: relative;
+        flex: none;
+        width: 56px;
+        height: 3px;
+        border-radius: 2px;
+        background: var(--a-line, #2b3040);
+        overflow: hidden;
+      }
+      .wb-meter i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: #4ade80;
+        border-radius: 2px;
+        transition: width 600ms ease;
+      }
+      .wb-meter.l-slow i {
+        background: #ff6b6b;
+      }
+      .wb-meter.l-idle i {
+        background: #8b90a0;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .wb-meter i {
+          transition: none;
+        }
+      }
+      .wb-bar .wb-rate {
+        font-size: 12px;
+      }
+      .wb-bar .wb-rate.l-slow .wb-rate-q {
+        color: #ff8a8a;
+      }
+      /* the link's verdict is the meter's colour; the words are for a
+         screen reader and the tooltip */
+      .wb-bar .wb-rate-q {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      .wb-bar .wb-rate > span + span:not(.wb-rate-q) {
+        border-left: 1px solid #2f3442;
+      }
+      /* a phone: the state on its own line, then Watch / Drive with the
+         tools, then the drawers across the width under the thumb */
+      @media (max-width: 640px) {
+        .wb-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 8px;
+        }
+        .wb-bar-l {
+          flex: 1 1 100%;
+        }
+        .wb-bar-r {
+          display: contents;
+        }
+        .wb-tools {
+          margin-left: auto;
+          border-right: 0;
+          padding-right: 0;
+        }
+        .wb-bar .jp-opens {
+          flex: 1 1 100%;
+        }
+        .wb-bar .jp-open {
+          flex: 1 1 0;
+          justify-content: center;
+        }
       }
       .wb-deck {
         display: grid;

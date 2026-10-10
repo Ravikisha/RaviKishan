@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test/agent-check.mjs && node test/chat-check.mjs && node test/desktop-check.mjs",
+    "test": "node test/agent-check.mjs && node test/chat-check.mjs && node test/desktop-check.mjs && node test/stats-check.mjs",
     "doctor": "node src/doctor.js"
   },
   "engines": {

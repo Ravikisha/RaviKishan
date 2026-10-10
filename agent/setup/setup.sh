@@ -214,6 +214,10 @@ else
       || echo "    some desktop packages failed to install"
     apt-get install -y -qq chromium 2>/dev/null || apt-get install -y -qq chromium-browser 2>/dev/null || apt-get install -y -qq firefox 2>/dev/null \
       || echo "    no browser package could be installed"
+    # ffmpeg's x11grab is the desktop STREAM: one long-lived capture per viewer
+    # instead of an ImageMagick process per frame. Without it agentd falls back
+    # to import, which works and is slower.
+    apt-get install -y -qq ffmpeg || echo "    ffmpeg: unavailable (the desktop stream falls back to ImageMagick)"
   else
     # EPEL (enabled above) carries x11vnc, xdotool, XFCE and chromium.
     dnf install -y -q xorg-x11-server-Xvfb x11vnc xdotool ImageMagick dbus-x11 \
@@ -223,6 +227,15 @@ else
     dnf install -y -q chromium 2>/dev/null || dnf install -y -q firefox 2>/dev/null \
       || echo "    no browser package could be installed"
     command -v xfce4-session >/dev/null || dnf install -y -q openbox tint2 2>/dev/null || true
+    # ffmpeg-free (EPEL) carries x11grab and the mjpeg encoder — all the
+    # desktop stream needs. Without it agentd falls back to ImageMagick import.
+    # It depends on ladspa, which lives in CodeReady Builder: Oracle Linux
+    # calls that repo ol9_codeready_builder, other EL9s call it crb. Without
+    # it enabled the install fails on a missing ladspa (verified on the box).
+    dnf config-manager --set-enabled ol9_codeready_builder 2>/dev/null \
+      || dnf config-manager --set-enabled crb 2>/dev/null || true
+    dnf install -y -q ffmpeg-free 2>/dev/null || dnf install -y -q ffmpeg 2>/dev/null \
+      || echo "    ffmpeg: unavailable (the desktop stream falls back to ImageMagick)"
   fi
 
   # The session: XFCE when present (it needs a D-Bus session under Xvfb),

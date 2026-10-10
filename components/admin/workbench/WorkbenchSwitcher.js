@@ -1,7 +1,8 @@
 // Which view of the workbench you are in.
 //
-// On a desk it is a row at the top: the five workbench views, a hairline, then
-// the older agent views. On a phone there is room for one view at a time, so
+// On a desk it is a row under the headline: the five workbench views as one
+// segmented control (hairlines between, never middots), and the setup views
+// (Runs, Accounts, Features, WhatsApp) as quiet links at the end of the row. On a phone there is room for one view at a time, so
 // the row becomes a bar at the bottom — above the admin's own section bar —
 // with the five views you use while something is running, and More for the
 // rest. A view hidden under More that is open shows its own name on the More
@@ -64,13 +65,19 @@ export default function WorkbenchSwitcher({ view, onView, badges = {} }) {
   return (
     <nav className="wb-switch" aria-label="Workbench views" ref={box}>
       <div className="wb-switch-in" role="tablist">
-        {PRIMARY.map(([k, label]) => (
-          <Item key={k} k={k} label={label} view={view} badge={badges} onView={onView} />
-        ))}
-        <span className="wb-sw-rule" aria-hidden="true" />
-        {SECONDARY.map(([k, label]) => (
-          <Item key={k} k={k} label={label} view={view} badge={badges} onView={onView} extra=" wb-sw-sec" />
-        ))}
+        {/* The five views you work in: one segmented control. */}
+        <div className="wb-prime" role="none">
+          {PRIMARY.map(([k, label]) => (
+            <Item key={k} k={k} label={label} view={view} badge={badges} onView={onView} />
+          ))}
+        </div>
+        {/* Setup you do rarely: quiet links, not tabs of equal weight. A
+            stuck run still carries its badge here. */}
+        <div className="wb-setup" role="none">
+          {SECONDARY.map(([k, label]) => (
+            <Item key={k} k={k} label={label} view={view} badge={badges} onView={onView} extra=" wb-sw-sec" />
+          ))}
+        </div>
         <button
           type="button"
           className={`wb-sw wb-sw-more${sec ? " on" : ""}`}

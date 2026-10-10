@@ -16,13 +16,17 @@
 //
 // Opening it is view-only. "Take control" is DesktopView's, and driving needs
 // a sign-in from the last 30 minutes (step-up in place, then the action is
-// retried). Leaving the tab unmounts the panel and closes the socket.
+// retried). NOTHING connects until the owner presses Connect; Disconnect (or
+// leaving the tab, which unmounts the panel) closes the socket, and coming
+// back shows Connect again rather than reconnecting by itself. After an
+// unexpected drop the client retries three times with backoff, then stops
+// and says "Couldn't reach the server — Connect again".
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AgentClient, liveTimes, dur } from "../../lib/agentClient";
 import useWorkbench from "./workbench/useWorkbench";
 import WorkbenchStyles from "./workbench/WorkbenchStyles";
 import ChatView from "./workbench/ChatView";
-import DesktopView from "./workbench/DesktopView";
+import DesktopView, { DeskBar } from "./workbench/DesktopView";
 import TerminalView from "./workbench/TerminalView";
 import { ApprovalCard } from "./workbench/ApprovalCard";
 import { AgentStyles, ConnectionDot, useArmed } from "./AgentPanel";
@@ -58,7 +62,9 @@ function useNow(ms = 1000) {
 // a seeded frame. The admin gets the real AgentClient.
 export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
   const [side, setSide] = useState(initialSide);
-  const [status, setStatus] = useState("connecting");
+  // "idle" until the owner presses Connect — nothing opens a socket on mount.
+  const [status, setStatus] = useState("idle");
+  const [conn, setConn] = useState({});
   const [ever, setEver] = useState(false);
   const [failure, setFailure] = useState("");
   const [err, setErr] = useState("");
@@ -89,6 +95,14 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
     const handlers = {
       onState: (s) => {
         setStatus(s.status);
+        setConn(s.status === "connected" ? {} : { attempt: s.attempt, of: s.of, reason: s.reason || "" });
+        if (s.status === "failed") {
+          setFailure(
+            lastErr.current ||
+              s.reason ||
+              "The agent server did not accept a connection. agentd may be stopped, or the tunnel in front of it is not answering."
+          );
+        }
         if (s.status === "connected") {
           everRef.current = true;
           setEver(true);
@@ -99,11 +113,6 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
           setApprovals(s.approvals || []);
           setProfiles(s.profiles || []);
           setTimeout(() => wbRef.current.onConnected(), 0);
-        } else if (s.status === "reconnecting" && !everRef.current) {
-          setFailure(
-            lastErr.current ||
-              "The agent server did not accept a connection. agentd may be stopped, or the tunnel in front of it is not answering."
-          );
         }
       },
       onEvent: (msg) => {
@@ -139,9 +148,8 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
     const c = makeClient ? makeClient(handlers) : new AgentClient(handlers);
     client.current = c;
     setHost(hostOf(c.url));
-    Promise.resolve()
-      .then(() => c.connect())
-      .catch((e) => setFailure(e.message || "Could not connect."));
+    // NOT connected here: the owner presses Connect. Leaving the tab closes
+    // the socket (below) and coming back shows Connect again.
     return () => {
       try {
         c.close();
@@ -192,85 +200,134 @@ export default function JarvisPanel({ makeClient = null, initialSide = "" }) {
       : null,
   };
 
-  const retry = () => {
+  // The owner's Connect (and Connect again, after the client gave up).
+  const connectNow = () => {
     setFailure("");
+    setErr("");
     lastErr.current = "";
+    const c = client.current;
+    if (!c) return;
+    setStatus("connecting");
+    Promise.resolve()
+      .then(() => c.connect())
+      .catch((e) => {
+        setStatus("failed");
+        setFailure(e.message || "Could not connect.");
+      });
+  };
+  // "Try now" while a reconnect is waiting out its backoff.
+  const retryNow = () => {
     const c = client.current;
     if (!c) return;
     Promise.resolve()
       .then(() => (c.retryNow ? c.retryNow() : c.connect()))
       .catch((e) => setFailure(e.message || "Could not connect."));
   };
+  const disconnectNow = () => {
+    try {
+      client.current?.close();
+    } catch (_) {}
+    setStatus("closed");
+  };
 
-  const down = !ever && !!failure;
+  // The owner asked for a connection and has not withdrawn it.
+  const wanted = ["connecting", "connected", "reconnecting"].includes(status);
+  const down = status === "failed";
+  const idle = !wanted && !down;
   const firstSkillProfile = profiles[0]?.name || "";
   const toggle = (k) => setSide((s) => (s === k ? "" : k));
   const sideLabel = (SIDE_TABS.find(([k]) => k === side) || [])[1] || "";
 
+  // Left end of the bar: where the connection stands, and the one thing you
+  // can do about it. The link meter and its readout follow (DesktopView's).
+  const leadEl = (
+    <span className="jp-conn">
+      <ConnectionDot status={status} detail={conn} />
+      {status === "reconnecting" ? (
+        <button type="button" className="jp-link jp-try" onClick={retryNow}>
+          Try now
+        </button>
+      ) : null}
+      {wanted ? (
+        <button type="button" className="jp-link jp-disconnect" onClick={disconnectNow}>
+          Disconnect
+        </button>
+      ) : null}
+    </span>
+  );
+
+  // Right end: the drawers. Chat, Terminal and Runs slide over (or beside)
+  // the screen; the badge is a count of something that wants you.
+  const opensEl = (
+    <nav className="jp-opens" aria-label="Side panel">
+      {SIDE_TABS.map(([k, label]) => {
+        const b = badges[k];
+        return (
+          <button
+            key={k}
+            type="button"
+            className={`jp-open${side === k ? " on" : ""}`}
+            data-side={k}
+            aria-pressed={side === k}
+            aria-controls="jp-side"
+            onClick={() => toggle(k)}
+          >
+            {label}
+            {b ? <em className={b.tone ? `t-${b.tone}` : ""}>{b.text}</em> : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+
   return (
     <div className={`jp-root wb-root${side ? " has-side" : ""}`} data-side={side || "none"} data-status={status}>
-      <div className="jp-strip">
-        <span className="jp-conn">
-          <ConnectionDot status={down ? "closed" : status} />
-          {host ? <code className="jp-host">{host}</code> : null}
-        </span>
-        <nav className="jp-opens" aria-label="Side panel">
-          {SIDE_TABS.map(([k, label]) => {
-            const b = badges[k];
-            return (
-              <button
-                key={k}
-                type="button"
-                className={`jp-open${side === k ? " on" : ""}`}
-                data-side={k}
-                aria-pressed={side === k}
-                aria-controls="jp-side"
-                onClick={() => toggle(k)}
-              >
-                {label}
-                {b ? <em className={b.tone ? `t-${b.tone}` : ""}>{b.text}</em> : null}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {err ? (
-        <p className="admin-err jp-msg" role="alert">
-          {err}
-        </p>
-      ) : null}
-      {ever && !connected ? (
-        <p className="jp-msg jp-lost" role="status">
-          Connection lost. Reconnecting; what is on screen is the last thing the box sent.
-        </p>
-      ) : null}
-
       <div className="jp-layout">
         <section className="jp-stage" aria-label="Server desktop">
-          {down ? (
-            <div className="jp-down" role="alert" aria-label="Agent server unreachable">
-              <h4>Can&apos;t reach the agent server</h4>
-              <p className="jp-why">{failure}</p>
-              <p className="jp-what">
-                {host ? (
-                  <>
-                    Tried <code>{host}</code>.{" "}
-                  </>
-                ) : null}
-                It keeps retrying in the background while this tab is open, backing off up to 30 seconds between
-                tries. Leaving the tab stops it.
-              </p>
-              <button type="button" className="admin-primary" onClick={retry}>
-                Try now
-              </button>
-            </div>
+          {down || idle ? (
+            <>
+              {/* Not connected, or given up: said where the screen will be,
+                  in a frame of the screen's own shape. */}
+              <div className={`jp-blank${down ? " is-down" : ""}`}>
+                {down ? (
+                  <div className="jp-down" role="alert" aria-label="Agent server unreachable">
+                    <p className="jp-line">Couldn&apos;t reach the server.</p>
+                    <p className="jp-why">{failure}</p>
+                    <p className="jp-what">
+                      {host ? (
+                        <>
+                          Tried <code>{host}</code> three times.{" "}
+                        </>
+                      ) : null}
+                      Nothing retries now; nothing connects until you ask.
+                    </p>
+                    <button type="button" className="admin-primary jp-connect-btn" onClick={connectNow}>
+                      Connect again
+                    </button>
+                  </div>
+                ) : (
+                  <div className="jp-down jp-idle" aria-label="Not connected">
+                    <p className="jp-line">The desktop appears here once you connect.</p>
+                    <p className="jp-what">Jarvis connects only when you ask, and closes the connection when you leave this tab.</p>
+                    <button type="button" className="admin-primary jp-connect-btn" onClick={connectNow}>
+                      Connect{host ? <code>{host}</code> : null}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <DeskBar lead={leadEl} trail={opensEl} />
+            </>
           ) : (
             <>
               {wb.unsupported.desktop ? <p className="wb-note">{wb.unsupported.desktop}</p> : null}
-              <DesktopView client={client.current} connected={connected} ops={wb.ops} />
+              <DesktopView client={client.current} connected={connected} ops={wb.ops} variant="bar" lead={leadEl} trail={opensEl} />
             </>
           )}
+          {err ? (
+            <p className="admin-err jp-msg" role="alert">
+              {err}
+            </p>
+          ) : null}
         </section>
 
         {side ? (
@@ -420,34 +477,29 @@ function RunLine({ job, times, connected, onStop }) {
 /* ---------------- styles ---------------- */
 
 // The workbench was written for a page of its own. Here the screen is the
-// page, so three things are re-pointed: the frame is held to the height that
-// is left (at the box's own ratio, never cropped), the desktop log goes under
-// the frame instead of stealing 280px beside it, and the chat inside the side
-// panel always uses its one-pane phone layout, because the panel is narrow
-// whatever the viewport is.
+// page: the frame is held to the height that is left (at the box's own ratio,
+// never cropped), every status line is ONE slim bar under it, the desktop log
+// goes under that instead of stealing 280px beside it, and the chat inside
+// the side panel always uses its one-pane phone layout, because the panel is
+// narrow whatever the viewport is.
 export function JarvisStyles() {
   return (
     <style jsx global>{`
       .jp-root {
-        --jp-room: 250px;
+        /* everything that is not the frame: the shell's header, the bar
+           under the frame, and breathing room */
+        --jp-room: 168px;
         min-width: 0;
         color: var(--a-text, #e9ebf2);
       }
       .jp-root.wb-root {
         padding-bottom: 0;
       }
-      .jp-strip {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 0 20px 10px;
-        min-width: 0;
-      }
       .jp-conn {
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: 6px 12px;
+        flex-wrap: wrap;
         min-width: 0;
       }
       .jp-host {
@@ -456,33 +508,54 @@ export function JarvisStyles() {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        max-width: 22ch;
+      }
+      .jp-link {
+        background: none;
+        border: 0;
+        padding: 6px 0;
+        font: inherit;
+        font-size: 12.5px;
+        color: var(--a-dim, #8b90a0);
+        text-decoration: underline;
+        text-decoration-color: #3a3f4d;
+        text-underline-offset: 3px;
+        cursor: pointer;
+      }
+      .jp-link:hover {
+        color: var(--a-text, #e9ebf2);
       }
       .jp-opens {
-        display: flex;
-        gap: 4px;
+        display: inline-flex;
         flex: none;
+        border: 1px solid var(--a-line, #2b3040);
+        border-radius: 10px;
+        overflow: hidden;
       }
       .jp-open {
         display: inline-flex;
         align-items: center;
         gap: 6px;
+        min-height: 40px;
         background: none;
-        border: 1px solid var(--a-line, #1e222c);
-        border-left: 3px solid var(--a-line, #1e222c);
-        border-radius: 8px;
-        color: var(--a-dim, #7d8496);
+        border: 0;
+        color: var(--a-dim, #8b90a0);
         font: inherit;
         font-size: 13px;
-        padding: 7px 11px;
+        padding: 0 13px;
         cursor: pointer;
         white-space: nowrap;
+      }
+      .jp-open + .jp-open {
+        border-left: 1px solid var(--a-line, #2b3040);
       }
       .jp-open:hover {
         color: var(--a-text, #e9ebf2);
       }
       .jp-open.on {
         color: var(--a-text, #e9ebf2);
-        border-left-color: var(--a-amber, #ffb020);
+        background: var(--a-raise, #171a22);
+        box-shadow: inset 0 -2px 0 var(--a-text, #e9ebf2);
       }
       .jp-open em {
         font-style: normal;
@@ -494,13 +567,16 @@ export function JarvisStyles() {
         background: var(--a-amber, #ffb020);
         border-radius: 999px;
         padding: 0 6px;
+        font-weight: 600;
       }
       .jp-open em.t-bad {
         color: #ff8a8a;
       }
-      .jp-open:focus-visible {
+      .jp-open:focus-visible,
+      .jp-link:focus-visible,
+      .jp-connect-btn:focus-visible {
         outline: 2px solid var(--a-amber, #ffb020);
-        outline-offset: 2px;
+        outline-offset: -2px;
       }
       /* focus is moved to the heading so a screen reader lands in the panel;
          it is not a control, so it wears no ring */
@@ -508,11 +584,8 @@ export function JarvisStyles() {
         outline: none;
       }
       .jp-msg {
-        margin: 0 20px 10px;
+        margin: 8px 0 0;
         font-size: 12.5px;
-      }
-      .jp-lost {
-        color: var(--a-amber, #ffb020);
       }
 
       .jp-layout {
@@ -522,14 +595,15 @@ export function JarvisStyles() {
       }
       .jp-stage {
         min-width: 0;
-        padding: 0 20px;
+        padding: 16px 20px 0;
       }
 
       /* the frame: as large as the room left, at the box's own ratio */
       .jp-stage .wb-desk {
         grid-template-columns: minmax(0, 1fr);
       }
-      .jp-stage .wb-screen {
+      .jp-stage .wb-screen,
+      .jp-blank {
         width: min(100%, calc((100vh - var(--jp-room)) * 16 / 9));
         width: min(100%, calc((100dvh - var(--jp-room)) * 16 / 9));
         margin-inline: auto;
@@ -543,6 +617,21 @@ export function JarvisStyles() {
         max-width: 100%;
         max-height: calc(100vh - var(--jp-room));
         max-height: calc(100dvh - var(--jp-room));
+      }
+      /* The push stream's canvas has the STREAM's pixel size, not the
+         screen's, so it is sized by the room left rather than by itself. */
+      .jp-stage .wb-screen.stream.live.pushed {
+        width: min(100%, calc((100vh - var(--jp-room)) * var(--wb-ar, 1.7778)));
+        width: min(100%, calc((100dvh - var(--jp-room)) * var(--wb-ar, 1.7778)));
+      }
+      .jp-stage .wb-screen.stream.live.pushed .wb-shot {
+        width: 100%;
+        height: auto;
+        max-height: none;
+      }
+      .jp-stage .wb-screen.stream.live.pushed:fullscreen {
+        width: 100vw;
+        max-width: none;
       }
       .jp-stage .wb-screen:fullscreen {
         width: 100vw;
@@ -558,12 +647,79 @@ export function JarvisStyles() {
         max-height: 100vh;
         max-width: 100vw;
       }
-      .jp-stage .wb-desk-bar,
-      .jp-stage .wb-desk-mode,
-      .jp-stage .wb-deck {
+      /* the bar, the controls and the log line up with the frame */
+      .jp-stage .wb-bar,
+      .jp-stage .wb-deck,
+      .jp-stage .wb-dlog {
         width: min(100%, calc((100vh - var(--jp-room)) * 16 / 9));
         width: min(100%, calc((100dvh - var(--jp-room)) * 16 / 9));
         margin-inline: auto;
+        box-sizing: border-box;
+      }
+      .jp-stage .wb-desk-main {
+        gap: 0;
+      }
+      .jp-stage .wb-deck {
+        margin-top: 10px;
+      }
+      .jp-stage .wb-dlog {
+        margin-top: 14px;
+      }
+
+      /* not connected: the screen's own shape, empty, with the one action */
+      .jp-blank {
+        display: grid;
+        align-items: center;
+        aspect-ratio: 16 / 9;
+        box-sizing: border-box;
+        padding: clamp(18px, 4vw, 48px);
+        border: 1px dashed #2f3442;
+        border-radius: 10px;
+        background: repeating-linear-gradient(135deg, transparent 0 14px, rgba(255, 255, 255, 0.012) 14px 15px);
+      }
+      .jp-blank.is-down {
+        border-color: #5a2a30;
+      }
+      .jp-down {
+        max-width: 52ch;
+      }
+      .jp-line {
+        margin: 0 0 10px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: clamp(21px, 2.6vw, 30px);
+        font-weight: 600;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+        color: var(--a-text, #e9ebf2);
+      }
+      .jp-connect-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 46px;
+        max-width: 100%;
+        padding-inline: 20px;
+      }
+      .jp-connect-btn code {
+        font-size: 11.5px;
+        opacity: 0.8;
+        overflow-wrap: anywhere;
+      }
+      .jp-why {
+        margin: 0 0 10px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #ffb4b4;
+      }
+      .jp-what {
+        margin: 0 0 18px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--a-dim, #7d8496);
+      }
+      .jp-what code {
+        color: var(--a-text, #e9ebf2);
+        overflow-wrap: anywhere;
       }
 
       /* the side panel */
@@ -622,9 +778,6 @@ export function JarvisStyles() {
       }
 
       @media (min-width: 1000px) {
-        .jp-root {
-          --jp-room: 230px;
-        }
         .jp-layout.jp-layout {
           align-items: start;
         }
@@ -645,7 +798,7 @@ export function JarvisStyles() {
       }
       @media (max-width: 999px) {
         .jp-root {
-          --jp-room: 330px;
+          --jp-room: 300px;
         }
         /* a sheet over the screen; the admin's own section bar stays below */
         .jp-side {
@@ -658,20 +811,14 @@ export function JarvisStyles() {
         }
       }
       @media (max-width: 640px) {
-        .jp-strip {
-          padding: 0 12px 10px;
-        }
         .jp-stage {
-          padding: 0 12px;
-        }
-        .jp-msg {
-          margin: 0 12px 10px;
+          padding: 12px 12px 0;
         }
         .jp-host {
           display: none;
         }
         .jp-open {
-          padding: 7px 9px;
+          padding: 0 11px;
           font-size: 12.5px;
         }
         .jp-side-body {
@@ -680,40 +827,17 @@ export function JarvisStyles() {
         .jp-side .wb-composer {
           bottom: -12px;
         }
+        .jp-blank {
+          aspect-ratio: auto;
+          min-height: 46vh;
+        }
+        .jp-connect-btn {
+          width: 100%;
+          justify-content: center;
+        }
       }
 
-      /* unreachable: said where the desktop would have been */
-      .jp-down {
-        max-width: 56ch;
-        margin: 6vh 0 0;
-        padding-left: 16px;
-        border-left: 3px solid #ff8a8a;
-      }
-      .jp-down h4 {
-        margin: 0 0 8px;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 19px;
-        font-weight: 600;
-        color: var(--a-text, #e9ebf2);
-      }
-      .jp-why {
-        margin: 0 0 10px;
-        font-size: 14px;
-        line-height: 1.5;
-        color: var(--a-text, #e9ebf2);
-      }
-      .jp-what {
-        margin: 0 0 16px;
-        font-size: 12.5px;
-        line-height: 1.55;
-        color: var(--a-dim, #7d8496);
-      }
-      .jp-what code {
-        color: var(--a-text, #e9ebf2);
-        overflow-wrap: anywhere;
-      }
-
-      /* runs */
+      /* runs: rows, not cards, state on the left edge */
       .jp-runs {
         display: grid;
         gap: 14px;
@@ -727,21 +851,19 @@ export function JarvisStyles() {
         margin: 0;
         padding: 0;
         display: grid;
-        gap: 6px;
       }
       .jp-run {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 10px 12px;
-        border: 1px solid var(--a-line, #1e222c);
+        padding: 10px 0 10px 12px;
         border-left: 3px solid #c9cdd8;
-        border-radius: 8px;
-        background: var(--a-panel, #111319);
+        border-bottom: 1px solid var(--a-line, #1e222c);
         min-width: 0;
       }
       .jp-run.s-waiting {
         border-left-color: var(--a-amber, #ffb020);
+        background: linear-gradient(90deg, rgba(255, 176, 32, 0.08), transparent 60%);
       }
       .jp-run.s-stalled {
         border-left-color: #ff6b6b;
@@ -756,8 +878,9 @@ export function JarvisStyles() {
       }
       .jp-run-task {
         margin: 0;
+        font-family: "Space Grotesk", sans-serif;
         color: var(--a-text, #e9ebf2);
-        font-size: 13.5px;
+        font-size: 14px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -766,10 +889,14 @@ export function JarvisStyles() {
         margin: 3px 0 0;
         display: flex;
         flex-wrap: wrap;
-        gap: 4px 12px;
         font-size: 12px;
         color: var(--a-dim, #7d8496);
         min-width: 0;
+      }
+      .jp-run-meta > * + * {
+        border-left: 1px solid #2f3442;
+        margin-left: 8px;
+        padding-left: 8px;
       }
       .jp-run-meta code {
         font-size: 11.5px;

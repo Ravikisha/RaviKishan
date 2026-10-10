@@ -853,6 +853,399 @@ console.log("\nterminal over the workbench socket");
   check(wb.terminals.terms.size === 0, "and the terminal dies with it");
 }
 
+/* ------------------------------------------------------------ push stream */
+// A small but structurally real JPEG: SOI, APP0, SOF0 (the size), SOS, then
+// entropy data carrying a stuffed FF00 and an RST marker, then EOI.
+const sjpeg = (w, h, fill = 1) => {
+  const app0 = Buffer.concat([Buffer.from([0xff, 0xe0, 0x00, 0x10]), Buffer.from("JFIF\0"), Buffer.alloc(9)]);
+  const sof = Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08, h >> 8, h & 255, w >> 8, w & 255, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+  const sos = Buffer.from([0xff, 0xda, 0x00, 0x0c, 3, 1, 0, 2, 0x11, 3, 0x11, 0, 0x3f, 0]);
+  const data = Buffer.from([fill, 0xff, 0x00, fill, 0xff, 0xd0, fill, 0xff, 0x00, 0x12, fill]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof, sos, data, Buffer.from([0xff, 0xd9])]);
+};
+const fakeChild = () => {
+  const c = new events.EventEmitter();
+  c.stdout = new events.EventEmitter();
+  c.stderr = new events.EventEmitter();
+  c.killed = false;
+  c.kill = () => {
+    c.killed = true;
+    return true;
+  };
+  return c;
+};
+// Timers the test fires by hand.
+const manualTimers = () => {
+  const pending = [];
+  return {
+    pending,
+    setTimer: (fn, ms) => {
+      const t = { fn, ms, cleared: false, unref() {} };
+      pending.push(t);
+      return t;
+    },
+    clearTimer: (t) => t && (t.cleared = true),
+    setRepeat: () => ({ unref() {} }),
+    clearRepeat: () => {},
+    async runAll() {
+      while (pending.length) {
+        const t = pending.shift();
+        if (!t.cleared) await t.fn();
+      }
+    },
+  };
+};
+
+console.log("\nthe push stream: frame packing");
+{
+  const img = sjpeg(800, 450);
+  const packed = desktop.packFrame({ seq: 7, takenAt: 123, imageWidth: 800, imageHeight: 450, width: 1600, height: 900 }, img);
+  const hl = packed.readUInt32BE(0);
+  check(JSON.parse(packed.subarray(4, 4 + hl).toString()).seq === 7, "a frame is [u32 BE header length][JSON header][JPEG]");
+  const u = desktop.unpackFrame(packed);
+  check(u && u.header.seq === 7 && u.header.width === 1600 && u.image.equals(img), "unpackFrame returns the header and the exact JPEG bytes");
+  const ka = desktop.unpackFrame(desktop.packFrame({ seq: 7, keepalive: true }));
+  check(ka && ka.header.keepalive === true && ka.image.length === 0, "a keepalive is a header with no image");
+  check(desktop.unpackFrame(Buffer.from([0, 0, 0, 99, 1, 2])) === null, "a header length past the end is refused");
+  check(desktop.unpackFrame(Buffer.from([0, 1, 0, 0])) === null, "an absurd header length is refused");
+  check(desktop.unpackFrame(Buffer.concat([Buffer.from([0, 0, 0, 3]), Buffer.from("{x}")])) === null, "a header that is not JSON is refused");
+  check(desktop.unpackFrame(Buffer.from([1])) === null && desktop.unpackFrame("x") === null, "and so is anything shorter than the length word");
+  const uni = desktop.unpackFrame(desktop.packFrame({ note: "héllo ✓" }, img));
+  check(uni && uni.header.note === "héllo ✓" && uni.image.equals(img), "the header length counts UTF-8 bytes, not characters");
+}
+
+console.log("\nthe push stream: splitting MJPEG on the JPEG markers");
+{
+  const a = sjpeg(800, 450, 1);
+  const b = sjpeg(640, 360, 2);
+  const stream = Buffer.concat([Buffer.from([0x00, 0x13, 0xff]), a, b]);
+  const one = new desktop.JpegSplitter().push(stream);
+  check(one.length === 2 && one[0].equals(a) && one[1].equals(b), "two JPEGs in one chunk come out as two, garbage before them ignored");
+  let everySplit = true;
+  for (let cut = 1; cut < stream.length; cut++) {
+    const sp = new desktop.JpegSplitter();
+    const got = [...sp.push(stream.subarray(0, cut)), ...sp.push(stream.subarray(cut))];
+    if (got.length !== 2 || !got[0].equals(a) || !got[1].equals(b)) {
+      everySplit = false;
+      break;
+    }
+  }
+  check(everySplit, `split at every one of ${stream.length - 1} byte boundaries, both JPEGs still come out whole`);
+  const sp = new desktop.JpegSplitter();
+  let n = 0;
+  for (const byte of stream) n += sp.push(Buffer.from([byte])).length;
+  check(n === 2, "fed one byte at a time, both come out");
+  const ffd9 = a.indexOf(Buffer.from([0xff, 0xd9]), a.length - 2);
+  const sp2 = new desktop.JpegSplitter();
+  const first = sp2.push(a.subarray(0, ffd9 + 1));
+  const second = sp2.push(a.subarray(ffd9 + 1));
+  check(first.length === 0 && second.length === 1 && second[0].equals(a), "a boundary between the FF and the D9 of EOI waits for the D9");
+  check(new desktop.JpegSplitter().push(a.subarray(0, a.length - 2)).length === 0, "a JPEG without its EOI is not emitted early");
+  const spF = new desktop.JpegSplitter();
+  const stuffed = spF.push(a);
+  check(stuffed.length === 1 && stuffed[0].length === a.length, "a stuffed FF00 and an RST marker in the scan do not end the frame");
+  const small = new desktop.JpegSplitter({ maxBytes: 64 });
+  small.push(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01, 0x00]), Buffer.alloc(100)]));
+  check(small.buf.length === 0 && small.dropped === 1, "a runaway frame past maxBytes is dropped, not buffered for ever");
+}
+
+console.log("\nthe push stream: parameter bounds and the ffmpeg argv");
+{
+  const O = desktop.assertStreamOptions;
+  const d0 = O();
+  check(d0.fps === 8 && d0.scale === 0.5 && d0.quality === 65, "defaults: 8 fps, half scale, quality 65", JSON.stringify(d0));
+  check(O({ fps: 1 }).fps === 1 && O({ fps: 15 }).fps === 15, "fps 1 and 15 are the bounds, inclusive");
+  await throws(async () => O({ fps: 0 }), "fps 0 is refused", /fps must be a whole number from 1 to 15/);
+  await throws(async () => O({ fps: 16 }), "fps 16 is refused", /fps must be/);
+  await throws(async () => O({ fps: 7.5 }), "a fractional fps is refused", /fps must be/);
+  await throws(async () => O({ fps: "8" }), "an fps given as a string is refused", /fps must be/);
+  check(O({ scale: 0.25 }).scale === 0.25 && O({ scale: 1 }).scale === 1, "scale 0.25 and 1 are the bounds");
+  await throws(async () => O({ scale: 0.2 }), "scale 0.2 is refused", /scale must be a number from 0.25 to 1/);
+  await throws(async () => O({ scale: 1.01 }), "scale over 1 is refused", /scale must be/);
+  await throws(async () => O({ scale: NaN }), "NaN is not a scale", /scale must be/);
+  check(O({ quality: 30 }).quality === 30 && O({ quality: 90 }).quality === 90, "quality 30 and 90 are the bounds");
+  await throws(async () => O({ quality: 29 }), "quality 29 is refused", /quality must be a whole number from 30 to 90/);
+  await throws(async () => O({ quality: 91 }), "quality 91 is refused", /quality must be/);
+  await throws(async () => O({ quality: 60.5 }), "a fractional quality is refused", /quality must be/);
+  const merged = O({ quality: 40 }, { fps: 12, scale: 0.75, quality: 70 });
+  check(merged.fps === 12 && merged.scale === 0.75 && merged.quality === 40, "an update carrying one field keeps the others");
+  check(O({ type: "desktop.stream.start", fps: 5 }).fps === 5, "the message's own type field is ignored");
+
+  check(desktop.mjpegQ(65) === 10 && desktop.mjpegQ(90) === 2 && desktop.mjpegQ(30) === 22, "quality maps to MJPEG q:v (65→10, 90→2, 30→22)");
+  const args = desktop.ffmpegArgs({ fps: 8, scale: 0.5, quality: 65 }, { display: ":1", screen: { width: 1600, height: 900 } });
+  check(Array.isArray(args) && args.every((x) => typeof x === "string"), "the ffmpeg argv is an array of strings — never a shell line");
+  const at = (flag) => args[args.indexOf(flag) + 1];
+  check(at("-f") === "x11grab" && at("-i") === ":1" && at("-framerate") === "8" && at("-video_size") === "1600x900", "it grabs :1 with x11grab at the asked rate and the screen's size");
+  check(/^mpdecimate=hi=64:lo=1:frac=0,scale=800:450/.test(at("-vf")), "mpdecimate drops duplicate frames at the source, then it scales to 800x450", at("-vf"));
+  check(at("-fps_mode") === "passthrough", "and ffmpeg is told not to re-duplicate what mpdecimate dropped");
+  check(at("-c:v") === "mjpeg" && at("-q:v") === "10" && args.includes("image2pipe") && args[args.length - 1] === "-", "MJPEG at q:v 10 to stdout");
+  check(at("-flush_packets") === "1", "each JPEG is flushed whole, not a frame late");
+  const odd = desktop.ffmpegArgs({ fps: 3, scale: 0.333, quality: 90 }, { screen: { width: 1600, height: 900 } });
+  check(/scale=532:300/.test(odd[odd.indexOf("-vf") + 1]), "scaled sizes are rounded to even numbers (MJPEG 4:2:0 needs them)", odd[odd.indexOf("-vf") + 1]);
+  const full = desktop.ffmpegArgs({ fps: 8, scale: 1, quality: 65 }, { screen: { width: 1600, height: 900 } });
+  check(!/scale=/.test(full[full.indexOf("-vf") + 1]), "full scale adds no scale filter");
+  const blindArgs = desktop.ffmpegArgs({ fps: 8, scale: 0.5, quality: 65 }, {});
+  check(!blindArgs.includes("-video_size") && /scale=trunc/.test(blindArgs[blindArgs.indexOf("-vf") + 1]), "with no known screen size it grabs the whole screen and scales by ratio");
+}
+
+// A stream wired to fakes. `frames` is everything that went to the socket.
+const makeStream = (over = {}) => {
+  const frames = [];
+  const timers = manualTimers();
+  let t = 1_000_000;
+  const env = { buffered: 0, open: true };
+  const children = [];
+  const captures = [];
+  const s = new desktop.DesktopStream({
+    send: (buf) => frames.push(desktop.unpackFrame(buf)),
+    buffered: () => env.buffered,
+    isOpen: () => env.open,
+    screenSize: async () => ({ width: 1600, height: 900 }),
+    capture: async (o) => (captures.push(o), { image: sjpeg(800, 450, 100 + captures.length) }),
+    spawnFn: () => {
+      const c = fakeChild();
+      children.push(c);
+      return c;
+    },
+    now: () => t,
+    state: { missingUntil: 0 },
+    ...timers,
+    ...over,
+  });
+  return { s, frames, timers, env, children, captures, advance: (ms) => (t += ms), now: () => t };
+};
+
+console.log("\nthe push stream: flow control");
+{
+  const { s, frames, env } = makeStream();
+  const started = await s.start({ fps: 8 });
+  check(started.width === 1600 && started.height === 900 && started.source === "ffmpeg", "start answers the SCREEN size and the source it chose", JSON.stringify(started));
+  const r1 = s.offer(sjpeg(800, 450, 1), 1);
+  const r2 = s.offer(sjpeg(800, 450, 2), 2);
+  const r3 = s.offer(sjpeg(800, 450, 3), 3);
+  check(r1 === "sent" && r2 === "sent" && r3 === "inflight", "two frames go out; the third waits while both are un-acked", `${r1} ${r2} ${r3}`);
+  check(frames.length === 2 && s.inflight.size === 2, "never more than two frames un-acked in flight");
+  const r4 = s.offer(sjpeg(800, 450, 4), 4);
+  check(r4 === "inflight" && s.latest.takenAt === 4, "a newer frame REPLACES the held one — fewer, fresher frames, not a queue");
+  s.ack(1);
+  check(frames.length === 3 && frames[2].header.takenAt === 4, "an ack lets the freshest held frame out at once (frame 3 was never sent)");
+  check(frames[2].header.skipped === 2, "and its header says two frames were held back — the viewer reads that as a slow link", String(frames[2].header.skipped));
+  check(frames[0].header.skipped === 0, "a frame nothing was held behind says skipped 0");
+  check(frames.map((f) => f.header.seq).join(",") === "1,2,3", "seq counts frames actually sent");
+  s.ack(3);
+  check(s.inflight.size === 0, "acks are cumulative: ack 3 clears 2 and 3");
+  env.buffered = 300 * 1024;
+  const rb = s.offer(sjpeg(800, 450, 5), 5);
+  check(rb === "buffered" && frames.length === 3, "nothing new while the socket has more than 256 KB buffered");
+  env.buffered = 0;
+  s.tick();
+  check(frames.length === 4 && frames[3].header.takenAt === 5, "once the buffer drains, the held frame goes on the next tick");
+  const h = frames[0].header;
+  check(h.imageWidth === 800 && h.imageHeight === 450 && h.width === 1600 && h.height === 900 && typeof h.takenAt === "number", "the header carries the image size, the SCREEN size and takenAt");
+  s.ack(4);
+  // A viewer that never acks does not stall the stream for ever.
+  s.offer(sjpeg(800, 450, 6), 6);
+  s.offer(sjpeg(800, 450, 7), 7);
+  check(s.offer(sjpeg(800, 450, 8), 8) === "inflight", "(two un-acked again)");
+  s.now = () => 1_000_000 + 60_000;
+  check(s.offer(sjpeg(800, 450, 9), 9) === "sent", "un-acked frames older than the ack timeout are forgotten, so a lost ack cannot freeze the view");
+  s.ack("x");
+  s.ack(-1);
+  check(true, "a malformed ack is ignored without throwing");
+  s.stop();
+}
+
+console.log("\nthe push stream: an idle desktop costs nothing");
+{
+  const { s, frames, advance } = makeStream();
+  await s.start({});
+  const still = sjpeg(800, 450, 42);
+  s.offer(still, 1);
+  s.ack(1);
+  const again = s.offer(Buffer.from(still), 2);
+  check(again === "unchanged" && frames.length === 1 && s.stats.unchanged === 1, "a frame byte-identical to the last one SENT is not sent");
+  advance(4000);
+  s.tick();
+  check(frames.length === 1, "no keepalive before five seconds of silence");
+  advance(1000);
+  s.tick();
+  const ka = frames[1];
+  check(frames.length === 2 && ka.header.keepalive === true && ka.image.length === 0, "after five seconds a header-only keepalive goes out");
+  check(ka.header.width === 1600 && ka.header.seq === 1, "it carries the screen size and the last seq (it is not a frame to ack)");
+  s.tick();
+  check(frames.length === 2, "and at most one per five seconds");
+  check(s.inflight.size === 0, "a keepalive is not counted in flight");
+  const changed = s.offer(sjpeg(800, 450, 43), 3);
+  check(changed === "sent" && frames.length === 3, "a real change goes out straight away");
+  s.update({ scale: 0.75 });
+  check(s.lastSent === null, "a new scale resets the unchanged comparison (new settings, new bytes)");
+  s.stop();
+}
+
+console.log("\nthe push stream: ffmpeg frames, restarts on change, stop on close");
+{
+  const { s, frames, children } = makeStream();
+  await s.start({ fps: 10, scale: 0.5, quality: 65 });
+  check(children.length === 1, "one long-lived ffmpeg per stream");
+  const a = sjpeg(800, 450, 1);
+  const b = sjpeg(800, 450, 2);
+  const both = Buffer.concat([a, b]);
+  children[0].stdout.emit("data", both.subarray(0, 50));
+  children[0].stdout.emit("data", both.subarray(50, a.length + 7));
+  children[0].stdout.emit("data", both.subarray(a.length + 7));
+  check(frames.length === 2 && frames[0].image.equals(a) && frames[1].image.equals(b), "frames split across pipe chunks reach the socket whole");
+  const u = s.update({ quality: 80 });
+  check(u.quality === 80 && u.fps === 10 && children[0].killed && children.length === 2, "an update restarts ffmpeg with the new settings (old one killed)");
+  const before = frames.length;
+  children[0].stdout.emit("data", sjpeg(800, 450, 9));
+  check(frames.length === before, "a late frame from the killed ffmpeg is ignored");
+  s.update({ quality: 80 });
+  check(children.length === 2, "an update that changes nothing does not restart it");
+  const { s: s2, env, children: ch2 } = makeStream();
+  await s2.start({});
+  env.open = false;
+  check(s2.offer(sjpeg(800, 450, 5), 1) === "stopped" && !s2.running && ch2[0].killed, "a closed socket stops the stream and kills ffmpeg");
+  check(s.stop() === true && children[1].killed && s.stop() === false, "stop kills ffmpeg, and a second stop is a no-op");
+  check(s.offer(sjpeg(800, 450, 6), 1) === "stopped", "nothing is sent after stop");
+}
+
+console.log("\nthe push stream: falling back to import");
+{
+  const enoent = makeStream({
+    spawnFn: () => {
+      const c = fakeChild();
+      setImmediate(() => c.emit("error", Object.assign(new Error("spawn ffmpeg ENOENT"), { code: "ENOENT" })));
+      return c;
+    },
+  });
+  const state = enoent.s.state;
+  await enoent.s.start({ fps: 4 });
+  await tick(5);
+  check(enoent.s.source === "import" && /not installed/.test(enoent.s.fallbackReason), "ffmpeg missing (ENOENT) falls back to import", enoent.s.fallbackReason);
+  check(state.missingUntil > enoent.now(), "and the miss is remembered, so the next viewer does not pay a failed spawn");
+  check(enoent.captures.length >= 1 && enoent.captures[0].scale === 0.5 && enoent.captures[0].quality === 65, "import captures with the stream's scale and quality");
+  await tick(5);
+  check(enoent.frames.length === 1, "and its frame reaches the socket");
+  const loopTimer = enoent.timers.pending.find((t) => !t.cleared);
+  check(loopTimer && loopTimer.ms <= 250, "the import loop paces itself to the asked rate (4 fps → ≤250 ms)", String(loopTimer?.ms));
+  enoent.s.stop();
+  await enoent.timers.runAll();
+  check(enoent.captures.length === 1, "and stops capturing when the stream stops");
+
+  const remembered = makeStream({ state: { missingUntil: Date.now() * 2 } });
+  await remembered.s.start({});
+  check(remembered.s.source === "import" && remembered.children.length === 0, "a remembered miss goes straight to import without spawning");
+  remembered.s.stop();
+
+  const throwing = makeStream({
+    spawnFn: () => {
+      throw Object.assign(new Error("nope"), { code: "ENOENT" });
+    },
+  });
+  await throwing.s.start({});
+  check(throwing.s.source === "import", "a spawn that throws falls back too");
+  throwing.s.stop();
+
+  const flaky = makeStream();
+  await flaky.s.start({});
+  flaky.children[0].emit("close", 1);
+  check(flaky.s.source === "ffmpeg" && flaky.s.stats.restarts === 1, "one ffmpeg exit restarts ffmpeg (after a pause)");
+  await flaky.timers.runAll();
+  check(flaky.children.length === 2, "the restart spawns a new ffmpeg");
+  flaky.children[1].emit("close", 1);
+  await flaky.timers.runAll();
+  flaky.children[2].emit("close", 1);
+  check(flaky.s.source === "import" && /three times/.test(flaky.s.fallbackReason), "three exits inside 30 s and it falls back to import", flaky.s.fallbackReason);
+  flaky.s.stop();
+  check(desktop.ffmpegState.missingUntil === 0, "(tests never touched the shared ffmpeg state)");
+}
+
+console.log("\nthe push stream: an owner action is pushed at once");
+{
+  const { s, frames } = makeStream();
+  await s.start({ fps: 8 });
+  s.offer(sjpeg(800, 450, 1), 1);
+  s.offer(sjpeg(800, 450, 2), 2);
+  check(s.offer(sjpeg(800, 450, 3), 3) === "inflight", "(two un-acked)");
+  s.kick();
+  check(s.offer(sjpeg(800, 450, 3), 3) === "sent" && frames.length === 3, "after an action the next changed frame goes past the cap");
+  check(s.offer(sjpeg(800, 450, 4), 4) === "inflight", "but only ONE — the cap is back for the frame after");
+  s.stop();
+
+  const slow = makeStream();
+  await slow.s.start({ fps: 2 });
+  slow.s.kick();
+  const k = slow.timers.pending.find((t) => t.ms === 60);
+  check(!!k, "at a slow rate a kick schedules one extra capture after a short settle");
+  await k.fn();
+  check(slow.captures.length === 1 && slow.frames.length === 1, "and pushes it straight away");
+  slow.s.stop();
+  check(slow.s.kick() === false, "a kick on a stopped stream does nothing");
+}
+
+console.log("\nthe push stream over the workbench socket");
+{
+  const children = [];
+  const acted = [];
+  const wb = createWorkbench({
+    approvals: null,
+    log: tmpLog(),
+    desktop: { screenshot: async () => ({ image: sjpeg(800, 450, 7) }), screenSize: async () => ({ width: 1600, height: 900 }), act: async (a) => (acted.push(a), {}) },
+    streamDeps: {
+      spawnFn: () => {
+        const c = fakeChild();
+        children.push(c);
+        return c;
+      },
+      state: { missingUntil: 0 },
+      setRepeat: () => ({ unref() {} }),
+      clearRepeat: () => {},
+    },
+  });
+  const mkWs = () => {
+    const ws = { authed: owner(), readyState: 1, bufferedAmount: 0, bin: [], json: [] };
+    ws.send = (d, o) => (o && o.binary ? ws.bin.push(desktop.unpackFrame(d)) : ws.json.push(JSON.parse(d)));
+    return ws;
+  };
+  const viewer = mkWs();
+  const other = mkWs();
+  const r = [];
+  await wb.handleSocket(viewer, { type: "desktop.stream.start", fps: 8, scale: 0.5, quality: 60 }, (m) => r.push(m));
+  check(typeof r[0]?.at === "number", "the started reply carries the box clock (at) for the latency readout");
+  check(r[0]?.type === "desktop.stream.started" && r[0].width === 1600 && r[0].height === 900 && r[0].fps === 8 && r[0].quality === 60, "desktop.stream.start → desktop.stream.started {width, height}", JSON.stringify(r[0]));
+  children[0].stdout.emit("data", sjpeg(800, 450, 1));
+  check(viewer.bin.length === 1 && viewer.bin[0].header.seq === 1, "frames are BINARY messages to the subscribing socket");
+  check(other.bin.length === 0 && other.json.length === 0, "and to no other socket");
+  await wb.handleSocket(viewer, { type: "desktop.stream.ack", seq: 1 }, (m) => r.push(m));
+  check(r.length === 1 && wb.streams.get(viewer).inflight.size === 0, "desktop.stream.ack is silent and clears the frame");
+  await wb.handleSocket(viewer, { type: "desktop.stream.update", scale: 0.25 }, (m) => r.push(m));
+  check(r[1]?.type === "desktop.stream.updated" && r[1].scale === 0.25 && r[1].fps === 8 && children.length === 2, "desktop.stream.update adapts without a new start (ffmpeg restarted underneath)");
+  await throws(() => wb.handleSocket(viewer, { type: "desktop.stream.update", fps: 99 }, () => {}), "an out-of-range update is refused", /fps must be/);
+  await throws(() => wb.handleSocket(other, { type: "desktop.stream.update", fps: 5 }, () => {}), "an update with no stream is refused", /No desktop stream/);
+  await throws(() => wb.handleSocket(other, { type: "desktop.stream.start", quality: 5 }, () => {}), "a start with bad options is refused", /quality must be/);
+  check(!wb.streams.has(other), "and leaves no stream behind");
+  const ra = [];
+  const kicked = wb.streams.get(viewer);
+  let kicks = 0;
+  const realKick = kicked.kick.bind(kicked);
+  kicked.kick = () => (kicks++, realKick());
+  await wb.handleSocket(viewer, { type: "desktop.action", action: "click", x: 10, y: 20 }, (m) => ra.push(m));
+  check(ra[0]?.type === "desktop.acted" && kicks === 1, "an owner action kicks the stream so the result is pushed at once");
+  await wb.handleSocket(viewer, { type: "desktop.stream.start" }, (m) => r.push(m));
+  check(children[1].killed && wb.streams.size === 1, "a second start on one socket replaces the first (its ffmpeg killed)");
+  wb.onSocketClose(viewer);
+  check(wb.streams.size === 0 && children[2].killed, "closing the socket stops its stream and kills ffmpeg");
+  const r2 = [];
+  await wb.handleSocket(other, { type: "desktop.stream.start" }, (m) => r2.push(m));
+  await wb.handleSocket(other, { type: "desktop.stream.stop" }, (m) => r2.push(m));
+  check(r2[1]?.type === "desktop.stream.stopped" && r2[1].stopped === true && children[3].killed, "desktop.stream.stop stops it");
+  await wb.handleSocket(other, { type: "desktop.stream.stop" }, (m) => r2.push(m));
+  check(r2[2]?.stopped === false, "and a stop with nothing running says so");
+  const shot = [];
+  await wb.handleSocket(other, { type: "desktop.screenshot", scale: 0.5 }, (m) => shot.push(m));
+  check(shot[0]?.type === "desktop.screenshot", "desktop.screenshot is unchanged beside the stream");
+}
+
 vnc.close();
 console.log(`\n${pass} passed, ${fails.length} failed`);
 if (fails.length) {

@@ -37,6 +37,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AgentClient,
+  AGENT_URL,
   speechSupported,
   listen,
   say,
@@ -52,6 +53,7 @@ import { ApprovalCard, clock } from "./workbench/ApprovalCard";
 import useWorkbench from "./workbench/useWorkbench";
 import WorkbenchSwitcher from "./workbench/WorkbenchSwitcher";
 import WorkbenchStyles from "./workbench/WorkbenchStyles";
+import WorkbenchHead from "./workbench/WorkbenchHead";
 import ChatView from "./workbench/ChatView";
 import DesktopView from "./workbench/DesktopView";
 import TerminalView from "./workbench/TerminalView";
@@ -125,7 +127,9 @@ const areaOf = (request = "") =>
 /* ================= the panel ================= */
 
 export default function AgentPanel() {
-  const [status, setStatus] = useState("connecting");
+  // Nothing connects until the owner presses Connect: "idle" is the first state.
+  const [status, setStatus] = useState("idle");
+  const [conn, setConn] = useState({}); // the latest onState detail: attempt, of, reason
   const [jobs, setJobs] = useState([]);
   const [seen, setSeen] = useState({}); // jobId -> { receivedAt, lastSeen }
   const [approvals, setApprovals] = useState([]);
@@ -190,6 +194,7 @@ export default function AgentPanel() {
     const c = new AgentClient({
       onState: (s) => {
         setStatus(s.status);
+        setConn(s.status === "connected" ? {} : { attempt: s.attempt, of: s.of, reason: s.reason || "" });
         setLostAt((t) => (s.status === "connected" ? 0 : t || Date.now()));
         if (s.status === "connected") {
           // Asked for once a socket exists, so the WhatsApp section is not a
@@ -335,9 +340,10 @@ export default function AgentPanel() {
       },
     });
     client.current = c;
-    c.connect().catch((e) => setErr((x) => ({ ...x, main: e.message })));
+    // NOT connected here. The owner presses Connect; leaving the tab (an
+    // unmount) closes the socket and coming back does not reopen it.
     return () => c.close();
-    // Connect once; voice is read through voiceRef.
+    // One client per mount; voice is read through voiceRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -402,6 +408,21 @@ export default function AgentPanel() {
     });
 
   const connected = status === "connected";
+  // The owner asked for a connection and has not withdrawn it.
+  const wanted = ["connecting", "connected", "reconnecting"].includes(status);
+  const connectNow = () => {
+    setErr((x) => ({ ...x, main: "" }));
+    const c = client.current;
+    if (!c) return;
+    Promise.resolve()
+      .then(() => c.connect())
+      .catch((e) => {
+        setStatus("failed");
+        setConn({ reason: e.message });
+      });
+  };
+  const disconnectNow = () => client.current?.close();
+  const agentHost = hostOf(client.current?.url || AGENT_URL);
 
   // An approval for the chat on screen is answered INLINE, where it was
   // asked; on Review every approval is pinned at the top of the timeline. So
@@ -424,41 +445,62 @@ export default function AgentPanel() {
 
   return (
     <div className="ag-main wb-root">
-      <div className="ops-head">
-        <div>
-          <h3>Workbench</h3>
-          <p className="admin-sub ag-sub">
-            Claude Code and Codex on your own server: talk to them, watch the desktop they work on,
-            open a shell. You approve the parts that cannot be undone.
-          </p>
-        </div>
-        <span className="ag-actions">
-          <ConnectionDot status={status} />
-          {canSpeak ? (
-            <label className="ag-toggle" title="Speak status and approvals aloud">
-              <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
-              Speak
-            </label>
-          ) : null}
-          {halted ? (
-            <button className="admin-primary" type="button" onClick={() => act(() => client.current.resume())}>
-              Resume
-            </button>
-          ) : (
-            <button
-              className={`ag-halt${haltArmed ? " armed" : ""}`}
-              type="button"
-              onClick={() => pressHalt(() => act(() => client.current.halt("Stopped from the panel.")))}
-            >
-              {haltArmed
-                ? live.length
-                  ? `Tap again to stop ${live.length} run${live.length === 1 ? "" : "s"}`
-                  : "Tap again to halt"
-                : "Stop everything"}
-            </button>
-          )}
-        </span>
-      </div>
+      {/* ONE live sentence answers "does anything need me?", and the thing
+          that needs you sits right under it. The shell already prints the
+          section's name, so there is no second title here. */}
+      <WorkbenchHead
+        status={status}
+        host={agentHost}
+        conn={conn}
+        approvals={approvals}
+        strip={banner}
+        chats={wb.chats}
+        jobs={jobs}
+        idleOf={(j) => liveTimes(j, { now: (connected ? now : lostAt || now) || Date.now(), ...(seen[j.id] || {}) }).idle}
+        halted={halted}
+        jobFor={(card) => jobs.find((j) => j.id === card.jobId)}
+        whereFor={(card) => {
+          const chat = chatOf(card);
+          return chat ? `chat: ${chat.title || chat.chatId}` : undefined;
+        }}
+        scopeFor={(card) => (chatOf(card) ? "chat" : "job")}
+        onConnect={connectNow}
+        onAnswer={answer}
+        onMore={() => setTab("review")}
+        onJump={() => document.querySelector(".wb-transcript .ag-card")?.scrollIntoView({ block: "center" })}
+        actions={
+          wanted || connected ? (
+            <>
+              {canSpeak ? (
+                <label className="ag-toggle" title="Speak status and approvals aloud">
+                  <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
+                  Speak
+                </label>
+              ) : null}
+              <button className="ag-ghost ag-disconnect" type="button" onClick={disconnectNow}>
+                Disconnect
+              </button>
+              {!connected ? null : halted ? (
+                <button className="admin-primary" type="button" onClick={() => act(() => client.current.resume())}>
+                  Resume
+                </button>
+              ) : (
+                <button
+                  className={`ag-halt${haltArmed ? " armed" : ""}`}
+                  type="button"
+                  onClick={() => pressHalt(() => act(() => client.current.halt("Stopped from the panel.")))}
+                >
+                  {haltArmed
+                    ? live.length
+                      ? `Tap again to stop ${live.length} run${live.length === 1 ? "" : "s"}`
+                      : "Tap again to halt"
+                    : "Stop everything"}
+                </button>
+              )}
+            </>
+          ) : null
+        }
+      />
 
       <WorkbenchSwitcher view={tab} onView={setTab} badges={badges} />
 
@@ -472,37 +514,6 @@ export default function AgentPanel() {
       <p className="ag-sr" role="status" aria-live="polite">
         {announce}
       </p>
-      {halted ? (
-        <p className="ag-halted">
-          Halted. Nothing new will start until you resume. Jobs already running were asked to stop.
-        </p>
-      ) : null}
-
-      {/* The one loud thing. Above everything, because it is the only part
-          that is blocking on you. */}
-      {/* The region stays mounted (empty, it takes no space) so a card that
-          arrives is announced: an unanswered approval is DENIED when it
-          expires, so not hearing it is not a small thing. */}
-      <section
-        className={banner.length ? "ag-approvals" : "ag-approvals is-empty"}
-        aria-label="Waiting for your approval"
-        aria-live="assertive"
-        aria-relevant="additions"
-      >
-        {banner.map((card) => {
-          const chat = chatOf(card);
-          return (
-            <ApprovalCard
-              key={card.id}
-              card={card}
-              job={jobs.find((j) => j.id === card.jobId)}
-              where={chat ? `chat: ${chat.title || chat.chatId}` : undefined}
-              scopeLabel={chat ? "chat" : "job"}
-              onAnswer={(allow, scope) => answer(card, allow, scope)}
-            />
-          );
-        })}
-      </section>
 
       {tab === "chat" ? (
         <ChatView
@@ -684,12 +695,23 @@ export function AgentTabs({ tab, onTab, counts = {} }) {
   );
 }
 
-export function ConnectionDot({ status }) {
+// The agent host a panel will reach, for the Connect card.
+export const hostOf = (url = "") => {
+  try {
+    return new URL(url).host;
+  } catch (_) {
+    return "";
+  }
+};
+
+export function ConnectionDot({ status, detail = {} }) {
   const label = {
+    idle: "Not connected",
     connecting: "Connecting…",
     connected: "Connected",
-    reconnecting: "Reconnecting…",
+    reconnecting: detail.attempt ? `Reconnecting (try ${detail.attempt} of ${detail.of || 3})…` : "Reconnecting…",
     closed: "Disconnected",
+    failed: "Couldn't reach the server",
   }[status] || status;
   return (
     <span className={`ag-conn ${status}`} title={label} role="status">
@@ -1656,6 +1678,22 @@ export function AgentStyles() {
       .ag-conn.connecting i {
         background: var(--a-amber, #ffb020);
       }
+      .ag-conn.failed i {
+        background: #ff6b6b;
+      }
+      .ag-connect-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 44px;
+        max-width: 100%;
+      }
+      .ag-connect-btn code {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11.5px;
+        opacity: 0.8;
+        overflow-wrap: anywhere;
+      }
       .ag-toggle {
         display: inline-flex;
         align-items: center;
@@ -1809,6 +1847,29 @@ export function AgentStyles() {
         color: var(--a-dim, #8b90a0);
         font-size: 11.5px;
       }
+      /* The strip under the headline: the same card, tighter. */
+      .ag-card.compact {
+        padding: 12px 14px;
+        border-radius: 10px;
+      }
+      .ag-card.compact .ag-card-summary {
+        font-size: 15px;
+      }
+      .ag-card.compact .ag-card-cmd {
+        max-height: 7.5em;
+        overflow: auto;
+      }
+      .ag-card.compact .ag-card-actions {
+        margin-top: 11px;
+      }
+      .ag-deny:focus-visible,
+      .ag-allow:focus-visible,
+      .ag-allow-session:focus-visible,
+      .ag-halt:focus-visible,
+      .ag-disconnect:focus-visible {
+        outline: 2px solid var(--a-amber, #ffb020);
+        outline-offset: 2px;
+      }
 
       /* ---- new job ---- */
       .ag-new {
@@ -1944,7 +2005,7 @@ export function AgentStyles() {
       .ag-group {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 0;
         min-width: 0;
       }
       /* globals.scss pins h1-h4 to a light-theme ink; every heading here
@@ -1969,23 +2030,27 @@ export function AgentStyles() {
       .ag-group.stuck .ag-group-h {
         color: #ff8a8a;
       }
+      /* Rows, not cards: a hairline under each, and the state on the left
+         edge. Amber = needs you, red = stuck, solid = running, dashed =
+         finished. */
       .ag-run {
-        border: 1px solid var(--a-line, #23262f);
-        border-left: 3px solid var(--a-line, #23262f);
-        border-radius: 10px;
-        background: var(--a-raise, #15171d);
+        border: 0;
+        border-left: 3px dashed #3a3f4d;
+        border-bottom: 1px solid var(--a-line, #23262f);
+        border-radius: 0;
+        background: none;
         overflow: hidden;
         min-width: 0;
       }
       .ag-run.run {
-        border-left-color: #c9cdd8;
+        border-left: 3px solid #c9cdd8;
       }
       .ag-run.ask {
-        border-left-color: var(--a-amber, #ffb020);
-        background: linear-gradient(90deg, rgba(255, 176, 32, 0.07), transparent 40%), var(--a-raise, #15171d);
+        border-left: 3px solid var(--a-amber, #ffb020);
+        background: linear-gradient(90deg, rgba(255, 176, 32, 0.08), transparent 50%);
       }
       .ag-run.stuck {
-        border-left-color: #d1434f;
+        border-left: 3px solid #d1434f;
       }
       .ag-run.bad {
         border-left: 3px dashed #a33b45;

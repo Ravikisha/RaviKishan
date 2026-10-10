@@ -749,3 +749,528 @@ export function tokenMatches(expected, given) {
   const b = Buffer.from(given);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+
+/* ---------------- the push stream ---------------- */
+
+// The Desktop view used to ask for a frame, wait for it, draw it and ask
+// again — so the tunnel's round trip (350–470 ms measured) sat inside the
+// frame loop and the owner saw 1–2 fps. The stream turns that round: the box
+// PUSHES frames as WebSocket binary messages and the browser acks each one
+// after drawing it. Flow control keeps the link honest — at most two frames
+// un-acked and nothing new while the socket's own buffer is over 256 KB — so
+// a slow link gets fewer, FRESHER frames, never a growing queue.
+//
+// Capture is ONE long-lived ffmpeg x11grab per viewer (MJPEG to a pipe, split
+// on the JPEG markers), falling back to an ImageMagick `import` per frame when
+// ffmpeg is missing or keeps dying. An idle desktop costs ~nothing: mpdecimate
+// drops duplicate frames at the SOURCE (two MJPEG encodes of one screen are
+// not promised to be byte-identical, so comparing JPEG bytes alone is not
+// enough), and a frame byte-identical to the last one SENT is never sent
+// either (that is what catches the import path). A header-only keepalive goes
+// out at most every 5 s so the viewer can tell a still screen from a dead
+// stream.
+//
+// Wire format of a frame: [u32 BE header length][UTF-8 JSON header][JPEG].
+// Header: {seq, takenAt, imageWidth, imageHeight, width, height, skipped} —
+// width and height are the SCREEN's, so a click on the scaled image maps back. A
+// keepalive carries keepalive:true and no image, and is not acked.
+export const STREAM = {
+  minFps: 1,
+  maxFps: 15,
+  fps: 8,
+  minScale: 0.25,
+  maxScale: 1,
+  scale: 0.5,
+  minQuality: 30,
+  maxQuality: 90,
+  quality: 65,
+  maxInFlight: 2,
+  maxBuffered: 256 * 1024,
+  keepaliveMs: 5000,
+  ackTimeoutMs: 4000,
+  maxHeader: 16 * 1024,
+};
+
+// PURE. Validates a start/update message, merged onto `base` (the stream's
+// current settings) — an update may carry one field. Out of range is REFUSED,
+// not clamped: the viewer's adaptation should learn the bounds, not be lied to.
+export function assertStreamOptions(raw = {}, base = { fps: STREAM.fps, scale: STREAM.scale, quality: STREAM.quality }) {
+  const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const out = { ...base };
+  if (o.fps !== undefined) {
+    if (typeof o.fps !== "number" || !Number.isInteger(o.fps) || o.fps < STREAM.minFps || o.fps > STREAM.maxFps) throw new DesktopError(`fps must be a whole number from ${STREAM.minFps} to ${STREAM.maxFps}.`);
+    out.fps = o.fps;
+  }
+  if (o.scale !== undefined) {
+    if (typeof o.scale !== "number" || !Number.isFinite(o.scale) || o.scale < STREAM.minScale || o.scale > STREAM.maxScale) throw new DesktopError(`scale must be a number from ${STREAM.minScale} to ${STREAM.maxScale}.`);
+    out.scale = Math.round(o.scale * 1000) / 1000;
+  }
+  if (o.quality !== undefined) {
+    if (typeof o.quality !== "number" || !Number.isInteger(o.quality) || o.quality < STREAM.minQuality || o.quality > STREAM.maxQuality) throw new DesktopError(`quality must be a whole number from ${STREAM.minQuality} to ${STREAM.maxQuality}.`);
+    out.quality = o.quality;
+  }
+  return out;
+}
+
+// PURE. quality 30–90 → MJPEG -q:v 22–2 (lower q:v is better and bigger).
+// The default 65 lands on 10: measured on the box, q:v 6 at 800 px wide was
+// ~90 KB a frame — too much for a ~200 ms link at 8 fps.
+export const mjpegQ = (quality) => Math.max(2, Math.min(31, Math.round(2 + (STREAM.maxQuality - quality) / 3)));
+
+const even = (n) => Math.max(2, 2 * Math.round(n / 2));
+
+// PURE. The ffmpeg argv for a stream. Array args, never a shell.
+//   mpdecimate    drops a frame identical to the last KEPT one at the source.
+//                 hi/lo/frac are set so only a real duplicate is dropped — a
+//                 typed character must never be decimated away.
+//   passthrough   so ffmpeg does not re-duplicate those frames to hold a rate
+//   flush_packets so each JPEG leaves the pipe whole, not one frame late
+export function ffmpegArgs({ fps, scale, quality }, { display = DISPLAY, screen = null } = {}) {
+  const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "x11grab", "-draw_mouse", "1", "-framerate", String(fps)];
+  if (screen) args.push("-video_size", `${screen.width}x${screen.height}`);
+  args.push("-i", display);
+  const filters = ["mpdecimate=hi=64:lo=1:frac=0"];
+  if (scale < 1) {
+    filters.push(screen ? `scale=${even(screen.width * scale)}:${even(screen.height * scale)}:flags=bilinear` : `scale=trunc(iw*${scale}/2)*2:-2:flags=bilinear`);
+  }
+  args.push("-vf", filters.join(","), "-fps_mode", "passthrough", "-c:v", "mjpeg", "-pix_fmt", "yuvj420p", "-q:v", String(mjpegQ(quality)), "-f", "image2pipe", "-flush_packets", "1", "-");
+  return args;
+}
+
+const EMPTY = Buffer.alloc(0);
+
+// PURE. One binary frame.
+export function packFrame(header, image = EMPTY) {
+  const h = Buffer.from(JSON.stringify(header), "utf8");
+  const img = Buffer.isBuffer(image) ? image : EMPTY;
+  const out = Buffer.allocUnsafe(4 + h.length + img.length);
+  out.writeUInt32BE(h.length, 0);
+  h.copy(out, 4);
+  img.copy(out, 4 + h.length);
+  return out;
+}
+
+// PURE. The inverse; null for anything malformed.
+export function unpackFrame(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 4) return null;
+  const n = buf.readUInt32BE(0);
+  if (n < 2 || n > STREAM.maxHeader || 4 + n > buf.length) return null;
+  let header;
+  try {
+    header = JSON.parse(buf.subarray(4, 4 + n).toString("utf8"));
+  } catch (_) {
+    return null;
+  }
+  if (!header || typeof header !== "object") return null;
+  return { header, image: buf.subarray(4 + n) };
+}
+
+// Splits an MJPEG byte stream into whole JPEGs. It walks the marker segments
+// rather than searching for FF D9 anywhere, because the entropy-coded data is
+// the only place a marker search is valid (there, a literal FF is stuffed as
+// FF 00), and a chunk boundary may fall anywhere — including between the FF
+// and the D9.
+export class JpegSplitter {
+  constructor({ maxBytes = 8 * 1024 * 1024 } = {}) {
+    this.maxBytes = maxBytes;
+    this.dropped = 0;
+    this.reset();
+  }
+
+  reset() {
+    this.buf = EMPTY;
+    this.pos = 0;
+    this.state = "seek";
+  }
+
+  push(chunk) {
+    this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : Buffer.from(chunk);
+    const out = [];
+    for (;;) {
+      const b = this.buf;
+      if (this.state === "seek") {
+        let i = -1;
+        for (let k = b.indexOf(0xff); k >= 0 && k + 1 < b.length; k = b.indexOf(0xff, k + 1)) {
+          if (b[k + 1] === 0xd8) {
+            i = k;
+            break;
+          }
+        }
+        if (i < 0) {
+          // Keep a trailing FF: it may be the first half of the next SOI.
+          this.buf = b.length && b[b.length - 1] === 0xff ? b.subarray(b.length - 1) : EMPTY;
+          break;
+        }
+        this.buf = b.subarray(i);
+        this.pos = 2;
+        this.state = "segments";
+        continue;
+      }
+      if (this.state === "segments") {
+        const p = this.pos;
+        if (p + 2 > b.length) break;
+        if (b[p] !== 0xff) {
+          // Not a JPEG after all: drop the SOI and look again.
+          this.dropped++;
+          this.buf = b.subarray(1);
+          this.state = "seek";
+          continue;
+        }
+        const m = b[p + 1];
+        if (m === 0xff) {
+          this.pos = p + 1;
+          continue;
+        }
+        if (m === 0xd9) {
+          out.push(Buffer.from(b.subarray(0, p + 2)));
+          this.buf = b.subarray(p + 2);
+          this.pos = 0;
+          this.state = "seek";
+          continue;
+        }
+        if (m === 0x01 || (m >= 0xd0 && m <= 0xd7)) {
+          this.pos = p + 2;
+          continue;
+        }
+        if (p + 4 > b.length) break;
+        const len = b.readUInt16BE(p + 2);
+        if (len < 2) {
+          this.dropped++;
+          this.buf = b.subarray(1);
+          this.state = "seek";
+          continue;
+        }
+        if (p + 2 + len > b.length) break;
+        this.pos = p + 2 + len;
+        if (m === 0xda) this.state = "entropy";
+        continue;
+      }
+      // Entropy-coded data: the next FF that is not FF00 / RSTn / fill is a marker.
+      let i = b.indexOf(0xff, this.pos);
+      let found = false;
+      while (i >= 0 && i + 1 < b.length) {
+        const n = b[i + 1];
+        if (n === 0x00 || (n >= 0xd0 && n <= 0xd7)) {
+          i = b.indexOf(0xff, i + 2);
+          continue;
+        }
+        if (n === 0xff) {
+          i = i + 1;
+          continue;
+        }
+        found = true;
+        break;
+      }
+      if (!found) {
+        // Resume from the last FF seen (it may pair with the next chunk).
+        this.pos = i >= 0 ? i : b.length;
+        break;
+      }
+      this.pos = i;
+      this.state = "segments";
+    }
+    if (this.buf.length > this.maxBytes) {
+      this.dropped++;
+      this.reset();
+    }
+    return out;
+  }
+}
+
+// Whether ffmpeg is known missing: remembered for ten minutes, so every new
+// viewer does not pay a failed spawn, and setup.sh installing it later is
+// picked up without a restart.
+export const ffmpegState = { missingUntil: 0 };
+
+// One viewer's stream. Everything that touches the world is injected:
+//   send(buf)     the socket's binary send        buffered()  ws.bufferedAmount
+//   isOpen()      ws.readyState === 1             screenSize() {width,height}
+//   capture(o)    import screenshot → {image}     spawnFn     child_process.spawn
+export class DesktopStream {
+  constructor({
+    send,
+    buffered = () => 0,
+    isOpen = () => true,
+    screenSize = async () => ({ ...SCREEN }),
+    capture = null,
+    spawnFn = spawn,
+    ffmpeg = process.env.AGENT_DESKTOP_FFMPEG || "ffmpeg",
+    display = DISPLAY,
+    now = () => Date.now(),
+    setTimer = setTimeout,
+    clearTimer = clearTimeout,
+    setRepeat = setInterval,
+    clearRepeat = clearInterval,
+    state = ffmpegState,
+    kickSettleMs = 60,
+    onFallback = () => {},
+  } = {}) {
+    Object.assign(this, { sendRaw: send, buffered, isOpen, screenSize, capture, spawnFn, ffmpeg, display, now, setTimer, clearTimer, setRepeat, clearRepeat, state, kickSettleMs, onFallback });
+    this.opts = { fps: STREAM.fps, scale: STREAM.scale, quality: STREAM.quality };
+    this.screen = { ...SCREEN };
+    this.running = false;
+    this.gen = 0;
+    this.seq = 0;
+    this.inflight = new Map(); // seq → sentAt
+    this.lastSent = null;
+    this.lastSentAt = 0;
+    this.latest = null; // the newest frame held back by flow control
+    this.held = 0;
+    this.urgentUntil = 0;
+    this.failures = [];
+    this.source = null;
+    this.child = null;
+    this.timer = null;
+    this.stats = { captured: 0, sent: 0, unchanged: 0, skippedInFlight: 0, skippedBuffered: 0, keepalives: 0, restarts: 0 };
+  }
+
+  async start(raw = {}) {
+    this.opts = assertStreamOptions(raw);
+    try {
+      this.screen = await this.screenSize();
+    } catch (_) {
+      this.screen = { ...SCREEN };
+    }
+    this.running = true;
+    this.lastSentAt = this.now();
+    this.beat = this.setRepeat(() => this.tick(), 1000);
+    this.beat?.unref?.();
+    this.useFfmpeg = this.state.missingUntil <= this.now() && this.ffmpeg !== "0";
+    this.launch();
+    return { width: this.screen.width, height: this.screen.height, ...this.opts, source: this.source };
+  }
+
+  update(raw = {}) {
+    if (!this.running) throw new DesktopError("No desktop stream is running on this connection.");
+    const next = assertStreamOptions(raw, this.opts);
+    const changed = next.fps !== this.opts.fps || next.scale !== this.opts.scale || next.quality !== this.opts.quality;
+    this.opts = next;
+    // New settings mean new frame bytes: the "unchanged" comparison resets,
+    // and ffmpeg is restarted with the new argv (import just reads opts).
+    if (changed) {
+      this.lastSent = null;
+      this.latest = null;
+      if (this.source === "ffmpeg") this.launch();
+    }
+    return { ...this.opts, source: this.source, width: this.screen.width, height: this.screen.height };
+  }
+
+  stop() {
+    if (!this.running) return false;
+    this.running = false;
+    this.halt();
+    if (this.beat) this.clearRepeat(this.beat);
+    this.beat = null;
+    this.latest = null;
+    this.inflight.clear();
+    return true;
+  }
+
+  // Ends whichever capture is running. The generation bump makes any late
+  // event from it a no-op.
+  halt() {
+    this.gen++;
+    if (this.timer) this.clearTimer(this.timer);
+    this.timer = null;
+    if (this.child) {
+      try {
+        this.child.kill("SIGTERM");
+      } catch (_) {}
+      this.child = null;
+    }
+  }
+
+  launch() {
+    this.halt();
+    if (this.useFfmpeg) this.startFfmpeg();
+    else this.startImport();
+  }
+
+  fallback(why) {
+    this.useFfmpeg = false;
+    this.fallbackReason = why;
+    this.onFallback(why);
+    if (this.running) this.launch();
+  }
+
+  startFfmpeg() {
+    this.source = "ffmpeg";
+    const gen = this.gen;
+    const env = { ...process.env, DISPLAY: this.display };
+    for (const k of ["AGENT_MCP_TOKEN", "AGENT_ADMIN_EMAILS", "AGENT_PREVIEW_SECRET"]) delete env[k];
+    let child;
+    try {
+      child = this.spawnFn(this.ffmpeg, ffmpegArgs(this.opts, { display: this.display, screen: this.screen }), { env, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (e) {
+      if (e.code === "ENOENT") this.state.missingUntil = this.now() + 600_000;
+      return this.fallback(`ffmpeg could not start (${e.message})`);
+    }
+    this.child = child;
+    const splitter = new JpegSplitter();
+    let frames = 0;
+    let err = "";
+    child.stdout.on("data", (d) => {
+      if (gen !== this.gen) return;
+      for (const f of splitter.push(d)) {
+        frames++;
+        this.offer(f, this.now());
+      }
+    });
+    child.stderr?.on("data", (d) => (err = (err + d).slice(-600)));
+    child.on("error", (e) => {
+      if (gen !== this.gen) return;
+      if (e.code === "ENOENT") {
+        this.state.missingUntil = this.now() + 600_000;
+        return this.fallback("ffmpeg is not installed");
+      }
+      this.died(`ffmpeg failed: ${e.message}`);
+    });
+    child.on("close", (code) => {
+      if (gen !== this.gen || !this.running) return;
+      this.died(`ffmpeg exited (${code}) after ${frames} frame(s)${err.trim() ? `: ${err.trim().slice(0, 200)}` : ""}`);
+    });
+  }
+
+  // Three deaths inside 30 s and the stream moves to import for good.
+  died(why) {
+    this.child = null;
+    const t = this.now();
+    this.failures = this.failures.filter((x) => t - x < 30_000);
+    this.failures.push(t);
+    this.lastError = why;
+    if (this.failures.length >= 3) return this.fallback(`${why}; it exited three times`);
+    this.stats.restarts++;
+    const gen = ++this.gen;
+    this.timer = this.setTimer(() => {
+      if (gen === this.gen && this.running) this.launch();
+    }, 400 * this.failures.length);
+  }
+
+  startImport() {
+    this.source = "import";
+    const gen = this.gen;
+    if (!this.capture) return;
+    const loop = async () => {
+      if (gen !== this.gen || !this.running) return;
+      const started = this.now();
+      let ok = true;
+      try {
+        const s = await this.capture({ scale: this.opts.scale, quality: this.opts.quality });
+        if (gen === this.gen) this.offer(s.image, started);
+      } catch (e) {
+        ok = false;
+        this.lastError = e.message;
+      }
+      if (gen !== this.gen || !this.running) return;
+      const period = 1000 / this.opts.fps;
+      this.timer = this.setTimer(loop, ok ? Math.max(0, period - (this.now() - started)) : Math.max(1000, period));
+    };
+    loop();
+  }
+
+  // After the owner acts: get the result on screen NOW, past the in-flight
+  // cap once. ffmpeg at a useful rate is already capturing — the next frame
+  // that differs goes straight out; on import, or at a slow rate, one extra
+  // capture is taken after a short settle so the click is not waited on.
+  kick() {
+    if (!this.running) return false;
+    this.urgentUntil = this.now() + 1500;
+    if ((this.source === "import" || this.opts.fps < 4) && this.capture) {
+      const gen = this.gen;
+      const t = this.setTimer(async () => {
+        if (gen !== this.gen || !this.running) return;
+        const started = this.now();
+        try {
+          const s = await this.capture({ scale: this.opts.scale, quality: this.opts.quality });
+          if (gen === this.gen) this.offer(s.image, started, { urgent: true });
+        } catch (_) {}
+      }, this.kickSettleMs);
+      t?.unref?.();
+    }
+    return true;
+  }
+
+  // Acks are cumulative: a lost ack is forgiven by the next one.
+  ack(seq) {
+    const n = Number(seq);
+    if (!Number.isInteger(n) || n < 0) return;
+    for (const s of [...this.inflight.keys()]) if (s <= n) this.inflight.delete(s);
+    if (this.latest) {
+      const l = this.latest;
+      this.latest = null;
+      this.offer(l.image, l.takenAt, { retry: true });
+    }
+  }
+
+  // A viewer that never acks (a decode that failed, a backgrounded tab) must
+  // not stall the stream for ever.
+  expireInflight(t) {
+    for (const [s, at] of [...this.inflight]) if (t - at > STREAM.ackTimeoutMs) this.inflight.delete(s);
+  }
+
+  // A captured frame arrives. → "sent" | "unchanged" | "inflight" | "buffered" | "stopped"
+  offer(image, takenAt, { urgent = false, retry = false } = {}) {
+    if (!this.running || !Buffer.isBuffer(image) || !image.length) return "stopped";
+    if (!this.isOpen()) {
+      this.stop();
+      return "stopped";
+    }
+    if (!retry) this.stats.captured++;
+    const t = this.now();
+    this.expireInflight(t);
+    if (this.lastSent && image.equals(this.lastSent)) {
+      this.stats.unchanged++;
+      return "unchanged";
+    }
+    if (this.buffered() > STREAM.maxBuffered) {
+      this.latest = { image, takenAt };
+      this.stats.skippedBuffered++;
+      this.held++;
+      return "buffered";
+    }
+    const pass = urgent || this.urgentUntil > t;
+    if (this.inflight.size >= STREAM.maxInFlight) {
+      // An owner action earns ONE frame past the cap, never a queue.
+      if (!pass || this.inflight.size > STREAM.maxInFlight) {
+        this.latest = { image, takenAt };
+        this.stats.skippedInFlight++;
+        this.held++;
+        return "inflight";
+      }
+      this.urgentUntil = 0;
+    }
+    const size = jpegSize(image) || { width: Math.round(this.screen.width * this.opts.scale), height: Math.round(this.screen.height * this.opts.scale) };
+    const seq = ++this.seq;
+    // skipped: frames flow control held back since the last one sent. The
+    // viewer reads it as "the link is the bottleneck" and steps its quality
+    // down — an idle screen sends nothing at all, which is NOT a slow link,
+    // so the arrival rate alone cannot say it.
+    this.sendRaw(packFrame({ seq, takenAt, imageWidth: size.width, imageHeight: size.height, width: this.screen.width, height: this.screen.height, skipped: this.held }, image));
+    this.held = 0;
+    this.inflight.set(seq, t);
+    this.lastSent = image;
+    this.lastSentAt = t;
+    this.latest = null;
+    this.stats.sent++;
+    return "sent";
+  }
+
+  // Once a second: flush a held-back frame if the link now has room, and say
+  // "still here" when nothing has gone out for keepaliveMs.
+  tick() {
+    if (!this.running) return;
+    if (!this.isOpen()) return void this.stop();
+    const t = this.now();
+    this.expireInflight(t);
+    if (this.latest && this.inflight.size < STREAM.maxInFlight) {
+      const l = this.latest;
+      this.latest = null;
+      if (this.offer(l.image, l.takenAt, { retry: true }) === "sent") return;
+    }
+    if (t - this.lastSentAt >= STREAM.keepaliveMs && this.buffered() <= STREAM.maxBuffered) {
+      this.sendRaw(packFrame({ seq: this.seq, takenAt: t, keepalive: true, imageWidth: 0, imageHeight: 0, width: this.screen.width, height: this.screen.height }));
+      this.lastSentAt = t;
+      this.stats.keepalives++;
+    }
+  }
+}

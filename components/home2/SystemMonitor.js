@@ -3,9 +3,18 @@ import { useReducedMotion } from "framer-motion";
 import { useSiteContent } from "../../lib/useSiteContent";
 import { npmDownloads } from "../../lib/facts";
 
-// A `btop`-style terminal system monitor where the "system" is Ravi.
-// Skills = CPU cores · metrics = memory meters · projects = process list ·
-// open-source = network. Terminal-dark always (it's a TUI), JetBrains Mono.
+// A `btop`-style terminal system monitor with two modes:
+//   ravi           — the playful view, where the "system" is Ravi. Skills = CPU
+//                    cores · metrics = memory meters · projects = process list ·
+//                    open-source = network. The default for the bare (Easter
+//                    egg) usage.
+//   server · live  — REAL numbers from the agent server via /api/server-stats
+//                    (aggregates only: CPU, memory, disk, network, load,
+//                    process COUNTS by kind, agent activity counts). The
+//                    default in the desktop app when the endpoint answers
+//                    online; otherwise it falls back to ravi with a quiet note.
+//                    Polls every 2s, only while visible.
+// Terminal-dark always (it's a TUI), JetBrains Mono.
 
 const BLOCKS = "▁▂▃▄▅▆▇█";
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -90,7 +99,7 @@ const Box = ({ n, title, right, wide, tall, children }) => (
   </div>
 );
 
-const SystemMonitor = () => {
+const RaviView = () => {
   const reduced = useReducedMotion();
   const { projects = [], github = {}, identity = {} } = useSiteContent();
   const [t, setT] = useState(0);
@@ -148,7 +157,7 @@ const SystemMonitor = () => {
   const dcpu = (d) => (t > 0 && !reduced ? clamp(Math.round(d.base + (Math.random() * 2 - 1) * 8), 0, 100) : d.base);
 
   return (
-    <div className="btop">
+    <div className="bt-view">
       <div className="bt-head">
         <span className="bt-h-l">
           <b>ravi.sys</b>
@@ -269,7 +278,357 @@ const SystemMonitor = () => {
         <span className="bt-dim">{builds.length}/69 procs · all systems nominal</span>
       </div>
 
-      <style jsx global>{`
+    </div>
+  );
+};
+
+/* ======================= server · live ======================= */
+
+const ENDPOINT = "/api/server-stats";
+const POLL_MS = 2000;
+const BACKOFF_MS = 10000;
+const PROBE_CAP_MS = 4500;
+
+// Absolute-scale sparkline: a percentage is drawn against 100, not its own range.
+const sparkAbs = (data, max) => {
+  const m = max > 0 ? max : 1;
+  return (data || []).map((v) => BLOCKS[clamp(Math.round((v / m) * 7), 0, 7)]).join("");
+};
+const fmtRate = (bps) => {
+  const u = ["B/s", "KB/s", "MB/s", "GB/s"];
+  let v = Number(bps) || 0, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
+};
+const fmtUptime = (s) => {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+};
+const fmtGb = (g) => ((Number(g) || 0) >= 100 ? Math.round(g) : (Number(g) || 0).toFixed(1));
+const REASONS = {
+  timeout: "the agent server did not answer in time",
+  unreachable: "the agent server is unreachable",
+  "rate-limited": "the agent server is busy",
+  "upstream-error": "the agent server answered with an error",
+  "bad-response": "the agent server sent something unreadable",
+  network: "this browser could not reach the site",
+};
+const reasonText = (r) => REASONS[r] || "the agent server is not answering";
+
+const PROC_ROWS = [
+  ["claude", "claude code"],
+  ["codex", "codex"],
+  ["chromium", "chromium"],
+  ["node", "node"],
+  ["other", "other"],
+];
+
+async function getStats() {
+  try {
+    const r = await fetch(ENDPOINT, { headers: { Accept: "application/json" } });
+    if (!r.ok) return { online: false, reason: "upstream-error" };
+    const j = await r.json();
+    return j && typeof j === "object" ? j : { online: false, reason: "bad-response" };
+  } catch {
+    return { online: false, reason: "network" };
+  }
+}
+
+// Polls only while this component is mounted AND the page is visible AND its
+// desktop window is not minimized. Hidden → no requests at all; a cheap local
+// check notices a restored window, and visibilitychange resumes at once.
+function useServerStats(rootRef) {
+  const [state, setState] = useState({ data: null, offline: null, gotAt: 0 });
+  useEffect(() => {
+    let alive = true, timer = null, busy = false;
+    const visible = () =>
+      document.visibilityState === "visible" && !(rootRef.current && rootRef.current.closest(".os-win.min"));
+    const schedule = (ms) => { clearTimeout(timer); timer = setTimeout(tick, ms); };
+    async function tick() {
+      if (!alive || busy) return;
+      if (!visible()) return schedule(1000); // no network while hidden
+      busy = true;
+      const j = await getStats();
+      busy = false;
+      if (!alive) return;
+      if (j.online) {
+        setState({ data: j, offline: null, gotAt: Date.now() });
+        schedule(POLL_MS);
+      } else {
+        setState((s) => ({ ...s, offline: j.reason || "unreachable" }));
+        schedule(BACKOFF_MS);
+      }
+    }
+    const onVis = () => { if (document.visibilityState === "visible") schedule(0); };
+    document.addEventListener("visibilitychange", onVis);
+    tick();
+    return () => { alive = false; clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); };
+  }, [rootRef]);
+  return state;
+}
+
+const LiveView = ({ onShowRavi }) => {
+  const rootRef = useRef(null);
+  const { data, offline, gotAt } = useServerStats(rootRef);
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNow((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!data) {
+    return (
+      <div className="bt-view sv" ref={rootRef} data-sv-state={offline ? "offline" : "loading"}>
+        <div className="bt-head">
+          <span className="bt-h-l"><b>server.live</b><i className={`bt-dot ${offline ? "off" : "wait"}`} /> {offline ? "offline" : "connecting"}</span>
+        </div>
+        <div className="sv-off">
+          {offline ? (
+            <>
+              <div className="sv-off-t">server offline</div>
+              <div className="bt-dim">{reasonText(offline)}. retrying every {BACKOFF_MS / 1000}s.</div>
+              <button type="button" className="sv-btn" onClick={onShowRavi}>show ravi.sys instead</button>
+            </>
+          ) : (
+            <div className="bt-dim">› reaching the agent server…</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const stale = !!offline;
+  const ageS = Math.max(0, Math.round((Date.now() - (data.at || gotAt)) / 1000));
+  const cpu = data.cpu || {}, mem = data.mem || {}, swap = data.swap || {}, disk = data.disk || {};
+  const net = data.net || {}, procs = data.procs || {}, agent = data.agent || {};
+  const cores = cpu.cores || [];
+  const netMax = Math.max(1, ...(net.rxHistory || []), ...(net.txHistory || []));
+  const procMax = Math.max(1, procs.total || 0);
+  const load = data.load || [];
+  const agentRows = [
+    ["running", agent.running, "#28c840"],
+    ["waiting on owner", agent.waiting, "#FFB020"],
+    ["queued", agent.queued, "#4ED0C0"],
+    ["open chats", agent.chats, "#c4c7d2"],
+  ];
+
+  return (
+    <div className="bt-view sv" ref={rootRef} data-sv-state={stale ? "stale" : "online"}>
+      <div className="bt-head">
+        <span className="bt-h-l">
+          <b>server.live</b>
+          <i className={`bt-dot${stale ? " off" : " live"}`} /> {stale ? "offline" : "online"}
+          <span className="bt-dim sv-age" data-sv-age={ageS}> · live from the agent server · updated {ageS}s ago</span>
+        </span>
+        <span className="bt-h-r">
+          <span className="bt-dim">every {POLL_MS / 1000}s</span> · up <span className="sv-up">{fmtUptime(data.uptimeS || 0)}</span>
+        </span>
+      </div>
+      {stale && (
+        <div className="sv-stale">connection lost: {reasonText(offline)}. showing the last reading; retrying every {BACKOFF_MS / 1000}s.</div>
+      )}
+
+      <div className="bt-grid sv-grid">
+        <Box n="1" title="cpu" right={`${Math.round(cpu.total || 0)}% · ${cores.length} cores`} wide>
+          <div className="bt-cpu sv-cpu">
+            <div className="sv-cpu-l">
+              <div className="sv-spark bt-graph"><span>{sparkAbs(cpu.history, 100)}</span></div>
+              <div className="sv-big">
+                <b className="sv-cpu-total" style={{ color: loadColor(cpu.total || 0) }}>{(cpu.total || 0).toFixed(1)}%</b>
+                <span className="bt-dim"> total</span>
+              </div>
+            </div>
+            <div className="bt-cores sv-cores">
+              {cores.map((v, i) => (
+                <div className="bt-core sv-core" key={i}>
+                  <span className="bt-core-id">C{i}</span>
+                  <Meter pct={v} />
+                  <span className="bt-core-v" style={{ color: loadColor(v) }}>{Math.round(v)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bt-uptime">load avg <span className="sv-load">{load.map((x) => Number(x).toFixed(2)).join(" ")}</span></div>
+        </Box>
+
+        <Box n="2" title="mem" right={`${fmtGb(mem.totalGb)} GB`}>
+          <div className="sv-spark bt-graph teal"><span>{sparkAbs(mem.history, 100)}</span></div>
+          {[
+            ["mem", mem, "#4ED0C0"],
+            ["swap", swap, "#FFB020"],
+            ["disk", disk, "#FF7A6B"],
+          ].map(([k, m, c]) => (
+            <div className="bt-mem sv-mem" key={k}>
+              <span className="bt-mem-k">{k}</span>
+              <span className={`bt-mem-v sv-pct-${k}`} style={{ color: c }}>{Math.round(m.usedPct || 0)}%</span>
+              <Meter pct={m.usedPct || 0} />
+              <span className="bt-dim sv-gb">{fmtGb(m.usedGb)}/{fmtGb(m.totalGb)}G</span>
+            </div>
+          ))}
+        </Box>
+
+        <Box n="3" title="net" right="primary interface">
+          <div className="sv-netrow"><span className="bt-dim">▼ in</span><b className="sv-rx">{fmtRate(net.rxBps)}</b></div>
+          <div className="sv-spark bt-graph teal"><span>{sparkAbs(net.rxHistory, netMax)}</span></div>
+          <div className="sv-netrow"><span className="bt-dim">▲ out</span><b className="sv-tx">{fmtRate(net.txBps)}</b></div>
+          <div className="sv-spark bt-graph"><span>{sparkAbs(net.txHistory, netMax)}</span></div>
+        </Box>
+
+        <Box n="4" title="proc" right={`${procs.total || 0} total`} tall>
+          <div className="bt-proc-h sv-proc-h"><span>KIND</span><span>COUNT</span><span>SHARE</span></div>
+          {PROC_ROWS.map(([k, label]) => (
+            <div className="sv-proc-r" key={k}>
+              <span className="bt-proc-n">{label}</span>
+              <b className={`sv-n sv-p-${k}`}>{procs[k] || 0}</b>
+              <Meter pct={((procs[k] || 0) / procMax) * 100} />
+            </div>
+          ))}
+          <div className="bt-run">
+            <div className="bt-run-h"><sup>5</sup>agent <span className="bt-dim">· activity, counts only</span></div>
+            {agentRows.map(([k, v, c]) => (
+              <div className="bt-run-r" key={k}>
+                <span className="bt-tree">├─</span>
+                <span className="bt-run-cmd">{k}</span>
+                <span />
+                <span className="bt-run-cpu sv-agent" style={{ color: v ? c : undefined }}>{v || 0}</span>
+              </div>
+            ))}
+            <div className="bt-run-r">
+              <span className="bt-tree">└─</span>
+              <span className="bt-run-cmd">desktop</span>
+              <span />
+              <span
+                className="bt-run-cpu sv-desk"
+                style={{ color: agent.desktop === "up" ? "#28c840" : agent.desktop === "down" ? "#FF7A6B" : undefined }}
+              >
+                {agent.desktop || "unknown"}
+              </span>
+            </div>
+          </div>
+        </Box>
+      </div>
+
+      <div className="bt-status">
+        <span>{stale ? `retrying every ${BACKOFF_MS / 1000}s` : `polling ${POLL_MS / 1000}s · paused while hidden`}</span>
+        <span className="bt-dim">aggregates only · no hosts, names or jobs</span>
+      </div>
+    </div>
+  );
+};
+
+const MODES = [
+  ["ravi", "ravi"],
+  ["server", "server · live"],
+];
+
+const SystemMonitor = ({ bare = false }) => {
+  // bare (the Easter egg) opens on ravi and never probes; the desktop app
+  // probes once and opens on server only if the endpoint answers online.
+  const [mode, setMode] = useState(bare ? "ravi" : "probe");
+  const [note, setNote] = useState("");
+  const chosen = useRef(false);
+
+  useEffect(() => {
+    if (bare) return undefined;
+    let alive = true;
+    const cap = setTimeout(() => {
+      if (alive && !chosen.current) {
+        chosen.current = true;
+        setMode("ravi");
+        setNote("server not answering · showing ravi.sys");
+      }
+    }, PROBE_CAP_MS);
+    getStats().then((j) => {
+      if (!alive || chosen.current) return;
+      chosen.current = true;
+      clearTimeout(cap);
+      if (j.online) setMode("server");
+      else {
+        setMode("ravi");
+        setNote("server offline · showing ravi.sys");
+      }
+    });
+    return () => { alive = false; clearTimeout(cap); };
+  }, [bare]);
+
+  const pick = (m) => { chosen.current = true; setNote(""); setMode(m); };
+
+  return (
+    <div className="btop" data-mode={mode}>
+      <div className="bt-modes" role="tablist" aria-label="monitor mode">
+        {MODES.map(([id, label], i) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={mode === id}
+            className={`bt-mode${mode === id ? " on" : ""}`}
+            data-mode-btn={id}
+            onClick={() => pick(id)}
+          >
+            <sup>{i + 1}</sup>{label}
+          </button>
+        ))}
+        {note && <span className="bt-dim bt-mode-note">{note}</span>}
+      </div>
+      {mode === "server" ? (
+        <LiveView onShowRavi={() => pick("ravi")} />
+      ) : mode === "probe" ? (
+        <div className="bt-view sv" data-sv-state="probe"><div className="sv-off"><div className="bt-dim">› reaching the agent server…</div></div></div>
+      ) : (
+        <RaviView />
+      )}
+      <style jsx global>{`${BTOP_CSS}${LIVE_CSS}`}</style>
+    </div>
+  );
+};
+
+export default SystemMonitor;
+
+const LIVE_CSS = `
+  .bt-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 0 8px 8px; border-bottom: 1px solid #1a1d26; margin-bottom: 6px; }
+  .bt-mode { font: inherit; font-size: 11px; color: #7a8090; background: transparent; border: 1px solid #23262f; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+  .bt-mode sup { color: #FF7A6B; margin-right: 3px; }
+  .bt-mode:hover { color: #eceef3; border-color: #3a3f4c; }
+  .bt-mode.on { color: #0a0b0f; background: #FFB020; border-color: #FFB020; font-weight: 700; }
+  .bt-mode.on sup { color: #0a0b0f; }
+  .bt-mode:focus-visible { outline: 2px solid #4ED0C0; outline-offset: 1px; }
+  .bt-mode-note { font-size: 10.5px; margin-left: 4px; }
+  .bt-dot.off { background: #FF5f57; }
+  .bt-dot.wait { background: #FFB020; }
+  .sv-off { padding: 28px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .sv-off-t { color: #FF7A6B; font-weight: 700; font-size: 13px; }
+  .sv-btn { font: inherit; font-size: 11px; color: #FFB020; background: transparent; border: 1px solid #FFB020; border-radius: 4px; padding: 4px 10px; cursor: pointer; margin-top: 4px; }
+  .sv-btn:focus-visible { outline: 2px solid #4ED0C0; outline-offset: 1px; }
+  .sv-stale { margin: 0 8px 8px; padding: 5px 8px; font-size: 10.5px; color: #FF7A6B; border-left: 2px solid #FF7A6B; background: #14161c; }
+  .sv-grid { grid-template-areas: "cpu cpu" "mem proc" "net proc"; }
+  .sv-grid > .bt-box { min-width: 0; }
+  .sv-grid > .bt-box.wide { grid-area: cpu; }
+  .sv-grid > .bt-box:nth-of-type(2) { grid-area: mem; }
+  .sv-grid > .bt-box:nth-of-type(3) { grid-area: net; }
+  .sv-grid > .bt-box.tall { grid-area: proc; }
+  .sv-cpu-l { min-width: 0; }
+  .sv-spark { display: flex; justify-content: flex-end; overflow: hidden; min-width: 0; padding: 2px 0; }
+  .sv-spark > span { flex-shrink: 0; white-space: pre; }
+  .sv-big { margin-top: 6px; font-size: 18px; }
+  .sv-cores { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); min-width: 0; }
+  .sv-core { grid-template-columns: 26px 1fr 26px; }
+  .sv-mem { grid-template-columns: 40px 40px 1fr 74px; }
+  .sv-gb { font-size: 10px; text-align: right; white-space: nowrap; }
+  .sv-netrow { display: flex; justify-content: space-between; margin: 6px 0 2px; }
+  .sv-netrow b { color: #eceef3; }
+  .sv-proc-h, .sv-proc-r { display: grid; grid-template-columns: 1fr 52px 1fr; gap: 8px; align-items: center; }
+  .sv-proc-r { padding: 3px 0; font-size: 11px; }
+  .sv-n { color: #eceef3; text-align: right; }
+  .sv-proc-h span:nth-child(2) { text-align: right; }
+  @media (max-width: 760px) {
+    .sv-grid { grid-template-columns: 1fr; grid-template-areas: "cpu" "mem" "net" "proc"; }
+    .sv-cores { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  }
+`;
+
+// ---- the original view's stylesheet (shared by both modes) ----
+const BTOP_CSS = `
         .btop {
           background: #0a0b0f; color: #c4c7d2;
           font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -342,9 +701,4 @@ const SystemMonitor = () => {
           .bt-head { flex-direction: column; align-items: flex-start; gap: 4px; }
         }
         @media (prefers-reduced-motion: reduce) { .bt-dot.live { animation: none; } }
-      `}</style>
-    </div>
-  );
-};
-
-export default SystemMonitor;
+      `;

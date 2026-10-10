@@ -23,12 +23,12 @@ const AREA_WORD = { chat: "chat", ops: "the review timeline", preview: "previews
 
 // Requests whose refusal is delivered to an awaiting caller, which says it in
 // its own place. Their errors are not repeated as a banner.
-const AWAITED = new Set(["chat.start", "chat.resume", "term.open", "preview.open", "desktop.ticket", "desktop.status", "desktop.screenshot", "desktop.action"]);
+const AWAITED = new Set(["chat.start", "chat.resume", "term.open", "preview.open", "desktop.ticket", "desktop.status", "desktop.screenshot", "desktop.action", "desktop.stream.start"]);
 
 // The Desktop view says these in its own place, including "this agentd is too
 // old for the stream" — an older agentd still has the desktop over VNC, so a
 // banner saying it offers no desktop at all would be wrong.
-const SELF_REPORTED = new Set(["desktop.status", "desktop.screenshot", "desktop.action"]);
+const SELF_REPORTED = new Set(["desktop.status", "desktop.screenshot", "desktop.action", "desktop.stream.start", "desktop.stream.update", "desktop.stream.stop", "desktop.stream.ack"]);
 
 const chatIdOf = (c = {}) => c.chatId || c.id || "";
 const normChat = (c = {}) => ({ ...c, chatId: chatIdOf(c) });
@@ -152,6 +152,12 @@ export default function useWorkbench(clientRef) {
       case "term.exit":
       case "term.closed":
         toTerm(msg);
+        return true;
+      // The push stream's replies. DesktopView awaits the start itself; the
+      // frames never come through here (they are binary, on client.on("frame")).
+      case "desktop.stream.started":
+      case "desktop.stream.updated":
+      case "desktop.stream.stopped":
         return true;
       case "error": {
         const area = AREA(msg.request);

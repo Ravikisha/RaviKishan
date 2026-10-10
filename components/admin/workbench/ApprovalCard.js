@@ -17,7 +17,9 @@ export const clock = (ms) => {
 
 // `where` names what asked: a job's repository, or a chat's folder. `scopeLabel`
 // says what "for the rest of it" means there — a job, or a chat.
-export function ApprovalCard({ card, job, where, scopeLabel = "job", onAnswer }) {
+// `compact` is the strip under the Agent tab's headline: the same card, the
+// same Deny-first actions, with the working directory left out.
+export function ApprovalCard({ card, job, where, scopeLabel = "job", compact = false, onAnswer }) {
   // Starts at null and is filled in after mount: Date.now() on the server and
   // Date.now() in the browser are different numbers by definition.
   const [left, setLeft] = useState(null);
@@ -32,7 +34,7 @@ export function ApprovalCard({ card, job, where, scopeLabel = "job", onAnswer })
   }, [card.expiresAt]);
 
   return (
-    <article className="ag-card" data-approval={card.id}>
+    <article className={`ag-card${compact ? " compact" : ""}`} data-approval={card.id}>
       <header>
         <strong>{card.tool}</strong>
         <span className="ag-card-repo">{where || job?.repo || card.jobId}</span>
@@ -44,7 +46,7 @@ export function ApprovalCard({ card, job, where, scopeLabel = "job", onAnswer })
       <p className="ag-card-summary">{card.summary}</p>
 
       {card.input?.command ? <pre className="ag-card-cmd">{card.input.command}</pre> : null}
-      {card.cwd ? <p className="ag-card-cwd">{card.cwd}</p> : null}
+      {card.cwd && !compact ? <p className="ag-card-cwd">{card.cwd}</p> : null}
 
       <p className="ag-card-note">
         No answer means no. If this expires it is refused and the {scopeLabel} stops there.

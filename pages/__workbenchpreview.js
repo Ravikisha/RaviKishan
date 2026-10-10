@@ -12,9 +12,12 @@
 //     itself rather than push the page sideways at 390px, and a push that is
 //     WAITING on an approval card rendered inline under the call it is about
 //   - 30 past conversations, so the list is searched, not looked at
-//   - the desktop as the SCREENSHOT STREAM (the box has no VNC: x11vnc cannot
-//     run under SELinux enforcing), once watching, once driving with a sign-in
-//     too old to drive — a seeded, static frame from a fake client
+//   - the desktop as the PUSH STREAM (the box has no VNC: x11vnc cannot run
+//     under SELinux enforcing): real binary JPEG frames from a fake client,
+//     parsed by the real parseFrame, drawn on a canvas and acked — once
+//     watching, once driving with a sign-in too old to drive — and once
+//     POLLING, as against an agentd from before the push stream
+//   - the panel before Connect is pressed, and after three failed tries
 //   - the desktop and the terminal DISCONNECTED, which is what a phone on a
 //     train sees most of the time
 //   - a review timeline holding every kind of entry, from every kind of actor,
@@ -32,7 +35,9 @@ import DesktopView from "../components/admin/workbench/DesktopView";
 import TerminalView from "../components/admin/workbench/TerminalView";
 import PreviewsView from "../components/admin/workbench/PreviewsView";
 import ReviewView, { OP_KINDS } from "../components/admin/workbench/ReviewView";
-import { AgentStyles, ConnectionDot } from "../components/admin/AgentPanel";
+import { AgentStyles } from "../components/admin/AgentPanel";
+import WorkbenchHead from "../components/admin/workbench/WorkbenchHead";
+import { fakeDesktopStream } from "../components/admin/workbench/fakeDesktopStream";
 
 const MIN = 60000;
 
@@ -63,9 +68,10 @@ const SHOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="9
 // kept on window.__wbDesktopActions so e2e:workbench can read back what a click
 // on the picture mapped to. `stale` refuses actions the way the box refuses
 // a sign-in older than 30 minutes.
-function fakeDesktopClient({ stale = false } = {}) {
+function fakeDesktopClient({ stale = false, push = true, key = "__wbStream" } = {}) {
   const data = typeof window === "undefined" ? "" : window.btoa(SHOT_SVG);
   return {
+    ...(push && typeof window !== "undefined" ? fakeDesktopStream({ svg: SHOT_SVG, key }) : {}),
     desktopStatus: async () => ({ type: "desktop.status", display: "up", vnc: "down", browser: "up", screen: { width: 1600, height: 900 } }),
     desktopShot: async () => ({ type: "desktop.screenshot", format: "svg", mime: "image/svg+xml", data, width: 1600, height: 900, imageWidth: 1600, imageHeight: 900, takenAt: Date.now() }),
     desktopAction: async (a) => {
@@ -221,12 +227,23 @@ function seed(now) {
   return { chats, events, approvals, sessions, ops, ports };
 }
 
+// Runs on the box, for the headline's second line.
+const JOBS = [
+  { id: "j_wait", state: "waiting", repo: "Ravikisha/RaviKishan" },
+  { id: "j_run", state: "running", repo: "Ravikisha/kontainer" },
+  { id: "j_stuck", state: "stalled", repo: "Ravikisha/RaviKishan", idleMs: 7 * 60000 },
+];
+
 export default function WorkbenchPreview() {
   const [now, setNow] = useState(0);
   const [view, setView] = useState("chat");
   const [selected, setSelected] = useState({ chatId: "c_live" });
   const [extra, setExtra] = useState({});
-  const [desk] = useState(() => ({ watch: fakeDesktopClient(), stale: fakeDesktopClient({ stale: true }) }));
+  const [desk] = useState(() => ({
+    watch: fakeDesktopClient(),
+    stale: fakeDesktopClient({ stale: true, key: "__wbStreamStale" }),
+    poll: fakeDesktopClient({ push: false }),
+  }));
 
   useEffect(() => {
     setNow(Date.now());
@@ -272,21 +289,33 @@ export default function WorkbenchPreview() {
         boxSizing: "border-box",
       }}
     >
-      <div className="ops-head">
-        <div>
-          <h3>Workbench</h3>
-          <p className="admin-sub ag-sub">
-            Claude Code and Codex on your own server: talk to them, watch the desktop they work on, open a shell.
-            You approve the parts that cannot be undone.
-          </p>
-        </div>
-        <span className="ag-actions">
-          <ConnectionDot status="connected" />
-          <button type="button" className="ag-ghost" onClick={() => setView(view === "all" ? "chat" : "all")}>
-            {view === "all" ? "One view" : "Every view"}
-          </button>
-        </span>
-      </div>
+      {/* The real headline, as the Agent tab renders it while connected
+          with two approvals waiting: one is inline in the open chat, so the
+          strip carries the other. */}
+      <WorkbenchHead
+        status="connected"
+        host="agent.ravikishan.me"
+        approvals={approvals}
+        strip={view === "review" ? [] : view === "chat" || view === "all" ? approvals.filter((c) => (c.chatId || c.jobId) !== selected?.chatId) : approvals}
+        chats={data.chats}
+        jobs={JOBS}
+        idleOf={(j) => j.idleMs || 0}
+        whereFor={(c) => {
+          const chat = data.chats.find((x) => x.chatId === (c.chatId || c.jobId));
+          return chat ? `chat: ${chat.title}` : "Ravikisha/RaviKishan";
+        }}
+        scopeFor={(c) => (data.chats.some((x) => x.chatId === (c.chatId || c.jobId)) ? "chat" : "job")}
+        onAnswer={(card) => setApprovals((a) => a.filter((c) => c.id !== card.id))}
+        onMore={() => setView("review")}
+        onJump={() => document.querySelector(".wb-transcript .ag-card")?.scrollIntoView({ block: "center" })}
+        actions={
+          <>
+            <button type="button" className="ag-ghost" onClick={() => setView(view === "all" ? "chat" : "all")}>
+              {view === "all" ? "One view" : "Every view"}
+            </button>
+          </>
+        }
+      />
 
       <WorkbenchSwitcher view={view === "all" ? "chat" : view} onView={setView} badges={badges} />
 
@@ -317,8 +346,11 @@ export default function WorkbenchPreview() {
 
       {show("desktop") ? (
         <>
-          <PreviewSection id="desktop" title="Desktop, screenshot stream (no VNC on the box)">
+          <PreviewSection id="desktop" title="Desktop, live push stream (no VNC on the box)">
             <DesktopView client={desk.watch} connected ops={data.ops} />
+          </PreviewSection>
+          <PreviewSection id="desktop-poll" title="Desktop, polling an agentd from before the push stream">
+            <DesktopView client={desk.poll} connected ops={[]} />
           </PreviewSection>
           <PreviewSection id="desktop-stale" title="Desktop, driving with a sign-in too old to drive">
             <DesktopView client={desk.stale} connected ops={data.ops} initialControl />
@@ -367,6 +399,28 @@ export default function WorkbenchPreview() {
         <p className="wb-empty">This view is the existing agent panel; see /__agentpreview.</p>
       ) : null}
 
+      {/* The panel before the owner presses Connect, and after the client
+          gave up. Pressing Connect here only counts the press. */}
+      <PreviewSection id="connect-idle" title="Not connected (nothing opens a socket until you ask)">
+        <WorkbenchHead status="idle" host="agent.ravikishan.me" onConnect={() => (window.__wbConnects = (window.__wbConnects || 0) + 1)} />
+      </PreviewSection>
+      <PreviewSection id="connect-retry" title="Dropped, reconnecting">
+        <WorkbenchHead status="reconnecting" host="agent.ravikishan.me" conn={{ attempt: 2, of: 3 }} />
+      </PreviewSection>
+      <PreviewSection id="connect-failed" title="Three tries failed">
+        <WorkbenchHead
+          status="failed"
+          host="agent.ravikishan.me"
+          conn={{ reason: "the tunnel answered 502" }}
+          onConnect={() => (window.__wbConnects = (window.__wbConnects || 0) + 1)}
+        />
+      </PreviewSection>
+      <PreviewSection id="head-stuck" title="Connected, nothing waiting, one run gone quiet">
+        <WorkbenchHead status="connected" host="agent.ravikishan.me" jobs={JOBS.filter((j) => j.state !== "waiting")} idleOf={(j) => j.idleMs || 0} />
+      </PreviewSection>
+      <PreviewSection id="head-quiet" title="Connected, all quiet">
+        <WorkbenchHead status="connected" host="agent.ravikishan.me" jobs={[{ id: "j_r", state: "running" }]} chats={[{ chatId: "c", state: "thinking" }]} />
+      </PreviewSection>
       <AgentStyles />
       <WorkbenchStyles />
       <style jsx global>{`

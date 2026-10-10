@@ -96,6 +96,19 @@ for (const [bin, why] of [
 ]) {
   which(bin) ? ok(`${bin} — ${why}`) : warn(`${bin} is missing — needed for ${why}`);
 }
+// The desktop stream: one ffmpeg x11grab per viewer. Optional — without it
+// (or without x11grab compiled in) agentd captures with import per frame.
+{
+  const ff = which("ffmpeg");
+  if (!ff) warn("ffmpeg is missing — the desktop stream falls back to ImageMagick import (slower). Install ffmpeg-free (dnf) or ffmpeg (apt).");
+  else {
+    let devices = "";
+    try {
+      devices = execFileSync(ff, ["-hide_banner", "-devices"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+    } catch (_) {}
+    /\bx11grab\b/.test(devices) ? ok(`ffmpeg — desktop stream (x11grab) at ${ff}`) : warn(`ffmpeg at ${ff} has no x11grab — the desktop stream falls back to ImageMagick import`);
+  }
+}
 const browserBin = which("chromium-browser") || which("chromium") || which("google-chrome");
 browserBin ? ok(`browser — ${browserBin}`) : warn("no chromium-browser/chromium — the desktop has no browser");
 try {

@@ -66,10 +66,11 @@
     "mail:setup": "node scripts/mail-setup-check.mjs",
     "test:contactshape": "node scripts/contactshape-check.mjs",
     "e2e:contacts": "node scripts/e2e-check.js contacts",
-    "test:agent": "node agent/test/agent-check.mjs && node agent/test/chat-check.mjs && node agent/test/desktop-check.mjs",
+    "test:agent": "node agent/test/agent-check.mjs && node agent/test/chat-check.mjs && node agent/test/desktop-check.mjs && node agent/test/stats-check.mjs",
     "e2e:agent": "node scripts/e2e-check.js agent",
     "e2e:workbench": "node scripts/e2e-check.js workbench",
     "e2e:jarvis": "node scripts/e2e-check.js jarvis",
+    "e2e:servermon": "node scripts/e2e-check.js servermon",
     "test:whatsapp": "node scripts/whatsapp-check.mjs",
     "e2e:whatsapp": "node scripts/e2e-check.js whatsapp"
   },

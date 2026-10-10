@@ -2,6 +2,7 @@
 // the daemon in one place so server.js only routes to it.
 //
 //   socket   desktop.ticket · desktop.screenshot · desktop.status · desktop.action
+//            · desktop.stream.start/update/stop/ack   (frames go out as BINARY messages)
 //            · term.open/input/resize/close
 //            · preview.open · preview.list · ops.list         (+ broadcast ops.event)
 //   upgrade  /desktop?ticket=…   (noVNC, "binary")   ·   /preview/<port>/… (app WebSockets)
@@ -9,7 +10,7 @@
 //   api      GET /desktop/screenshot · POST /desktop/action · GET /previews · GET /ops
 import { WebSocketServer } from "ws";
 import { opLog, approvalRecorder } from "./oplog.js";
-import { Tickets, Desktop, DesktopGate, DesktopError, pipeToVnc, handleProtocols, isDesktopUpgrade, desktopCaller, tokenMatches, assertAction, describeAction, READ_ACTIONS } from "./desktop.js";
+import { Tickets, Desktop, DesktopGate, DesktopError, DesktopStream, pipeToVnc, handleProtocols, isDesktopUpgrade, desktopCaller, tokenMatches, assertAction, describeAction, READ_ACTIONS } from "./desktop.js";
 import { Previews, PreviewError, isPreviewPath } from "./preview.js";
 import { Terminals, TerminalError } from "./terminal.js";
 import { AuthError, assertRecentSignIn } from "./auth.js";
@@ -35,11 +36,27 @@ async function readBody(req, limit = 64 * 1024) {
   return body;
 }
 
-export function createWorkbench({ approvals, broadcast = () => {}, callerFor = () => null, log = opLog(), desktop = new Desktop(), previews = new Previews(), terminals = new Terminals(), tickets = new Tickets() } = {}) {
+export function createWorkbench({ approvals, broadcast = () => {}, callerFor = () => null, log = opLog(), desktop = new Desktop(), previews = new Previews(), terminals = new Terminals(), tickets = new Tickets(), streamDeps = {} } = {}) {
   const recordApproval = approvalRecorder(log);
   const gate = new DesktopGate({ desktop, approvals, log: (op) => log.record(op) });
   const vncWss = new WebSocketServer({ noServer: true, handleProtocols });
   const cards = new Map();
+  // One push stream per socket, and only to that socket.
+  const streams = new Map();
+  const newStream = (ws) =>
+    new DesktopStream({
+      send: (buf) => ws.readyState === 1 && ws.send(buf, { binary: true }),
+      buffered: () => Number(ws.bufferedAmount) || 0,
+      isOpen: () => ws.readyState === 1,
+      screenSize: async () => (typeof desktop.screenSize === "function" ? desktop.screenSize() : { width: 1600, height: 900 }),
+      capture: (o) => desktop.screenshot({ scale: o.scale, quality: o.quality }),
+      ...streamDeps,
+    });
+  const stopStream = (ws) => {
+    const s = streams.get(ws);
+    streams.delete(ws);
+    return s ? s.stop() : false;
+  };
 
   // Every timeline entry is announced to authenticated sockets (broadcast
   // already refuses anyone else).
@@ -75,6 +92,8 @@ export function createWorkbench({ approvals, broadcast = () => {}, callerFor = (
       if (e.tool === "Bash") log.record({ actor: actorFor(id), kind: "command", summary: `$ ${String(input.command || "").slice(0, 400)}`, detail: { tool: "Bash", description: input.description } });
       else if (["Write", "Edit", "MultiEdit", "NotebookEdit"].includes(e.tool)) log.record({ actor: actorFor(id), kind: "file", summary: `${e.tool} ${input.file_path || input.notebook_path || ""}`.trim(), detail: { tool: e.tool, path: input.file_path || input.notebook_path } });
     },
+
+    streams,
 
     claimsUpgrade: (url) => isDesktopUpgrade(url) || isPreviewPath(url),
 
@@ -179,6 +198,39 @@ export function createWorkbench({ approvals, broadcast = () => {}, callerFor = (
           });
           return true;
         }
+        case "desktop.stream.start": {
+          // Watching needs the ordinary sign-in (the socket is authed); a
+          // second start on one socket replaces the first.
+          stopStream(ws);
+          const s = newStream(ws);
+          streams.set(ws, s);
+          let started;
+          try {
+            started = await s.start(msg);
+          } catch (e) {
+            if (streams.get(ws) === s) stopStream(ws);
+            throw e;
+          }
+          // The socket may have closed while the screen size was asked for.
+          if (ws.readyState !== 1 || streams.get(ws) !== s) {
+            s.stop();
+            return true;
+          }
+          reply({ type: "desktop.stream.started", ...started, at: Date.now() });
+          return true;
+        }
+        case "desktop.stream.update": {
+          const s = streams.get(ws);
+          if (!s) throw new DesktopError("No desktop stream is running on this connection. Send desktop.stream.start first.");
+          reply({ type: "desktop.stream.updated", ...s.update(msg), at: Date.now() });
+          return true;
+        }
+        case "desktop.stream.stop":
+          reply({ type: "desktop.stream.stopped", stopped: stopStream(ws) });
+          return true;
+        case "desktop.stream.ack":
+          streams.get(ws)?.ack(msg.seq);
+          return true;
         case "desktop.status":
           reply({ type: "desktop.status", ...(await desktop.status()), at: Date.now() });
           return true;
@@ -202,6 +254,8 @@ export function createWorkbench({ approvals, broadcast = () => {}, callerFor = (
           }
           const at = Date.now();
           log.record({ actor: "owner", kind: "desktop", summary: describeAction(a), detail });
+          // The result on screen now, not at the next tick — every viewer.
+          for (const st of streams.values()) st.kick();
           reply({ type: "desktop.acted", action: a.action, at, ...(result && Object.keys(result).length ? { result } : {}) });
           return true;
         }
@@ -234,6 +288,7 @@ export function createWorkbench({ approvals, broadcast = () => {}, callerFor = (
 
     onSocketClose(ws) {
       terminals.closeAll(ws);
+      stopStream(ws);
     },
 
     // For agent/src/api.js — the site's MCP tools.

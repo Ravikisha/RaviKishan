@@ -2127,6 +2127,7 @@ async function desktopBlogSuite(browser) {
 //   3. MCP from anywhere: the consent screen offers every scope and never
 //      ticks agent or secrets, and the MCP tab's "Connect from anywhere"
 async function jarvisSuite(browser) {
+  connectOnDemandChecks();
   console.log("\njarvis: admin-only remote desktop, public site clean, MCP from anywhere");
   const OWNER_CODE = /jarvis|workbench|AgentPanel|agentClient/i;
   const fsx = require("fs");
@@ -2219,8 +2220,35 @@ async function jarvisSuite(browser) {
     try {
       await page.goto(`${BASE}/__jarvispreview`, { waitUntil: "networkidle2", timeout: 90000 });
       await page.waitForSelector(".ad-content .jp-root", { timeout: 30000 });
-      await page.waitForSelector(".jp-root .wb-shot", { timeout: 20000 }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 800));
+
+      // Nothing connects until the owner asks.
+      await new Promise((r) => setTimeout(r, 600));
+      const pre = await page.evaluate(() => ({
+        status: document.querySelector(".jp-root")?.dataset.status || "",
+        dot: document.querySelector(".jp-root .ag-conn")?.textContent || "",
+        idle: !!document.querySelector(".jp-stage .jp-idle"),
+        btn: (document.querySelector(".jp-idle .jp-connect-btn") || {}).textContent || "",
+        connects: window.__jvConnects || 0,
+        starts: (window.__jvStream?.starts || []).length,
+        shot: !!document.querySelector(".jp-root .wb-shot"),
+        disconnect: !!document.querySelector(".jp-disconnect"),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      check(pre.status === "idle" && pre.connects === 0 && pre.starts === 0 && !pre.shot, `${at} opening the tab connects NOTHING and streams nothing`, JSON.stringify(pre));
+      check(pre.idle && /Not connected/.test(pre.dot) && /^Connect/.test(pre.btn) && /agent\.example\.test/.test(pre.btn), `${at} it says Not connected, with one Connect naming the host`, pre.btn);
+      check(!pre.disconnect && pre.overflow <= 0, `${at} no Disconnect before connecting, and it fits`, `${pre.overflow}px`);
+      await page.click(".jp-idle .jp-connect-btn");
+      await page.waitForSelector(".jp-root .wb-screen.live .wb-shot", { timeout: 20000 }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 1500));
+      const on = await page.evaluate(() => ({
+        connects: window.__jvConnects || 0,
+        status: document.querySelector(".jp-root")?.dataset.status || "",
+        disconnect: (document.querySelector(".jp-disconnect") || {}).textContent || "",
+        starts: (window.__jvStream?.starts || []).length,
+        acks: (window.__jvStream?.acks || []).length,
+      }));
+      check(on.connects === 1 && on.status === "connected" && on.disconnect === "Disconnect", `${at} Connect connects once, and offers Disconnect`, JSON.stringify(on));
+      check(on.starts === 1 && on.acks >= 1, `${at} the screen streams over the push stream and is acked`, JSON.stringify(on));
 
       const s = await page.evaluate(() => {
         const root = document.querySelector(".jp-root");
@@ -2229,7 +2257,13 @@ async function jarvisSuite(browser) {
         const sr = shot ? shot.getBoundingClientRect() : null;
         const take = document.querySelector(".jp-root .wb-take");
         const tabs = Array.from(document.querySelectorAll(".ad-item")).map((b) => b.dataset.tab);
-        const btns = Array.from(document.querySelectorAll(".jp-root .wb-desk-btns button")).map((b) => b.textContent.trim());
+        const btns = Array.from(document.querySelectorAll(".jp-root .wb-desk-btns button")).map((b) => b.getAttribute("aria-label") || b.textContent.trim());
+        const bars = document.querySelectorAll(".jp-root .wb-bar");
+        const bar = bars[0];
+        const br = bar ? bar.getBoundingClientRect() : null;
+        const frameEl = document.querySelector(".jp-root .wb-screen");
+        const fr = frameEl ? frameEl.getBoundingClientRect() : null;
+        const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && el.getBoundingClientRect().width > 2;
         return {
           vw: innerWidth,
           vh: innerHeight,
@@ -2238,7 +2272,7 @@ async function jarvisSuite(browser) {
           title: (document.querySelector(".ad-top h1") || {}).textContent || "",
           tabs,
           stage: { left: stage.left, right: stage.right, w: stage.width },
-          shot: !!shot && /^data:image\//.test(shot.getAttribute("src") || ""),
+          shot: !!shot && shot.tagName === "CANVAS" && shot.width > 100,
           sr: sr && { left: sr.left, right: sr.right, top: sr.top, bottom: sr.bottom, w: sr.width, h: sr.height },
           take: take ? take.textContent.trim() : "",
           pressed: take ? take.getAttribute("aria-pressed") : "",
@@ -2247,6 +2281,23 @@ async function jarvisSuite(browser) {
           badge: ((document.querySelector('.jp-open[data-side="runs"] em') || {}).textContent || ""),
           side: !!document.querySelector(".jp-side"),
           full: btns.includes("Full screen"),
+          shotBtn: btns.includes("Screenshot"),
+          bars: bars.length,
+          barUnder: !!br && !!fr && br.top >= fr.bottom - 1,
+          barHas: !!bar && ["ag-conn", "wb-meter", "wb-rate", "wb-mode", "jp-opens"].every((c) => !!bar.querySelector("." + c)),
+          barText: bar ? bar.innerText : "",
+          strip: !!document.querySelector(".jp-strip"),
+          howShown: vis(document.querySelector(".jp-root .wb-desk-how")),
+          driveShown: vis(document.querySelector(".jp-root .wb-drive")),
+          meterW: (() => {
+            const i = document.querySelector(".jp-root .wb-meter i");
+            return i ? parseFloat(i.style.width) : -1;
+          })(),
+          rateFace: (() => {
+            const r = document.querySelector(".jp-root .wb-rate");
+            return r ? getComputedStyle(r).fontFamily : "";
+          })(),
+          dupTitle: Array.from(document.querySelectorAll(".jp-root h1, .jp-root h2, .jp-root h3")).filter((h) => /jarvis/i.test(h.textContent)).length,
         };
       });
       const ai = s.tabs.indexOf("agent");
@@ -2266,9 +2317,14 @@ async function jarvisSuite(browser) {
         check(fillsW || fillsH, `${at} it fills the content area`, `${Math.round(s.sr.w)}x${Math.round(s.sr.h)} in a ${Math.round(s.stage.w)}px stage, ${s.vw}x${s.vh}`);
         if (desk) check(s.sr.bottom <= s.vh + 1, `${at} and the whole frame is on screen without scrolling`, `bottom ${Math.round(s.sr.bottom)} of ${s.vh}`);
       }
-      check(s.full, `${at} it has a Full screen button`);
-      check(s.take === "Take control" && s.pressed === "false", `${at} it opens view-only`, `${s.take} ${s.pressed}`);
-      check(/watching/i.test(s.watching), `${at} and says it is only watching`, s.watching);
+      check(s.full && s.shotBtn, `${at} Screenshot and Full screen are icon buttons with names`);
+      check(s.bars === 1 && s.barUnder && s.barHas, `${at} every status line is ONE bar under the frame: connection, link meter, readout, Watch / Drive, drawers`, JSON.stringify({ bars: s.bars, under: s.barUnder, has: s.barHas }));
+      check(!s.strip && !s.howShown && !s.driveShown && s.dupTitle === 0, `${at} no strip above the frame, no info line, no second Jarvis heading`, JSON.stringify({ strip: s.strip, how: s.howShown, drive: s.driveShown, dup: s.dupTitle }));
+      check(!/·/.test(s.barText), `${at} the bar joins nothing with middots`, s.barText.replace(/\s+/g, " ").slice(0, 90));
+      check(s.meterW > 0 && s.meterW <= 100, `${at} the link meter has a measured length`, String(s.meterW));
+      check(!/Mono/.test(s.rateFace), `${at} the readout's numbers are not set in mono`, s.rateFace);
+      check(s.take === "Drive" && s.pressed === "false", `${at} it opens view-only: Watch / Drive, on Watch`, `${s.take} ${s.pressed}`);
+      check(/watching/i.test(s.watching), `${at} and says (to a screen reader) it is only watching`, s.watching);
       check(JSON.stringify(s.opens) === JSON.stringify(["chat", "terminal", "runs"]), `${at} Chat, Terminal and Runs open a side panel`, s.opens.join(","));
       check(!s.side, `${at} the side panel starts closed, so the screen gets the room`);
       check(s.badge === "1", `${at} Runs carries the waiting approval as a badge`, s.badge);
@@ -2284,11 +2340,14 @@ async function jarvisSuite(browser) {
       const acted = await page.evaluate(() => ({
         actions: window.__jvActions || [],
         driving: !!document.querySelector(".jp-root .wb-screen.driving"),
+        pressed: document.querySelector(".jp-root .wb-take")?.getAttribute("aria-pressed"),
+        amber: getComputedStyle(document.querySelector(".jp-root .wb-take")).backgroundColor,
       }));
       const a = acted.actions[0] || {};
-      check(acted.driving, `${at} Take control puts the amber driving edge on the frame`);
+      check(acted.driving && acted.pressed === "true", `${at} Drive puts the amber driving edge on the frame`);
+      check(acted.amber === "rgb(255, 176, 32)", `${at} and the Drive segment is amber only while driving`, acted.amber);
       check(a.action === "click" && a.x >= 0 && a.x < 1600 && a.y >= 0 && a.y < 900, `${at} and a click there becomes a click on the box`, JSON.stringify(a));
-      await page.click(".jp-root .wb-take"); // hand back
+      await page.click(".jp-root .wb-watch"); // hand back
 
       // Runs, in the side panel.
       await page.click('.jp-open[data-side="runs"]');
@@ -2365,6 +2424,23 @@ async function jarvisSuite(browser) {
       const shut = await page.evaluate(() => !document.querySelector(".jp-side"));
       check(shut, `${at} Escape closes the side panel`);
 
+      // Disconnect: back to Not connected, the stream stopped, and nothing
+      // reconnects by itself.
+      const stopsBefore = await page.evaluate(() => window.__jvStream.stops);
+      await page.click(".jp-disconnect");
+      await new Promise((r) => setTimeout(r, 1200));
+      const off = await page.evaluate(() => ({
+        status: document.querySelector(".jp-root")?.dataset.status || "",
+        idle: !!document.querySelector(".jp-stage .jp-idle"),
+        shot: !!document.querySelector(".jp-root .wb-shot"),
+        connects: window.__jvConnects,
+        stops: window.__jvStream.stops,
+      }));
+      check(off.idle && !off.shot && off.connects === 1, `${at} Disconnect returns to Not connected and does not reconnect`, JSON.stringify(off));
+      check(off.stops > stopsBefore, `${at} and stops the stream`, `${stopsBefore}→${off.stops}`);
+      await page.click(".jp-idle .jp-connect-btn");
+      await page.waitForSelector(".jp-root .wb-screen.live .wb-shot", { timeout: 10000 }).catch(() => {});
+
       if (desk) {
         // Leaving the section unmounts the panel and closes its socket.
         // Counted from here: StrictMode in development mounts, unmounts and
@@ -2374,6 +2450,16 @@ async function jarvisSuite(browser) {
         await new Promise((r) => setTimeout(r, 700));
         const left = await page.evaluate(() => ({ jp: !!document.querySelector(".jp-root"), closed: window.__jvClosed || 0 }));
         check(!left.jp && left.closed === before + 1, `${at} leaving the tab disconnects the socket`, JSON.stringify({ ...left, before }));
+        const connectsBefore = await page.evaluate(() => window.__jvConnects);
+        await page.click('.ad-item[data-tab="jarvis"]');
+        await page.waitForSelector(".jp-root", { timeout: 10000 });
+        await new Promise((r) => setTimeout(r, 700));
+        const back = await page.evaluate(() => ({
+          idle: !!document.querySelector(".jp-stage .jp-idle"),
+          connects: window.__jvConnects,
+          shot: !!document.querySelector(".jp-root .wb-shot"),
+        }));
+        check(back.idle && !back.shot && back.connects === connectsBefore, `${at} coming back does NOT reconnect by itself`, JSON.stringify({ ...back, connectsBefore }));
       }
       check(errors.length === 0, `${at} no errors in the console`, errors.slice(0, 2).join(" | "));
     } catch (e) {
@@ -2390,18 +2476,39 @@ async function jarvisSuite(browser) {
     await page.setViewport({ width: 390, height: 844 });
     try {
       await page.goto(`${BASE}/__jarvispreview?fail=1`, { waitUntil: "networkidle2", timeout: 90000 });
-      await page.waitForSelector(".jp-root .jp-down", { timeout: 30000 });
+      await page.waitForSelector(".jp-root .jp-idle .jp-connect-btn", { timeout: 30000 });
+      await page.click(".jp-idle .jp-connect-btn");
+      // Watched on the way: the strip says which try it is on.
+      const tries = await page
+        .waitForFunction(() => /try \d of 3/.test(document.querySelector(".jp-root .ag-conn")?.textContent || ""), { timeout: 3000 })
+        .then(() => true, () => false);
+      await page.waitForSelector('.jp-root[data-status="failed"] .jp-down', { timeout: 10000 });
       const d = await page.evaluate(() => ({
         text: (document.querySelector(".jp-down") || {}).innerText || "",
         inStage: !!document.querySelector(".jp-stage .jp-down"),
         shot: !!document.querySelector(".wb-shot"),
-        retry: !!Array.from(document.querySelectorAll(".jp-down button")).find((b) => /try now/i.test(b.textContent)),
+        again: !!Array.from(document.querySelectorAll(".jp-down button")).find((b) => /connect again/i.test(b.textContent)),
+        dot: document.querySelector(".jp-root .ag-conn")?.textContent || "",
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       }));
-      check(d.inStage && /can.t reach/i.test(d.text), "an unreachable server is said where the screen would be");
+      check(tries, "a refused connection shows its reconnect tries (try N of 3)");
+      check(d.inStage && /couldn.t reach the server/i.test(d.text) && /couldn.t reach/i.test(d.dot), "after three tries it stops: \"Couldn't reach the server\", where the screen would be", d.text.slice(0, 80));
       check(/not allowed/i.test(d.text), "with the reason the server gave", d.text.slice(0, 90));
-      check(d.retry && !d.shot, "offering Try now instead of an empty frame");
+      check(d.again && !d.shot, "offering Connect again instead of an empty frame");
       check(d.overflow <= 0, "and fits a phone", `${d.overflow}px`);
+      await new Promise((r) => setTimeout(r, 1200));
+      check((await page.evaluate(() => window.__jvConnects)) === 1, "and it does not keep retrying on its own");
+      await page.click(".jp-down .jp-connect-btn");
+      await new Promise((r) => setTimeout(r, 100));
+      check((await page.evaluate(() => window.__jvConnects)) === 2, "Connect again is one more attempt, when asked");
+
+      // An agentd from before the push stream: Jarvis still shows the screen, by polling.
+      await page.goto(`${BASE}/__jarvispreview?poll=1`, { waitUntil: "networkidle2", timeout: 90000 });
+      await page.waitForSelector(".jp-idle .jp-connect-btn", { timeout: 30000 });
+      await page.click(".jp-idle .jp-connect-btn");
+      await page.waitForSelector(".jp-root img.wb-shot", { timeout: 15000 });
+      const polled = await page.evaluate(() => /^data:image\//.test(document.querySelector(".jp-root img.wb-shot").getAttribute("src") || ""));
+      check(polled, "an agentd without the push stream is polled, as before");
     } catch (e) {
       bad("jarvis unreachable", e.message);
     } finally {
@@ -2748,6 +2855,7 @@ async function resumeSuite() {
 /* ---------------- runner ---------------- */
 
 async function agentSuite(browser) {
+  connectOnDemandChecks();
   console.log("\nagent: the approval card is the product");
   const page = await browser.newPage();
   await page.bringToFront();
@@ -2897,7 +3005,123 @@ async function agentSuite(browser) {
   }
 }
 
+// No browser: the desktop push stream's pure half (lib/server/desktopStreamShape.js)
+// against the box's packFrame.
+async function desktopStreamPureChecks() {
+  console.log("\nworkbench: the push stream's pure half");
+  const url = require("url");
+  const shape = await import(url.pathToFileURL(path.join(__dirname, "..", "lib", "server", "desktopStreamShape.js")).href);
+  const ab = (buf) => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+
+  // The box's packer and the viewer's parser agree on the wire format.
+  let box = null;
+  try {
+    box = await import(url.pathToFileURL(path.join(__dirname, "..", "agent", "src", "desktop.js")).href);
+  } catch (e) {
+    check(false, "agent/src/desktop.js loads under node (run npm install in agent/)", e.message.slice(0, 120));
+  }
+  if (box) {
+    const jpeg = Buffer.from([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]);
+    const packed = box.packFrame({ seq: 9, takenAt: 1000, imageWidth: 800, imageHeight: 450, width: 1600, height: 900, skipped: 1, note: "é✓" }, jpeg);
+    const f = shape.parseFrame(ab(packed));
+    check(!!f && f.header.seq === 9 && f.header.width === 1600 && f.header.note === "é✓" && Buffer.from(f.image).equals(jpeg), "the viewer parses exactly what the box packs (header and JPEG bytes)");
+    const ka = shape.parseFrame(ab(box.packFrame({ seq: 9, keepalive: true })));
+    check(!!ka && ka.header.keepalive === true && ka.image.length === 0, "a keepalive parses as a header with no image");
+  }
+  check(shape.parseFrame(new ArrayBuffer(2)) === null, "a frame shorter than its length word is refused");
+  const lie = new ArrayBuffer(8);
+  new DataView(lie).setUint32(0, 100);
+  check(shape.parseFrame(lie) === null, "a header length past the end is refused");
+  check(shape.parseFrame(ab(Buffer.concat([Buffer.from([0, 0, 0, 3]), Buffer.from("[1]")]))) === null, "a header that is not an object is refused");
+  check(shape.parseFrame(null) === null && shape.parseFrame("x") === null, "and so is anything that is not bytes");
+
+  // Every setting the view can ask for is one the box accepts.
+  const B = shape.BOUNDS;
+  let inside = true;
+  let monotone = true;
+  for (const fit of [0, 0.1, 0.25, 0.45, 0.6, 1, 3]) {
+    let prev = null;
+    for (let lv = -1; lv <= shape.STREAM_LEVELS.length; lv++) {
+      const s = shape.streamSettings(lv, fit);
+      if (!(Number.isInteger(s.fps) && s.fps >= B.fps[0] && s.fps <= B.fps[1] && s.scale >= B.scale[0] && s.scale <= B.scale[1] && Number.isInteger(s.quality) && s.quality >= B.quality[0] && s.quality <= B.quality[1])) inside = false;
+      if (prev && (s.scale > prev.scale || s.quality > prev.quality || s.fps > prev.fps)) monotone = false;
+      prev = s;
+    }
+  }
+  check(inside, "every ladder level, at any pane size, is inside the bounds agentd enforces");
+  check(monotone, "each step down the ladder asks for no more pixels, quality or rate than the one above");
+  check(shape.streamSettings(0, 1).scale === shape.STREAM_MAX_SCALE, "a big pane gets at most 60% scale by default (bandwidth, measured on the box)");
+  check(shape.streamSettings(0, 0.45).scale === 0.45, "a smaller pane gets what it needs");
+
+  const t = 100_000;
+  check(shape.assessLink([], t) === "idle", "no frames is IDLE, not slow — a still screen sends nothing");
+  check(shape.assessLink([{ at: t - 500, latency: 300, skipped: 0 }], t) === "ok", "prompt frames are ok");
+  check(shape.assessLink([{ at: t - 500, latency: 300, skipped: 1 }, { at: t - 100, latency: 300, skipped: 1 }], t) === "slow", "frames the box held back for flow control mean a slow link");
+  check(shape.assessLink([{ at: t - 500, latency: 1500 }, { at: t - 100, latency: 1300 }], t) === "slow", "late frames mean a slow link");
+  check(shape.assessLink([{ at: t - 5000, latency: 1500, skipped: 9 }], t) === "idle", "only the last three seconds count");
+
+  let st = { level: 0, slowFor: 0, okFor: 0 };
+  st = shape.adaptStep(st, "slow");
+  st = shape.adaptStep(st, "slow");
+  check(st.level === 0 && !st.changed, "two slow seconds change nothing");
+  st = shape.adaptStep(st, "slow");
+  check(st.level === 1 && st.changed, "three slow seconds step quality down");
+  st = shape.adaptStep(shape.adaptStep(st, "slow"), "ok");
+  check(st.slowFor === 0 && st.level === 1, "a healthy second resets the slow count");
+  let idle = shape.adaptStep({ level: 1, slowFor: 2000, okFor: 0 }, "idle");
+  check(idle.slowFor === 2000 && idle.level === 1, "an idle second counts toward neither");
+  let up = { level: 2, slowFor: 0, okFor: 0 };
+  for (let i = 0; i < 9; i++) up = shape.adaptStep(up, "ok");
+  check(up.level === 2, "nine healthy seconds do not step up yet");
+  up = shape.adaptStep(up, "ok");
+  check(up.level === 1 && up.changed, "ten healthy seconds step back up");
+  let floor = { level: shape.STREAM_LEVELS.length - 1, slowFor: 0, okFor: 0 };
+  for (let i = 0; i < 5; i++) floor = shape.adaptStep(floor, "slow");
+  check(floor.level === shape.STREAM_LEVELS.length - 1, "the bottom of the ladder is a floor");
+
+  const off = shape.clockOffset(50_000, 1000, 1400);
+  check(off === 48_800, "the box clock offset is taken at the reply's midpoint", String(off));
+  check(shape.frameLatency(50_100, 1400, off) === 100, "latency is measured against the box's clock, offset removed");
+  check(shape.frameLatency(50_100, 1000, off) === 0, "and never reads negative");
+  check(Number.isNaN(shape.frameLatency(undefined, 1000, 0)), "a frame without takenAt has no latency, not a fake one");
+
+}
+
+// The agent socket opens only when the owner presses Connect. Read from
+// source, because "nothing happens on mount" cannot be observed in a preview
+// that fakes the socket. Run by e2e:agent, e2e:workbench and e2e:jarvis.
+function connectOnDemandChecks() {
+  console.log("\nthe agent socket opens only on Connect");
+  const src = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
+  const agentPanel = src("components/admin/AgentPanel.js");
+  const jarvis = src("components/admin/JarvisPanel.js");
+  const before = (s, marker) => (s.includes(marker) ? s.slice(0, s.indexOf(marker)) : s);
+  check(agentPanel.includes("const connectNow") && !/\.connect\(\)/.test(before(agentPanel, "const connectNow")), "the Workbench never calls connect() outside its Connect handler");
+  check(jarvis.includes("const connectNow") && !/\.connect\(\)/.test(before(jarvis, "const connectNow")), "Jarvis never calls connect() outside its Connect handler");
+  const client = src("lib/agentClient.js");
+  const ctor = client.slice(client.indexOf("constructor("), client.indexOf("connect() {"));
+  check(!/this\.(open|connect)\(/.test(ctor) && !/new WebSocket/.test(ctor), "constructing an AgentClient opens nothing");
+  check(/if \(this\.failures >= MAX_RECONNECTS\)/.test(client) && /status: "failed"/.test(client) && /MAX_RECONNECTS = 3/.test(client), "automatic reconnects stop after three failures and say so");
+  check(/if \(this\.closedByUs \|\| !this\.wanted\)/.test(client), "a drop reconnects only while the owner still wants the connection");
+  const walk = (d, out = []) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) {
+        if (!/node_modules|^\.|^server$/.test(e.name)) walk(p, out);
+      } else if (/\.(js|jsx)$/.test(e.name)) out.push(p);
+    }
+    return out;
+  };
+  const files = [...walk(path.join(__dirname, "..", "components")), ...walk(path.join(__dirname, "..", "lib")), ...walk(path.join(__dirname, "..", "pages"))];
+  const makers = files.filter((p) => /new AgentClient\(/.test(fs.readFileSync(p, "utf8"))).map((p) => path.basename(p)).sort();
+  check(makers.join(",") === "AgentPanel.js,JarvisPanel.js", "only the Workbench and Jarvis construct an agent client", makers.join(","));
+  const sockets = files.filter((p) => /new WebSocket\(/.test(fs.readFileSync(p, "utf8"))).map((p) => path.basename(p));
+  check(sockets.join(",") === "agentClient.js", "and only agentClient.js opens a WebSocket", sockets.join(","));
+}
+
 async function workbenchSuite(browser) {
+  await desktopStreamPureChecks();
+  connectOnDemandChecks();
   console.log("\nworkbench: chat, desktop, terminal, previews and review");
   const page = await browser.newPage();
   await page.bringToFront();
@@ -2988,7 +3212,19 @@ async function workbenchSuite(browser) {
         await page.keyboard.press("Escape");
       } else {
         check(c.switchPos !== "fixed", `on a desk the switcher sits at the top ${at}`, c.switchPos);
-        check(c.tabsShown.length === 9 && !c.tabsShown.includes("more"), `every view is a tab, no More ${at}`, c.tabsShown.join(","));
+        check(c.tabsShown.length === 9 && !c.tabsShown.includes("more"), `every view is reachable, no More ${at}`, c.tabsShown.join(","));
+        const sw = await page.evaluate(() => ({
+          prime: [...document.querySelectorAll(".wb-prime .wb-sw")].map((b) => b.dataset.view).join(","),
+          setup: [...document.querySelectorAll(".wb-setup .wb-sw")].map((b) => b.dataset.view).join(","),
+          runsBadge: document.querySelector('.wb-setup .wb-sw[data-view="runs"] em')?.textContent || "",
+          setupSize: parseFloat(getComputedStyle(document.querySelector('.wb-setup .wb-sw[data-view="runs"]')).fontSize),
+          primeSize: parseFloat(getComputedStyle(document.querySelector('.wb-prime .wb-sw[data-view="chat"]')).fontSize),
+          dots: /\u00b7/.test(document.querySelector(".wb-switch").innerText),
+        }));
+        check(sw.prime === "chat,desktop,terminal,previews,review", `the five work views are one segmented control ${at}`, sw.prime);
+        check(sw.setup === "runs,accounts,features,whatsapp" && sw.setupSize < sw.primeSize, `setup views are quieter links beside it ${at}`, `${sw.setup} ${sw.setupSize}/${sw.primeSize}`);
+        check(/stuck/.test(sw.runsBadge), `and Runs keeps its stuck badge ${at}`, sw.runsBadge);
+        check(!sw.dots, `the switcher joins nothing with middots ${at}`);
         check(c.listShown, `conversations and the open one sit side by side ${at}`);
       }
 
@@ -3013,7 +3249,7 @@ async function workbenchSuite(browser) {
       await go();
       await view("desktop");
       await page.evaluate(() => (window.__wbDesktopActions = []));
-      await page.waitForSelector('[data-section="desktop"] .wb-shot', { timeout: 10000 });
+      await page.waitForSelector('[data-section="desktop"] .wb-screen.live .wb-shot', { timeout: 10000 });
       const ds = await page.evaluate(() => {
         const sec = document.querySelector('[data-section="desktop"]');
         const img = sec.querySelector(".wb-shot");
@@ -3028,14 +3264,75 @@ async function workbenchSuite(browser) {
           take: sec.querySelector(".wb-take")?.disabled,
           driving: !!sec.querySelector(".wb-screen.driving"),
           deck: !!sec.querySelector(".wb-deck"),
-          alt: img.alt,
+          alt: img.alt || img.getAttribute("aria-label") || "",
+          tag: img.tagName,
           fits: r.width > 0 && r.right <= scr.right + 1 && Math.abs(r.width / r.height - 16 / 9) < 0.02,
           log: sec.querySelectorAll(".wb-dlog-list li").length,
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         };
       });
       check(/Watching\. Nothing you do here reaches the box/.test(ds.status) && ds.statusLive === "polite", `the stream opens watching, said in a live region ${at}`, ds.status);
-      check(/Screenshot stream/.test(ds.how) && /VNC off/.test(ds.how), `it says it is the screenshot stream because VNC is off ${at}`, ds.how);
+      check(/Live stream \(ffmpeg\)/.test(ds.how) && /VNC off/.test(ds.how), `it says it is the live push stream (and its source) because VNC is off ${at}`, ds.how);
+      check(ds.tag === "CANVAS", `pushed frames are drawn on a canvas, not swapped into an img ${at}`, ds.tag);
+
+      // The push stream itself: what the view asked the box for, that every
+      // drawn frame was acked, the canvas really holds pixels, and the
+      // readout is measured.
+      await new Promise((r) => setTimeout(r, 1600));
+      const ps = await page.evaluate(() => {
+        const sec = document.querySelector('[data-section="desktop"]');
+        const cv = sec.querySelector("canvas.wb-shot");
+        let px = [0, 0, 0, 0];
+        try {
+          px = [...cv.getContext("2d").getImageData(Math.floor(cv.width / 2), Math.floor(cv.height / 3), 1, 1).data];
+        } catch (_) {}
+        const rate = sec.querySelector(".wb-rate");
+        const log = window.__wbStream || {};
+        return {
+          starts: log.starts || [],
+          acks: (log.acks || []).length,
+          frames: log.frames || 0,
+          ascending: (log.acks || []).every((s, i, a) => i === 0 || s > a[i - 1]),
+          cw: cv?.width || 0,
+          ch: cv?.height || 0,
+          px,
+          rate: rate ? { fps: Number(rate.dataset.fps), latency: rate.dataset.latency, link: rate.dataset.link, text: rate.textContent, live: rate.getAttribute("aria-live") } : null,
+        };
+      });
+      const s0 = ps.starts[0] || {};
+      check(ps.starts.length === 1, `the view starts ONE stream on mount ${at}`, String(ps.starts.length));
+      check(Number.isInteger(s0.fps) && s0.fps >= 1 && s0.fps <= 15 && s0.scale >= 0.25 && s0.scale <= 0.6 && Number.isInteger(s0.quality) && s0.quality >= 30 && s0.quality <= 90, `and asks inside the box's bounds, at most 60% scale by default ${at}`, JSON.stringify(s0));
+      check(ps.frames >= 2 && ps.acks >= 1 && ps.acks <= ps.frames && ps.ascending, `each drawn frame is acked, in order, never more acks than frames ${at}`, `${ps.acks}/${ps.frames}`);
+      check(ps.cw > 100 && ps.ch > 50 && ps.px[3] === 255, `the canvas holds the decoded JPEG (${ps.cw}x${ps.ch}) ${at}`, JSON.stringify(ps.px));
+      check(!!ps.rate && ps.rate.fps > 0 && /^\d+$/.test(ps.rate.latency) && Number(ps.rate.latency) < 2000 && ps.rate.link === "ok", `the readout is measured: fps, latency in ms, link ${at}`, JSON.stringify(ps.rate));
+      check(!!ps.rate && /fps/.test(ps.rate.text) && /ms/.test(ps.rate.text) && /good link/.test(ps.rate.text) && !/\u00b7/.test(ps.rate.text) && !ps.rate.live, `and reads N fps, N ms and the link, with hairlines not middots, not in a live region ${at}`, ps.rate?.text);
+
+      // A hidden tab stops the stream ON THE BOX; coming back starts it again.
+      const hid = await page.evaluate(async () => {
+        const log = window.__wbStream;
+        const before = { stops: log.stops, starts: log.starts.length };
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        await new Promise((r) => setTimeout(r, 300));
+        const paused = { stops: log.stops, frames: log.frames, age: document.querySelector('[data-section="desktop"] .wb-age')?.textContent || "" };
+        await new Promise((r) => setTimeout(r, 900));
+        const still = log.frames;
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+        document.dispatchEvent(new Event("visibilitychange"));
+        await new Promise((r) => setTimeout(r, 300));
+        return { before, paused, still, after: { starts: log.starts.length } };
+      });
+      check(hid.paused.stops > hid.before.stops && hid.still === hid.paused.frames, `a hidden tab stops the stream on the box — no frames while hidden ${at}`, JSON.stringify(hid));
+      check(/paused while this tab is hidden/.test(hid.paused.age), `and says it is paused ${at}`, hid.paused.age);
+      check(hid.after.starts === hid.before.starts + 1, `coming back starts it again ${at}`, JSON.stringify(hid.after));
+
+      // An agentd from before the push stream: the old polling, unchanged.
+      const pollSec = await page.evaluate(() => {
+        const sec = document.querySelector('[data-section="desktop-poll"]');
+        const img = sec?.querySelector("img.wb-shot");
+        return { img: !!img && /^data:image\//.test(img.getAttribute("src") || ""), how: sec?.querySelector(".wb-desk-how")?.textContent || "", rate: !!sec?.querySelector(".wb-rate") };
+      });
+      check(pollSec.img && /Screenshot stream/.test(pollSec.how) && !pollSec.rate, `a client without the push stream polls screenshots as before ${at}`, JSON.stringify(pollSec));
       check(/updated just now|a few seconds/.test(ds.age) && ds.ageLive === "polite", `the frame's age is shown, in a live region ${at}`, ds.age);
       check(ds.take === false && !ds.driving && !ds.deck, `Take control is offered, nothing is driving yet ${at}`);
       check(ds.fits, `the frame keeps the screen's shape and fits the pane ${at}`);
@@ -3043,7 +3340,9 @@ async function workbenchSuite(browser) {
       check(ds.log === 4, `the side log lists desktop and browser actions only ${at}`, String(ds.log));
       check(ds.overflow <= 0, `the stream does not overflow ${at}`, `${ds.overflow}px`);
 
-      // A click while only watching sends nothing.
+      // A click while only watching sends nothing. Centred first: on a phone
+      // the fixed switcher bar would otherwise sit over the frame's middle.
+      await page.$eval('[data-section="desktop"] .wb-shot', (el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
       await page.click('[data-section="desktop"] .wb-shot');
       await new Promise((r) => setTimeout(r, 400));
       check((await page.evaluate(() => window.__wbDesktopActions.length)) === 0, `a click while watching reaches nothing ${at}`);
@@ -3092,7 +3391,20 @@ async function workbenchSuite(browser) {
         await page.mouse.click(b.x + b.w * fx, b.y + b.h * fy, opts);
       };
       await clickAt(0.25, 0.5);
+      // Instant feedback: the marker is there before the action has left.
+      const mk = await page.evaluate(() => {
+        const m = document.querySelector('[data-section="desktop"] .wb-mark');
+        const pic = document.querySelector('[data-section="desktop"] .wb-pic')?.getBoundingClientRect();
+        const r = m?.getBoundingClientRect();
+        return { has: !!m, sent: (window.__wbDesktopActions || []).length, fx: r && pic ? (r.left + r.width / 2 - pic.left) / pic.width : -1 };
+      });
+      check(mk.has && mk.sent === 0, `a click shows a marker at once, before the action is even sent ${at}`, JSON.stringify(mk));
+      check(Math.abs(mk.fx - 0.25) < 0.03, `the marker sits where you clicked ${at}`, String(mk.fx));
       await page.waitForFunction(() => window.__wbDesktopActions.length >= 1, { timeout: 3000 });
+      const cleared = await page
+        .waitForFunction(() => !document.querySelector('[data-section="desktop"] .wb-mark'), { timeout: 2500 })
+        .then(() => true, () => false);
+      check(cleared, `and it goes once a frame from after the action arrives ${at}`);
       await clickAt(0.75, 0.25, { button: "right" });
       await clickAt(0.5, 0.5, { count: 2 });
       await new Promise((r) => setTimeout(r, 500));
@@ -3164,7 +3476,10 @@ async function workbenchSuite(browser) {
       check(d.take === true && !d.driving && !d.shot, `and cannot be taken control of ${at}`);
 
       /* ---- terminal ---- */
+      const stopsBefore = await page.evaluate(() => window.__wbStream.stops);
       await view("terminal");
+      const stopsAfter = await page.evaluate(() => window.__wbStream.stops);
+      check(stopsAfter > stopsBefore, `leaving the desktop view stops the stream on the box ${at}`, `${stopsBefore}→${stopsAfter}`);
       const t = await page.evaluate(() => ({
         open: [...document.querySelectorAll(".wb-term button")].find((b) => /Open a shell/.test(b.textContent))?.disabled,
         empty: document.querySelector(".wb-term .wb-screen-empty")?.textContent || "",
@@ -3220,6 +3535,98 @@ async function workbenchSuite(browser) {
         return b?.querySelector("em")?.textContent || "";
       });
       check(counted === "3", `and its count promised exactly that ${at}`, counted);
+
+      /* ---- the headline: one sentence, then what needs you ---- */
+      await go();
+      const hd = await page.evaluate(() => {
+        const head = document.querySelector(".wb-root > .wb-head");
+        const line = head?.querySelector(".wb-head-line");
+        const say = head?.querySelector(".wb-head-say");
+        const strip = head?.querySelector(".wb-strip");
+        const deny = strip?.querySelector(".ag-deny")?.getBoundingClientRect();
+        const allow = strip?.querySelector(".ag-allow")?.getBoundingClientRect();
+        const sec = (id) => document.querySelector(`[data-section="${id}"] .wb-head`);
+        const lineOf = (id) => sec(id)?.querySelector(".wb-head-line")?.textContent || "";
+        const subOf = (id) => sec(id)?.querySelector(".wb-head-sub")?.textContent || "";
+        return {
+          line: line?.textContent || "",
+          sub: head?.querySelector(".wb-head-sub")?.textContent || "",
+          face: line ? getComputedStyle(line).fontFamily : "",
+          size: line ? parseFloat(getComputedStyle(line).fontSize) : 0,
+          live: say?.getAttribute("aria-live") || "",
+          stripLive: strip?.getAttribute("aria-live") || "",
+          cards: strip ? strip.querySelectorAll(".ag-card").length : 0,
+          compact: !!strip?.querySelector(".ag-card.compact"),
+          denyFirst: !!deny && !!allow && (deny.top < allow.top - 1 || (Math.abs(deny.top - allow.top) < 2 && deny.left < allow.left)),
+          denyBigger: !!deny && !!allow && deny.width * deny.height > allow.width * allow.height,
+          denyBottom: deny ? deny.bottom : 9999,
+          jump: [...(head?.querySelectorAll(".wb-head-link") || [])].map((b) => b.textContent).join("|"),
+          oldTitle: !!document.querySelector(".wb-root > .ops-head h3"),
+          stuckLine: lineOf("head-stuck"),
+          stuckSub: subOf("head-stuck"),
+          stuckTone: sec("head-stuck")?.dataset.tone || "",
+          quietLine: lineOf("head-quiet"),
+          quietSub: subOf("head-quiet"),
+          quietStrip: sec("head-quiet")?.querySelectorAll(".ag-card").length,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      check(hd.line === "2 approvals are waiting on you." && /2 running, 1 quiet for 7 minutes\./.test(hd.sub), `the page opens on one sentence from real state ${at}`, `${hd.line} / ${hd.sub}`);
+      check(/Space Grotesk/.test(hd.face) && hd.size >= 24, `set at display size in Space Grotesk ${at}`, `${hd.face} ${hd.size}`);
+      check(hd.live === "polite" && hd.stripLive === "assertive", `the sentence is a polite live region, the approval strip an assertive one ${at}`);
+      check(hd.cards === 1 && hd.compact && hd.denyFirst && hd.denyBigger, `the waiting approval sits under it, compact, Deny first and larger ${at}`);
+      check(/conversation below/.test(hd.jump), `the one already inline in the chat is pointed to, not shown twice ${at}`, hd.jump);
+      if (width < 1000) check(hd.denyBottom <= 844 - 150, `on a phone Deny is on the first screen, above the bottom bars ${at}`, String(Math.round(hd.denyBottom)));
+      check(!hd.oldTitle, `no second title under the shell's own ${at}`);
+      check(hd.stuckLine === "A run has gone quiet." && hd.stuckTone === "stuck" && /quiet for 7 minutes/.test(hd.stuckSub), `a stalled run reads as gone quiet, with how long ${at}`, `${hd.stuckLine} / ${hd.stuckSub}`);
+      check(hd.quietLine === "All quiet." && hd.quietSub === "2 running." && hd.quietStrip === 0, `nothing waiting: All quiet, what is running, and no strip ${at}`, `${hd.quietLine} / ${hd.quietSub}`);
+      check(hd.overflow <= 0, `the headline does not overflow ${at}`, `${hd.overflow}px`);
+
+      /* ---- row edges: state on the left ---- */
+      const edges = await page.evaluate(() => {
+        const st = (el) => (el ? `${getComputedStyle(el).borderLeftStyle} ${getComputedStyle(el).borderLeftColor}` : "");
+        return {
+          ask: st(document.querySelector(".wb-srow.ask")),
+          live: st(document.querySelector(".wb-srow.live:not(.ask)")),
+          past: st(document.querySelector(".wb-srow[data-session]")),
+        };
+      });
+      check(/solid rgb\(255, 176, 32\)/.test(edges.ask) && /^solid/.test(edges.live) && /^dashed/.test(edges.past), `chat rows carry state on the left edge: amber needs you, solid running, dashed finished ${at}`, JSON.stringify(edges));
+
+      /* ---- connect on demand ---- */
+      const cn = await page.evaluate(() => {
+        const sec = (id) => document.querySelector(`[data-section="${id}"]`);
+        const idle = sec("connect-idle");
+        const failed = sec("connect-failed");
+        const btn = (s) => s?.querySelector(".ag-connect-btn");
+        return {
+          idleLine: idle?.querySelector(".wb-head-line")?.textContent || "",
+          idleBtn: btn(idle)?.textContent || "",
+          idleHost: btn(idle)?.querySelector("code")?.textContent || "",
+          idleHostFace: btn(idle)?.querySelector("code") ? getComputedStyle(btn(idle).querySelector("code")).fontFamily : "",
+          idlePrimary: btn(idle)?.classList.contains("admin-primary"),
+          idleButtons: idle?.querySelectorAll("button").length || 0,
+          retryLine: sec("connect-retry")?.querySelector(".wb-head-line")?.textContent || "",
+          retryButtons: sec("connect-retry")?.querySelectorAll("button").length || 0,
+          failedRole: failed?.querySelector(".wb-head-say")?.getAttribute("role") || "",
+          failedText: failed?.querySelector(".wb-head")?.textContent || "",
+          failedBtn: btn(failed)?.textContent || "",
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      check(/^Not connected to agent\.ravikishan\.me\.$/.test(cn.idleLine), `before Connect the sentence says Not connected to the host ${at}`, cn.idleLine);
+      check(cn.idleButtons === 1 && cn.idlePrimary && /^Connect/.test(cn.idleBtn) && cn.idleHost === "agent.ravikishan.me", `with ONE primary Connect right there, naming the host it will reach ${at}`, cn.idleBtn);
+      check(/Mono/.test(cn.idleHostFace), `the host is an identifier, so it is set in mono ${at}`, cn.idleHostFace);
+      check(/try 2 of 3/.test(cn.retryLine) && cn.retryButtons === 0, `a drop says which reconnect try it is on ${at}`, cn.retryLine);
+      check(cn.failedRole === "alert" && /Couldn.t reach agent\.ravikishan\.me/.test(cn.failedText) && /Connect again/.test(cn.failedBtn), `after three failures: "Couldn't reach … Connect again" ${at}`, cn.failedText.slice(0, 90));
+      check(/502/.test(cn.failedText), `with the reason it failed ${at}`);
+      check(cn.overflow <= 0, `the connect states fit ${at}`, `${cn.overflow}px`);
+      const presses = await page.evaluate(() => {
+        window.__wbConnects = 0;
+        document.querySelector('[data-section="connect-idle"] .ag-connect-btn').click();
+        return window.__wbConnects;
+      });
+      check(presses === 1, `pressing Connect is the action ${at}`);
     }
 
     check(!errors.length, "no page errors or console errors", errors.slice(0, 3).join(" | "));
@@ -3657,6 +4064,213 @@ async function orgsSuite(browser) {
   }
 }
 
+/* ---------------- server monitor (System Monitor · server · live) ---------------- */
+// The public System Monitor's live mode, with /api/server-stats stubbed by
+// request interception (online, offline, then online→offline), plus a plain
+// fetch of the REAL route to prove it answers only the allow-listed shape.
+async function serverMonSuite(browser) {
+  console.log("\nservermon: System Monitor live server view, allow-listed feed");
+  const { pathToFileURL } = require("url");
+  const shapeMod = await import(pathToFileURL(path.join(__dirname, "..", "agent", "src", "statsShape.js")).href);
+  const { schemaViolations, shapeStats } = shapeMod;
+
+  const hist = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+  const ONLINE = {
+    online: true,
+    ...shapeStats({
+      at: Date.now(),
+      intervalMs: 2000,
+      uptimeS: 3 * 86400 + 4 * 3600,
+      load: [0.52, 0.4, 0.31],
+      cpu: { total: 37.5, cores: [12, 88, 45, 3], history: hist(90, (i) => 20 + (i % 30)) },
+      mem: { totalGb: 23.4, usedGb: 9.1, usedPct: 38.9, history: hist(90, () => 39) },
+      swap: { totalGb: 2, usedGb: 0.5, usedPct: 25 },
+      disk: { totalGb: 96, usedGb: 41.2, usedPct: 42.9 },
+      net: { rxBps: 1536000, txBps: 2048, rxHistory: hist(90, (i) => i * 1000), txHistory: hist(90, (i) => i * 50) },
+      procs: { total: 212, claude: 2, codex: 1, chromium: 9, node: 4, other: 196 },
+      agent: { running: 2, waiting: 1, queued: 0, chats: 3, desktop: "up" },
+    }),
+  };
+  const OFFLINE = { online: false, reason: "unreachable" };
+
+  // A fresh browser context per page: the desktop persists its open windows in
+  // localStorage, and a restored monitor would poll alongside the new one.
+  async function open(width, height, payload) {
+    const ctx = await browser.createBrowserContext();
+    const page = await ctx.newPage();
+    page.once("close", () => ctx.close().catch(() => {}));
+    await page.setViewport({ width, height });
+    await withMode(page, "dev");
+    const ctl = { payload, hits: 0 };
+    await page.setRequestInterception(true);
+    page.on("request", (r) => {
+      if (r.url().includes("/api/server-stats")) {
+        ctl.hits++;
+        return r.respond({ status: 200, contentType: "application/json", headers: { "Cache-Control": "no-store" }, body: JSON.stringify(ctl.payload) });
+      }
+      r.continue();
+    });
+    await page.goto(BASE, { waitUntil: "networkidle2", timeout: 90000 });
+    await new Promise((r) => setTimeout(r, 3000));
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("os:open", { detail: "system-monitor" })));
+    await page.waitForSelector(".btop", { timeout: 20000 });
+    return { page, ctl };
+  }
+  const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+  const overflow = (page) =>
+    page.evaluate(() => {
+      const b = document.querySelector(".btop");
+      return {
+        doc: document.documentElement.scrollWidth - window.innerWidth,
+        mon: b ? b.scrollWidth - b.clientWidth : 0,
+      };
+    });
+
+  /* ---- online: server is the default, real numbers render ---- */
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const at = `@${width}`;
+    let page;
+    try {
+      const o = await open(width, height, ONLINE);
+      page = o.page;
+      await page.waitForSelector('[data-sv-state="online"]', { timeout: 15000 });
+      const s = await page.evaluate(() => ({
+        mode: document.querySelector(".btop").dataset.mode,
+        total: document.querySelector(".sv-cpu-total")?.textContent,
+        cores: document.querySelectorAll(".sv-core").length,
+        mem: document.querySelector(".sv-pct-mem")?.textContent,
+        rx: document.querySelector(".sv-rx")?.textContent,
+        claude: document.querySelector(".sv-p-claude")?.textContent,
+        other: document.querySelector(".sv-p-other")?.textContent,
+        agent: Array.from(document.querySelectorAll(".sv-agent")).map((e) => e.textContent),
+        desk: document.querySelector(".sv-desk")?.textContent,
+        up: document.querySelector(".sv-up")?.textContent,
+        load: document.querySelector(".sv-load")?.textContent,
+        label: document.querySelector(".sv-age")?.textContent || "",
+        selected: document.querySelector('.bt-mode[aria-selected="true"]')?.dataset.modeBtn,
+      }));
+      check(s.mode === "server" && s.selected === "server", `${at} the desktop app opens on server · live when the feed is online`, JSON.stringify(s).slice(0, 120));
+      check(s.total === "37.5%" && s.cores === 4, `${at} total CPU and one bar per core render`, `${s.total} ${s.cores}`);
+      check(s.mem === "39%" && s.rx === "1.5 MB/s", `${at} memory % and network rate render`, `${s.mem} ${s.rx}`);
+      check(s.claude === "2" && s.other === "196", `${at} process counts by kind render`, `${s.claude} ${s.other}`);
+      check(s.agent.join(",") === "2,1,0,3" && s.desk === "up", `${at} agent activity counts and desktop state render`, s.agent.join(","));
+      check(s.up === "3d 4h" && s.load === "0.52 0.40 0.31", `${at} uptime and load averages render`, `${s.up} ${s.load}`);
+      check(/live from the agent server · updated \d+s ago/.test(s.label), `${at} the view says honestly where the numbers come from`, s.label);
+      const ov = await overflow(page);
+      check(ov.doc <= 1 && ov.mon <= 1, `${at} nothing overflows sideways`, JSON.stringify(ov));
+
+      const before = o.ctl.hits;
+      await settle(4500);
+      check(o.ctl.hits - before >= 1, `${at} it polls while visible`, String(o.ctl.hits - before));
+
+      // mode switch both ways
+      await page.click('[data-mode-btn="ravi"]');
+      await settle(400);
+      const ravi = await page.evaluate(() => ({ mode: document.querySelector(".btop").dataset.mode, raviHead: !!document.querySelector(".bt-h-l b")?.textContent.includes("ravi.sys") }));
+      check(ravi.mode === "ravi" && ravi.raviHead, `${at} switching to ravi shows the original view`);
+      const h0 = o.ctl.hits;
+      await settle(4500);
+      check(o.ctl.hits === h0, `${at} the ravi view does not poll the server`, String(o.ctl.hits - h0));
+      await page.click('[data-mode-btn="server"]');
+      await page.waitForSelector('[data-sv-state="online"]', { timeout: 10000 });
+      check(true, `${at} and back to server · live`);
+
+      if (width === 1440) {
+        // hidden page → no requests; visible again → resumes
+        await page.evaluate(() => {
+          Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+        await settle(2500); // let an in-flight request land
+        const h1 = o.ctl.hits;
+        await settle(5000);
+        check(o.ctl.hits === h1, "polling stops while the page is hidden", String(o.ctl.hits - h1));
+        await page.evaluate(() => {
+          Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+        await settle(1500);
+        check(o.ctl.hits > h1, "and resumes the moment it is visible again", String(o.ctl.hits - h1));
+
+        // minimized window → no requests
+        await page.evaluate(() => document.querySelector('.os-win[aria-label^="System Monitor"] [aria-label="Minimize"]')?.click());
+        await settle(2500);
+        const h2 = o.ctl.hits;
+        await settle(5000);
+        check(o.ctl.hits === h2, "polling stops while the window is minimized", String(o.ctl.hits - h2));
+
+        // online → offline: the last reading stays, marked stale
+        await page.evaluate(() => window.dispatchEvent(new CustomEvent("os:open", { detail: "system-monitor" })));
+        await settle(2500);
+        o.ctl.payload = OFFLINE;
+        await page.waitForSelector('[data-sv-state="stale"]', { timeout: 8000 });
+        const stale = await page.evaluate(() => document.querySelector(".sv-stale")?.textContent || "");
+        check(/connection lost/.test(stale) && /retrying every 10s/.test(stale), "losing the feed keeps the last reading and says so", stale);
+        const h3 = o.ctl.hits;
+        await settle(5000);
+        check(o.ctl.hits - h3 <= 1, "and backs off to 10s on errors", String(o.ctl.hits - h3));
+      }
+    } catch (e) {
+      bad(`servermon online ${at}`, e.message);
+    } finally {
+      if (page) await page.close();
+    }
+  }
+
+  /* ---- offline: falls back to ravi with a note; server tab shows offline ---- */
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const at = `@${width}`;
+    let page;
+    try {
+      const o = await open(width, height, OFFLINE);
+      page = o.page;
+      await page.waitForFunction(() => document.querySelector(".btop")?.dataset.mode === "ravi", { timeout: 15000 });
+      const note = await page.evaluate(() => document.querySelector(".bt-mode-note")?.textContent || "");
+      check(/server offline/.test(note), `${at} an offline feed falls back to ravi with a quiet note`, note);
+      await page.click('[data-mode-btn="server"]');
+      await page.waitForSelector('[data-sv-state="offline"]', { timeout: 10000 });
+      const off = await page.evaluate(() => ({
+        t: document.querySelector(".sv-off")?.textContent || "",
+        nums: document.querySelectorAll(".sv-core").length,
+      }));
+      check(/server offline/.test(off.t) && /unreachable/.test(off.t) && off.nums === 0, `${at} the server view states offline explicitly, with no fake numbers`, off.t.slice(0, 80));
+      const ov = await overflow(page);
+      check(ov.doc <= 1 && ov.mon <= 1, `${at} the offline state does not overflow`, JSON.stringify(ov));
+      await page.click(".sv-btn");
+      await settle(300);
+      const m = await page.evaluate(() => document.querySelector(".btop").dataset.mode);
+      check(m === "ravi", `${at} the offline view offers the ravi view`);
+    } catch (e) {
+      bad(`servermon offline ${at}`, e.message);
+    } finally {
+      if (page) await page.close();
+    }
+  }
+
+  /* ---- the real route: allow-listed keys, cache header, no address ---- */
+  try {
+    const r = await fetch(`${BASE}/api/server-stats?x=1`);
+    const raw = await r.text();
+    const j = JSON.parse(raw);
+    const cc = r.headers.get("cache-control") || "";
+    if (j.online) {
+      const { online, ...rest } = j;
+      const v = schemaViolations(rest);
+      check(online === true && v.length === 0, "/api/server-stats (online) carries only allow-listed keys", v.join("; "));
+      check(cc === "public, s-maxage=2, stale-while-revalidate=30", "online answer is cached 2s at the edge", cc);
+    } else {
+      const keys = Object.keys(j).sort().join(",");
+      check(keys === "online,reason" && /^[a-z-]+$/.test(j.reason), "/api/server-stats (offline) is exactly {online:false, reason}", raw);
+      check(cc === "public, s-maxage=10", "offline answer is cached 10s", cc);
+    }
+    check(!/agent\.ravikishan|:\/\/|\b\d{1,3}(\.\d{1,3}){3}\b/.test(raw), "the response names no agent address", raw.slice(0, 80));
+    const p = await fetch(`${BASE}/api/server-stats`, { method: "POST" });
+    check(p.status === 405, "/api/server-stats refuses POST", String(p.status));
+  } catch (e) {
+    bad("servermon route", e.message);
+  }
+}
+
 (async () => {
   const which = process.argv[2] || "all";
   console.log(`base: ${BASE}\nchrome: ${CHROME}`);
@@ -3684,6 +4298,7 @@ async function orgsSuite(browser) {
       await agentSuite(browser);
       await workbenchSuite(browser);
       await jarvisSuite(browser);
+      await serverMonSuite(browser);
       await whatsappSuite(browser);
       await orgsSuite(browser);
       await memorySuite(browser);
@@ -3719,6 +4334,14 @@ async function orgsSuite(browser) {
     const browser = await launch({ headful: !!process.env.HEADFUL });
     try {
       await agentSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "servermon") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await serverMonSuite(browser);
     } finally {
       await browser.close();
     }

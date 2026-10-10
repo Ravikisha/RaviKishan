@@ -32,6 +32,9 @@ import { createWorkbench, WORKBENCH_ERRORS } from "./workbench.js";
 // --- chat ---
 import { ChatRegistry, ChatError, isChatId, readSession, assertChatId, MAX_WAIT_MS } from "./chat.js";
 // --- /chat ---
+// --- stats ---
+import { createStats, createStatsHandler, isStatsPath } from "./stats.js";
+// --- /stats ---
 
 const PORT = Number(process.env.AGENT_PORT || 7777);
 // Bound to loopback by default. Cloudflare Tunnel connects outward from this
@@ -540,6 +543,20 @@ setInterval(() => {
   }
 }, Math.min(15_000, Math.max(1000, Math.floor(registry.stallMs / 4)))).unref?.();
 
+// --- stats ---
+// The public, unauthenticated server monitor (GET /public/stats). Sampled from
+// /proc every 2s; agentState hands it COUNTS only — never a job, chat or
+// profile object — and stats.js shapes the response through an allow-list.
+const stats = createStats({
+  agentState: () => {
+    const c = registry.counts();
+    return { running: c.running || 0, waiting: c.waiting || 0, queued: c.queued || 0, chats: chats.live().length };
+  },
+});
+stats.start();
+const handleStats = createStatsHandler({ stats });
+// --- /stats ---
+
 /* ---------------- http ---------------- */
 
 const server = http.createServer(async (req, res) => {
@@ -547,6 +564,10 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify(body));
   };
+
+  // --- stats --- answered before any auth path, which it never touches
+  if (isStatsPath(req.url)) return handleStats(req, res);
+  // --- /stats ---
 
   if (req.url === "/health") return json(200, { ok: true, jobs: registry.list({ live: true }).length, halted: registry.halted });
 

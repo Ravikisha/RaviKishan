@@ -23,6 +23,7 @@ import {
   clientKey,
   isStatsPath,
   STATS_PATH,
+  probeDisplay,
 } from "../src/stats.js";
 import { shapeStats, schemaViolations, STATS_SCHEMA, HISTORY } from "../src/statsShape.js";
 
@@ -182,6 +183,17 @@ for (let i = 0; i < HISTORY + 20; i++) {
 }
 check(stats.ringSize() === HISTORY && stats.snapshot().cpu.history.length === HISTORY, `the ring keeps exactly the last ${HISTORY} samples`);
 check(stats.body() === JSON.stringify(stats.snapshot()), "the served body is precomputed from the snapshot");
+
+// The desktop is the DISPLAY, not VNC: VNC is off on the box by design, and
+// probing its port reported a running desktop as "down".
+{
+  const unix = (body) => ({ readFileSync: (f) => { if (!String(f).endsWith("/net/unix")) throw new Error(f); return body; } });
+  const head = "Num       RefCount Protocol Flags    Type St Inode Path\n";
+  const listing = head + "0000000000000000: 00000002 00000000 00010000 0001 01 4242 @/tmp/.X11-unix/X1\n";
+  check(await probeDisplay({ read: unix(listing), display: ":1" }), "a listening :1 X socket means the desktop is up");
+  check(!(await probeDisplay({ read: unix(listing), display: ":2" })), "another display number is not mistaken for it");
+  check(!(await probeDisplay({ read: unix(head) })), "no X socket means the desktop is down");
+}
 
 /* ---------------- the response is ONLY the allow-list ---------------- */
 console.log("\nallow-list");

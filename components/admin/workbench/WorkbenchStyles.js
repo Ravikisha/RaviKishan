@@ -391,6 +391,20 @@ export default function WorkbenchStyles() {
           bottom: calc(132px + env(safe-area-inset-bottom));
           z-index: 4;
         }
+        /* The composer floats 132px above the bottom of the screen, clear
+           of the two bottom bars; without this the transcript scrolled
+           through that gap and read as text printed under the composer. */
+        .wb-composer::after {
+          content: "";
+          position: absolute;
+          left: -20px;
+          right: -20px;
+          top: 100%;
+          height: 132px;
+          height: calc(132px + env(safe-area-inset-bottom));
+          background: var(--a-void, #08090d);
+          pointer-events: none;
+        }
       }
       .wb-chat-main {
         min-width: 0;

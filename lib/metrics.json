@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-10-09",
+  "generatedAt": "2026-10-10",
   "github": {
-    "stars": 194,
+    "stars": 196,
     "repos": 59,
     "reposIncludingForks": 73,
     "forks": 14,
-    "followers": 51,
+    "followers": 52,
     "since": 2019,
     "topLanguages": [
       {
@@ -44,17 +44,17 @@
   },
   "npm": {
     "packages": 9,
-    "total": 3727,
+    "total": 3725,
     "perPackage": {
       "commitmap": 315,
-      "expresscraft": 1331,
-      "gitaverse": 267,
-      "livelywatch": 160,
+      "expresscraft": 1330,
+      "gitaverse": 266,
+      "livelywatch": 156,
       "relaxcore": 368,
       "relaxcss": 121,
-      "relaxicons": 799,
+      "relaxicons": 801,
       "snowuuid": 129,
-      "stylesnap": 237
+      "stylesnap": 239
     },
     "claim": 3500
   }

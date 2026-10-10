@@ -22,7 +22,9 @@ async function handler(req, res) {
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
 
     // Through the directory: the panel may be driving any one of several
-    // accounts of this provider, and `accountId` is how it says which.
+    // accounts of this provider, and `accountId` is how it says which. The
+    // directory resolves inside the request's org, so an accountId belonging
+    // to another org is refused rather than handed a token.
     const { token: accessToken, account } = await tokenFor(idToken, {
       provider: p.id,
       accountId: req.body?.accountId,
@@ -30,13 +32,17 @@ async function handler(req, res) {
     // Never cached, by the service worker or anything else: this is a bearer
     // credential with minutes of life.
     res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ accessToken, provider: p.id, accountId: account.accountId });
+    return res
+      .status(200)
+      .json({ accessToken, provider: p.id, accountId: account.accountId, orgId: account.orgId });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     if (e instanceof ConnectedAuthError) {
       // `p` is scoped to the try block, so the provider is read back from the
       // request rather than from a variable that may not exist here.
-      return res.status(409).json({ error: e.message, code: e.code, provider: String(req.query.provider || "") });
+      return res
+        .status(409)
+        .json({ error: e.message, code: e.code, provider: String(req.query.provider || ""), orgId: e.orgId || "" });
     }
     if (e instanceof ConnectionError) {
       return res.status(409).json({ error: e.message, code: e.code, provider: e.provider });

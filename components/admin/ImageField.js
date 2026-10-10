@@ -14,6 +14,7 @@
 // path. lib/assetUrl.js reads both.
 import React, { useRef, useState } from "react";
 import { auth } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 
 // Direct to object storage, never through Vercel, never re-encoded.
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -50,16 +51,7 @@ export default function ImageField({
       const safe = file.name.replace(/[^\w.-]+/g, "_").slice(-60);
       const key = `media/${folder}/${Date.now()}-${safe}`;
 
-      const signed = await fetch("/api/media/sign", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${await u.getIdToken()}`,
-        },
-        body: JSON.stringify({ key }),
-      });
-      const json = await signed.json().catch(() => ({}));
-      if (!signed.ok) throw new Error(json.error || `HTTP ${signed.status}`);
+      const json = await adminJson("/api/media/sign", { key });
 
       const put = await fetch(json.url, {
         method: "PUT",

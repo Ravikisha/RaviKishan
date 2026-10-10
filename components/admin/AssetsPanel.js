@@ -11,7 +11,8 @@
 // the answer that actually helps you clean up.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { logAdminAction } from "../../lib/auditLog";
 import { withFreshAuth } from "../../lib/reauth";
 
@@ -43,18 +44,9 @@ export default function AssetsPanel({ user }) {
   const [encrypted, setEncrypted] = useState(new Set());
   const [query, setQuery] = useState("");
 
-  const authed = useCallback(async (body) => {
-    const u = auth.currentUser;
-    if (!u) throw new Error("Not signed in.");
-    const res = await fetch("/api/storage", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await u.getIdToken()}` },
-      body: JSON.stringify(body || {}),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    return json;
-  }, []);
+  // Storage is the portfolio's, not an org's, but every call to our own API
+  // goes through the one helper so none can be the one that forgot the org.
+  const authed = useCallback((body) => adminJson("/api/storage", body), []);
 
   // Every storage key Firestore still points at. Anything in the bucket and
   // not in this set is a leftover.

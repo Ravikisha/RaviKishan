@@ -12,6 +12,8 @@ import { recordActivity } from "../../lib/server/activityLog.js";
 import { createDocument } from "../../lib/server/firestoreRest";
 import * as reg from "../../lib/server/envRegistry";
 import { withEnv } from "../../lib/server/envStore";
+import { currentOrg } from "../../lib/server/orgContext";
+import { assertDeploymentScope, deploymentScopedFamily } from "../../lib/server/orgShape";
 import { envStatus, importEnv, removeEnv, writeEnv } from "../../lib/server/envWrite";
 
 // One shape for every entry, defined in lib/server/activityLog.js. This used
@@ -44,6 +46,13 @@ async function handler(req, res) {
       return res.status(200).json(await envStatus(idToken));
     }
 
+    // Every write below changes the deployment's environment, which holds
+    // Relax's logins (orgShape.DEPLOYMENT_SCOPED "env"). Reading the status is
+    // fine anywhere; changing it is done from Relax.
+    if (action === "set" || action === "delete" || action === "import") {
+      assertDeploymentScope(deploymentScopedFamily("env"), currentOrg());
+    }
+
     if (action === "set") {
       const out = await writeEnv(idToken, req.body.key, String(req.body.value ?? ""), opts);
       await audit(idToken, claims, "env.set", out.key, `${out.where}, in the admin`);
@@ -71,6 +80,9 @@ async function handler(req, res) {
     return res.status(400).json({ error: `Unknown action "${action}".` });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
+    if (typeof e?.code === "string" && e.code.startsWith("org/")) {
+      return res.status(e.status || 403).json({ error: e.message, code: e.code });
+    }
     if (e instanceof reg.EnvError) {
       return res.status(e.status || 400).json({ error: e.message, code: e.code });
     }

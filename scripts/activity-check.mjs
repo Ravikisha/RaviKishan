@@ -124,6 +124,40 @@ console.log("\nan entry always has the same shape");
   check(shapeEntry({ action: "a", ms: "slow" }).ms === null, "a non-numeric duration becomes null, not NaN");
 }
 
+console.log("\nevery entry says which org it was taken in");
+{
+  // The log is global — the owner's record, not an org's — but "posted as the
+  // company channel" and "posted as the personal one" are different events,
+  // and with orgs the same tool name can be either.
+  check("orgId" in shapeEntry({ action: "a" }), "an entry always has an orgId field");
+  check(shapeEntry({ action: "a", orgId: "acme" }).orgId === "acme", "a real org id is kept");
+  // The field is filtered on; arbitrary caller text there would be a way to
+  // write free text into an evidence log.
+  check(shapeEntry({ action: "a", orgId: "Acme Corp; DROP" }).orgId === "", "anything that is not an org id is stored as none");
+  check(shapeEntry({ action: "a", orgId: "" }).orgId === "", "an unresolved org stays unresolved, not guessed");
+
+  // Every entry before orgs existed was written in relax — the only org there
+  // was. Reading it as relax keeps an org filter from dropping the history.
+  check(normaliseRow({ action: "content.save", at: "2026-09-01T00:00:00Z" }).orgId === "relax", "a pre-org entry reads as relax");
+  check(normaliseRow({ action: "x", orgId: "acme" }).orgId === "acme", "a stamped entry keeps its org");
+  check(normaliseRow({ action: "x", orgId: "" }).orgId === "", "and one recorded with no org is not re-filed under relax");
+
+  const rows = [
+    normaliseRow({ action: "mcp.create_x_post", orgId: "acme", at: "2026-10-09T10:00:00Z" }),
+    normaliseRow({ action: "mcp.create_x_post", at: "2026-10-09T11:00:00Z" }),
+    normaliseRow({ action: "mcp.send_mail", orgId: "acme", at: "2026-10-09T12:00:00Z" }),
+  ];
+  check(rows.filter((r) => matchesFilter(r, { orgId: "acme" })).length === 2, "the org filter narrows to one org");
+  check(rows.filter((r) => matchesFilter(r, { orgId: "relax" })).length === 1, "and relax includes the unstamped history");
+  check(rows.filter((r) => matchesFilter(r, {})).length === 3, "and no org filter means every org");
+  const sum = summarise(rows);
+  check(
+    Array.isArray(sum.byOrg) && sum.byOrg[0].orgId === "acme" && sum.byOrg[0].count === 2,
+    "the summary groups by org",
+    JSON.stringify(sum.byOrg)
+  );
+}
+
 console.log("\nreading the log does not grow the log");
 {
   check(NEVER_LOGGED.has("get_audit_log"), "get_audit_log is never recorded");
@@ -294,6 +328,67 @@ console.log("\nend to end, with the network stubbed");
     check(sum.failed === 1, "and the failure");
     check(sum.byActor[0].actor === "Claude Code", "attributed to the token that acted");
     check(sum.byAction.some((a) => a.action === "mcp.create_short_link"), "with the real tool names");
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+console.log("\nthe org reaches the log, end to end");
+{
+  const { recordToolCall, recordActivity } = await import("../lib/server/activityLog.js");
+  const { runInOrg } = await import("../lib/server/orgContext.js");
+  const { TOOLS } = await import("../lib/server/mcpTools.js");
+  const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+
+  const stored = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    if (init.method === "POST" && /\/auditLog/.test(u)) {
+      stored.push(JSON.parse(init.body).fields);
+      return { ok: true, status: 200, json: async () => ({ name: "x/" + stored.length, fields: {} }) };
+    }
+    if (/\/auditLog/.test(u)) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ documents: stored.map((f, i) => ({ name: "x/" + i, fields: f })) }),
+      };
+    }
+    throw new Error("unexpected fetch in test: " + u);
+  };
+  const orgOf = (f) => f?.orgId?.stringValue;
+
+  try {
+    const claims = { jti: "tok-2", label: "Claude Code", scopes: ["read", "write"] };
+    // The dispatcher passes the org it RAN the call in — explicitly, because
+    // by the time the record is written the call's own scope has ended.
+    await recordToolCall("id", {
+      tool: byName.create_short_link, args: { slug: "acme-launch" }, claims, ok: true, ms: 5, orgId: "acme",
+    });
+    check(orgOf(stored[0]) === "acme", "a tool call records the org it ran in", JSON.stringify(stored[0]?.orgId));
+
+    // A call that named an org nobody could resolve is recorded as none — not
+    // as whatever org the header happened to name.
+    await runInOrg("acme", () =>
+      recordToolCall("id", { tool: byName.create_short_link, args: {}, claims, ok: false, error: "bad org", orgId: "" })
+    );
+    check(orgOf(stored[1]) === "", "an unresolved org is recorded as none, even inside another org", JSON.stringify(stored[1]?.orgId));
+
+    // The API routes call recordActivity without an org; they get the
+    // request's, so none of them had to be edited to say it.
+    await runInOrg("acme", () => recordActivity("id", { action: "accounts.forget", source: "admin" }));
+    check(orgOf(stored[2]) === "acme", "an API route's entry takes the request's org", JSON.stringify(stored[2]?.orgId));
+    await recordActivity("id", { action: "secrets.save", source: "admin" });
+    check(orgOf(stored[3]) === "relax", "and outside any request it is relax", JSON.stringify(stored[3]?.orgId));
+
+    const acme = await byName.get_audit_log.handler({ inOrg: "acme" }, { idToken: "id" });
+    check(acme.entries.length === 2, "get_audit_log filters by org", String(acme.entries.length));
+    check(acme.entries.every((e) => e.orgId === "acme"), "and every row says its org");
+    check(
+      !("orgId" in byName.get_audit_log.inputSchema.properties),
+      "the filter is NOT called orgId — the dispatcher consumes that as the org to act in"
+    );
   } finally {
     globalThis.fetch = real;
   }

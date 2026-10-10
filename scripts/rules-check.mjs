@@ -78,6 +78,12 @@ const PRIVATE = [
   ["mcpTokens", "MCP token records"],
   ["oauthCodes", "single-use OAuth grants"],
   ["launches", "unpublished plans, and the record that stops a double publish"],
+  // Which organisations exist and what they are called — a map of who the
+  // owner works for, and the ids every connected account is filed under.
+  ["orgs", "the organisations every login is filed under"],
+  // Recalled into every agent's prompt: readable, it maps how the owner works;
+  // writable, it is a way to plant instructions in the next agent run.
+  ["memories", "what the agents have been taught, recalled into their prompts"],
 ];
 
 console.log("\nprivate collections are closed to an anonymous reader");

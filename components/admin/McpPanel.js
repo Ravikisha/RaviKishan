@@ -17,6 +17,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { logAdminAction } from "../../lib/auditLog";
 import { withFreshAuth } from "../../lib/reauth";
 
@@ -32,6 +33,16 @@ const SCOPES = [
     hint: "Read and write stored passwords and API keys — only ones marked readable by agents",
     danger: true,
   },
+  // Never pre-ticked either. Starting runs and answering their approval cards
+  // is the human gate on code running on your server; a writing assistant's
+  // token must not be able to say yes for you, and the token the agent jobs
+  // themselves hold must never carry it.
+  {
+    id: "agent",
+    label: "Agent runs",
+    hint: "Start coding runs on the agent server and answer their approval requests — never give this to AGENT_MCP_TOKEN",
+    danger: true,
+  },
 ];
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
@@ -39,7 +50,7 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 export default function McpPanel({ user }) {
   const [rows, setRows] = useState(null);
   const [label, setLabel] = useState("");
-  const [picked, setPicked] = useState({ read: true, write: false, vault: false, secrets: false });
+  const [picked, setPicked] = useState({ read: true, write: false, vault: false, secrets: false, agent: false });
   const [issued, setIssued] = useState(null); // shown once
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -75,14 +86,7 @@ export default function McpPanel({ user }) {
       // This token can act as you from any machine until revoked — worth
       // proving it is really you right now.
       await withFreshAuth("mint an access token", async () => true);
-      const idToken = await u.getIdToken();
-      const res = await fetch("/api/mcp/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ refreshToken: u.refreshToken, scopes, label }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      const json = await adminJson("/api/mcp/token", { refreshToken: u.refreshToken, scopes, label });
 
       // Only the LABEL is persisted — never the token.
       await setDoc(doc(db, "mcpTokens", json.jti), {

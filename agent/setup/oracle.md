@@ -30,7 +30,65 @@ removes the idle-reclamation policy), but it is a decision, not a requirement.
 
 ---
 
-## 2. Create the instance
+## 2a. Create it from the CLI (recommended)
+
+`provision-oci.mjs` does everything in §2 and §3 in one command: network,
+a security list with **no** inbound rules (or SSH from your own IP only), the
+newest Ubuntu 22.04 aarch64 image, the A1 shape at 4 OCPU / 24 GB, a 100 GB
+boot volume, `cloud-init.yaml` as user-data — and then it keeps retrying
+"Out of host capacity" across every availability domain until it gets a box.
+
+**One-time: an API key for the CLI.** Ten minutes, in the console:
+
+1. Install the CLI. Windows: `winget install Oracle.OCI-CLI` (or
+   `pip install oci-cli`). macOS: `brew install oci-cli`. Linux:
+   `bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)"`.
+2. Run `oci setup config`. It asks for:
+   - **user OCID** — console → profile icon (top right) → *My profile* → copy
+     the OCID.
+   - **tenancy OCID** — profile icon → *Tenancy: …* → copy the OCID.
+   - **region** — your home region, e.g. `ap-mumbai-1`.
+   - generate a new key pair: **yes**. It writes `~/.oci/oci_api_key.pem`
+     (private — never upload it anywhere) and `oci_api_key_public.pem`.
+3. Console → *My profile* → **API keys** → *Add API key* → *Paste a public
+   key* → paste the contents of `~/.oci/oci_api_key_public.pem`. The
+   fingerprint it shows must match the one in `~/.oci/config`.
+4. Check: `oci iam region list` prints a table. If it says
+   `NotAuthenticated`, the fingerprint or the key upload is wrong.
+
+**Then:**
+
+```bash
+# see every command it would run, without creating anything
+node agent/setup/provision-oci.mjs --dry-run
+
+# create it — SSH allowed only from where you are now
+node agent/setup/provision-oci.mjs \
+  --ssh-key ~/.ssh/id_ed25519.pub \
+  --ssh-cidr "$(curl -s https://checkip.amazonaws.com)/32" \
+  --max-minutes 360
+```
+
+| flag | default | |
+|---|---|---|
+| `--ssh-key` | `~/.ssh/id_ed25519.pub` | the PUBLIC key |
+| `--ssh-cidr` | none | without it the box accepts **no** inbound connections — the tunnel needs none. `/0` is refused. |
+| `--max-minutes` | 360 | how long to keep retrying for capacity |
+| `--ocpus` / `--memory-gb` / `--boot-gb` | 4 / 24 / 100 | capped at the free allowance |
+| `--profile` / `--config` | `DEFAULT` / `~/.oci/config` | |
+| `--oci` | auto | path to the CLI if it is not `oci` or `python -m oci_cli` |
+
+It is **idempotent**: every resource is found by name (`agentd-vcn`,
+`agentd-igw`, `agentd-sl`, `agentd-subnet`, `agentd`) and reused. Running it
+again with a different `--ssh-cidr` (or none, once the tunnel works) rewrites
+the security list and nothing else. An instance named `agentd` that already
+exists is reported, not duplicated.
+
+Leave it running in a terminal; when it prints `Created`, skip to §4.
+
+---
+
+## 2. Create the instance (by hand, in the console)
 
 Compute → Instances → **Create instance**.
 
@@ -60,18 +118,11 @@ Three things that work, in order of effort:
 
 1. **Try a different availability domain.** The form has AD-1/AD-2/AD-3 in some
    regions; capacity differs per AD.
-2. **Try again on a schedule.** Capacity frees up constantly. From any machine
-   with the OCI CLI configured:
-
-   ```bash
-   # Retries every 2 minutes until one is created, then stops.
-   until oci compute instance launch --from-json file://instance.json 2>/dev/null; do
-     echo "$(date +%H:%M) out of capacity, retrying"; sleep 120
-   done
-   ```
-
-   Build `instance.json` once with the console's "Save as stack / Copy as CLI"
-   option so the shape and subnet are exactly what you chose.
+2. **Try again on a schedule.** Capacity frees up constantly. That is what
+   `provision-oci.mjs` (§2a) does: every AD in turn, then a back-off of one to
+   five minutes with jitter, until `--max-minutes`. Only capacity and
+   throttling are retried — any other error stops it, because retrying a
+   wrong image id for six hours helps nobody.
 3. **Upgrade to Pay As You Go.** Free-tier ARM is allocated after paying
    tenancies. The Always Free resources stay free afterwards. This is the
    reliable fix, and it is why many people end up doing it.
@@ -124,6 +175,12 @@ curl -s https://agent.ravikishan.me/health
 
 ## 6. Sign an account in
 
+Once the tunnel is up, do this from the admin's **Agent** tab instead — paste
+a `claude setup-token` token (or an OpenAI key for Codex), or press *Sign in*
+and paste back the code the provider shows. Nothing below is needed then.
+
+By hand, over SSH:
+
 ```bash
 sudo -u agent -H env CLAUDE_CONFIG_DIR=/home/agent/.agentd/profiles/personal/claude \
   claude auth login
@@ -173,6 +230,23 @@ worth running is a harmless one:
 
 with **Asks: everything** and **Finish: show me a diff**. Watch an approval
 arrive on your phone before you trust it with a push.
+
+---
+
+## 9. Give jobs the site and memory
+
+Mint an MCP token in the admin's **MCP** tab with `read` + `write` — never
+`secrets`, never `agent` (a job holding `agent` could answer its own approval
+cards) — and add it to `/etc/agentd.env`:
+
+```
+AGENT_MCP_TOKEN=rkmcp_...
+```
+
+`sudo systemctl restart agentd`. Every job then gets the site's MCP server in
+its org (accounts, notes, posts), recalled memories are prepended to its
+prompt, and its learnings are filed when it ends. Unset, jobs run without
+either and nothing is sent anywhere.
 
 ---
 

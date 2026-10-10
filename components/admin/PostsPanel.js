@@ -15,7 +15,8 @@
 // one merged list made those buttons look arbitrary.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDoc, writeBatch } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { logAdminAction } from "../../lib/auditLog";
 import PostBodyStyles from "../blog/PostBodyStyles";
 import EditorStyles from "./EditorStyles";
@@ -113,21 +114,9 @@ export default function PostsPanel({ user }) {
     deskRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const authed = async (url, body) => {
-    const u = auth.currentUser;
-    if (!u) throw new Error("Not signed in.");
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${await u.getIdToken()}`,
-      },
-      body: JSON.stringify(body || {}),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    return json;
-  };
+  // Through adminFetch, so the org header travels: dev.to is a deployment-held
+  // login that belongs to Relax, and the server refuses it in any other org.
+  const authed = (url, body) => adminJson(url, body);
 
   // Show what is on dev.to BEFORE importing any of it. Seeing the list and
   // its import state is more useful than a blind "import everything" button,
@@ -227,7 +216,6 @@ export default function PostsPanel({ user }) {
         setBusy(true);
         const built = await buildDevtoAssets(blocks, {
           known: assets,
-          getToken: () => auth.currentUser.getIdToken(),
           onProgress: (m) => setMsg(m),
         });
         assets = built.assets;

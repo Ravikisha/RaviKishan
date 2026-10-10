@@ -18,7 +18,17 @@ import {
   deleteDocument,
 } from "../../lib/server/firestoreRest";
 import * as store from "../../lib/server/secretStore";
+import { secretVisible, signInMembership } from "../../lib/server/accountDirectory";
 import { withEnv } from "../../lib/server/envStore";
+import { currentOrg, ensureOrgKnown } from "../../lib/server/orgContext";
+
+// Secrets are filed per org (secretStore.secretOrg) — except a saved sign-in,
+// which follows its account's membership (secretStore.secretVisibleIn). Every
+// action below asks that one rule. A secret not visible here answers exactly
+// like one that does not exist — this route must not become
+// a way to confirm what another org holds.
+const notHere = (name, org) =>
+  new store.SecretError(`No secret named "${name}" in ${org}.`, { status: 404 });
 
 async function handler(req, res) {
   if (req.method !== "POST") {
@@ -41,15 +51,23 @@ async function handler(req, res) {
     }
 
     if (action === "status") {
-      return res.status(200).json({ configured: store.isConfigured() });
+      return res.status(200).json({ configured: store.isConfigured(), orgId: currentOrg() });
     }
 
+    // Refuse an org that does not exist before anything is read or written.
+    await ensureOrgKnown(idToken);
+    const org = currentOrg();
+
     if (action === "list") {
-      const rows = await listDocuments(idToken, store.COLLECTION, { pageSize: 300 });
+      const [rows, membership] = await Promise.all([
+        listDocuments(idToken, store.COLLECTION, { pageSize: 300 }),
+        signInMembership(idToken, { org }),
+      ]);
       const all = rows
+        .filter((r) => store.secretVisibleIn(r, org, membership))
         .map((r) => store.publicShape(r.__name || r.id || "", r))
         .sort((a, b) => a.name.localeCompare(b.name));
-      return res.status(200).json({ secrets: all });
+      return res.status(200).json({ secrets: all, orgId: org });
     }
 
     if (action === "reveal") {
@@ -71,7 +89,8 @@ async function handler(req, res) {
 
       const id = store.assertName(req.body.name);
       const doc = await getDocument(idToken, `${store.COLLECTION}/${id}`).catch(() => null);
-      const value = store.readValue(doc, { forAgent: false, name: req.body.name });
+      const visible = await secretVisible(idToken, doc, { org });
+      const value = store.readValue(doc, { forAgent: false, name: req.body.name, org, visible });
 
       await recordActivity(idToken, {
         action: "secret.read",
@@ -89,11 +108,26 @@ async function handler(req, res) {
     }
 
     if (action === "save") {
-      const { id, record } = store.buildRecord(req.body);
+      const { id, record } = store.buildRecord({ ...req.body, orgId: org });
       const existing = await getDocument(idToken, `${store.COLLECTION}/${id}`).catch(() => null);
+      // Names are one namespace across orgs (the document id is the name), so
+      // a name another org already uses is refused rather than overwritten —
+      // and refused without saying whose it is.
+      if (existing && !(await secretVisible(idToken, existing, { org }))) {
+        return res.status(409).json({
+          error: `The name "${req.body.name}" is already used by a secret outside ${org}. Choose another name.`,
+          code: "secrets/name-taken",
+        });
+      }
       if (existing) {
         // An edit with no new value must not blank the stored one.
         if (req.body.value === undefined || req.body.value === "") delete record.value;
+        // An edit does not move a secret between orgs.
+        delete record.orgId;
+        // Nor does an edit that names no account detach a sign-in from its
+        // account — that would silently re-file it under the editing org.
+        if (!record.provider) delete record.provider;
+        if (!record.accountId) delete record.accountId;
         await patchDocument(idToken, `${store.COLLECTION}/${id}`, record);
       } else {
         await createDocument(idToken, store.COLLECTION, id, {
@@ -113,6 +147,8 @@ async function handler(req, res) {
 
     if (action === "delete") {
       const id = store.assertName(req.body.name);
+      const doc = await getDocument(idToken, `${store.COLLECTION}/${id}`).catch(() => null);
+      if (doc && !(await secretVisible(idToken, doc, { org }))) throw notHere(req.body.name, org);
       await deleteDocument(idToken, `${store.COLLECTION}/${id}`);
       await recordActivity(idToken, {
         action: "secret.delete",
@@ -128,6 +164,9 @@ async function handler(req, res) {
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     if (e instanceof store.SecretError) {
+      return res.status(e.status || 400).json({ error: e.message, code: e.code });
+    }
+    if (typeof e?.code === "string" && e.code.startsWith("org/")) {
       return res.status(e.status || 400).json({ error: e.message, code: e.code });
     }
     return res.status(500).json({ error: e.message || "That did not work." });

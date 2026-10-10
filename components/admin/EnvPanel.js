@@ -23,7 +23,7 @@
 // distinguishes two entries, and anything more is a credential on a screen
 // that might be shared.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { auth } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { withFreshAuth } from "../../lib/reauth";
 import { KEY_RE, classify, known, isKeyring } from "../../lib/server/envRegistry";
 
@@ -67,18 +67,9 @@ export function destinationOf(key) {
   return { tone: "ok", text: `${known(k) ? "" : "New key. "}Sealed into the database. Live on the next request.` };
 }
 
-async function call(body) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in.");
-  const res = await fetch("/api/env", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-  return json;
-}
+// The environment is the DEPLOYMENT's, one set for every org; the org header
+// rides along only because every call to our own API goes through one helper.
+const call = (body) => adminJson("/api/env", body);
 
 // Keyring keys need a sign-in from the last 30 minutes; the browser asks for
 // one first instead of letting the server refuse.

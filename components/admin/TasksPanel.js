@@ -47,6 +47,8 @@ import {
 } from "../../lib/taskProviders";
 import { setDefaultAccount } from "../../lib/accountsClient";
 import { logAdminAction } from "../../lib/auditLog";
+import { loadOrgs } from "../../lib/orgsClient";
+import { currentOrgId, DEFAULT_ORG } from "../../lib/orgState";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -426,12 +428,28 @@ export default function TasksPanel({ user }) {
   };
 
   const unlink = async (provider) => {
-    if (!window.confirm(`Disconnect ${providerLabel(provider)}? The MCP tools lose it too.`)) return;
-    await disconnect(provider);
+    // Disconnecting is per org: it removes the account from THIS org, and the
+    // credential goes only when no other org uses it. Say which org.
+    const orgId = currentOrgId();
+    const list = await loadOrgs().catch(() => null);
+    const orgName =
+      (list?.orgs || []).find((o) => o.id === orgId)?.name || (orgId === DEFAULT_ORG ? "Relax" : orgId);
+    const ask = `Remove this ${providerLabel(provider)} account from ${orgName}? The MCP tools in ${orgName} lose it too. If another org still uses it, it stays connected there.`;
+    if (!window.confirm(ask)) return;
+    setErr("");
+    try {
+      await disconnect(provider);
+    } catch (e) {
+      // A refusal (another org's account, a stale selection) is shown, not
+      // left as an unhandled rejection.
+      setErr(e.message || "Could not disconnect.");
+      await loadConnections();
+      return;
+    }
     forgetTokens();
     logAdminAction({ action: "integration.disconnect", target: provider, user });
     setGroups((m) => ({ ...m, [provider]: [] }));
-    setMsg(`${providerLabel(provider)} disconnected.`);
+    setMsg(`${providerLabel(provider)} account removed from ${orgName}.`);
     await loadConnections();
   };
 

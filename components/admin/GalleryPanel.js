@@ -8,7 +8,8 @@
 // Assets tab does not slowly fill with orphans from here.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
-import { auth, db } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { logAdminAction } from "../../lib/auditLog";
 import { CATEGORIES, galleryKey, publicUrlFor } from "../../lib/galleryStore";
 
@@ -39,18 +40,7 @@ export default function GalleryPanel({ user }) {
     return () => unsub();
   }, []);
 
-  const authed = useCallback(async (url, body) => {
-    const u = auth.currentUser;
-    if (!u) throw new Error("Not signed in.");
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await u.getIdToken()}` },
-      body: JSON.stringify(body || {}),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    return json;
-  }, []);
+  const authed = useCallback((url, body) => adminJson(url, body), []);
 
   const uploadFiles = async (files) => {
     if (!files.length) return;

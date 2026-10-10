@@ -46,10 +46,16 @@ const TAB_FOR = {
 // list drops you on the GitHub tab with no idea whether it worked.
 const tabFor = (provider, from) => (from && /^[a-z]+$/.test(from) ? from : TAB_FOR[provider] || "accounts");
 
-const back = (res, query, provider, from = "") => {
+// `org` comes back on the URL so the admin reopens IN the org that started
+// the consent — landing in another org would make a successful connection
+// look like it did nothing, because the new account is filtered out of view.
+// It is only a view hint: the record's membership comes from the SEALED state.
+const back = (res, query, provider, from = "", org = "") => {
   const tab = tabFor(provider, from);
+  const q = new URLSearchParams(query);
+  if (org) q.set("org", org);
   res.writeHead(302, {
-    Location: `/admin?tab=${tab}&${new URLSearchParams(query).toString()}`,
+    Location: `/admin?tab=${tab}&${q.toString()}`,
   });
   res.end();
 };
@@ -60,10 +66,18 @@ async function handler(req, res) {
   // The provider reports a refusal here too — a declined consent screen is not
   // an error to shout about, but it must not look like success.
   if (req.query.error) {
+    // Best effort: a declined consent still belongs back in the org and the
+    // panel that asked, and the state says which when it can be opened.
+    let st = {};
+    try {
+      st = readState(String(req.query.state || ""));
+    } catch (_) {}
     return back(
       res,
       { connectError: String(req.query.error_description || req.query.error).slice(0, 200) },
-      provider
+      provider,
+      st.from || "",
+      st.orgId || ""
     );
   }
 
@@ -71,11 +85,13 @@ async function handler(req, res) {
   // and a failure that lands on a different tab than the attempt is how a
   // failed connection looks like nothing happening at all.
   let from = "";
+  let org = "";
 
   try {
     const p = getProvider(provider);
     const state = readState(String(req.query.state || ""));
     from = state.from || "";
+    org = state.orgId || "";
     if (state.provider !== p.id) throw new Error("This sign-in was started for a different account.");
 
     const redirectUri = redirectUriFor(req, p.id);
@@ -129,6 +145,10 @@ async function handler(req, res) {
           expiresAt: usingRefresh ? "" : expiresAt || "",
           scope,
           email,
+          // From the sealed state, never from the request: the provider's
+          // redirect carries no header, and a query value could be edited.
+          // The BROWSER unions this with any orgs already on the document.
+          orgIds: [state.orgId],
         })
       : connectionRecord({
           provider: p.id,
@@ -152,13 +172,14 @@ async function handler(req, res) {
       ].join("; ")
     );
 
-    return back(res, { connected: p.id, account: accountLabel || email || "" }, p.id, state.from);
+    return back(res, { connected: p.id, account: accountLabel || email || "" }, p.id, state.from, org);
   } catch (e) {
     return back(
       res,
       { connectError: String(e.message || "The connection failed.").slice(0, 300) },
       provider,
-      from
+      from,
+      org
     );
   }
 }

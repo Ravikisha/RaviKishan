@@ -339,6 +339,26 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Organisations. Each record names a workspace (Relax, Acme…) and its
+    // id is stamped on every connected account, identity and saved sign-in
+    // that belongs to it. Admin-only both ways: the LIST of orgs is itself a
+    // map of who the owner works for and which logins serve whom, and a
+    // visitor who could write one could invent an org and then ask the
+    // server to act "inside" it. The deny-all below would refuse it anyway;
+    // the explicit match says that admin access was meant, not forgotten.
+    match /orgs/{orgId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Memory: what the owner has taught the agents (lib/server/memoryStore.js).
+    // Admin-only both ways. It is recalled into prompts on purpose, so it is
+    // a map of how the owner works, who they work with and what each org is
+    // doing — and a visitor who could WRITE one could plant an instruction
+    // that every later agent run would read as the owner's own preference.
+    match /memories/{memoryId} {
+      allow read, write: if isAdmin();
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

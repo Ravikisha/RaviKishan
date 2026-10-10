@@ -8,6 +8,8 @@
 import { verifyAdmin, AuthError } from "../../../lib/server/verifyAdmin";
 import { listMine, toPost, isDevtoConfigured } from "../../../lib/server/devto";
 import { withEnv } from "../../../lib/server/envStore";
+import { currentOrg } from "../../../lib/server/orgContext";
+import { assertDeploymentScope, deploymentScopedFamily } from "../../../lib/server/orgShape";
 
 async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -20,6 +22,15 @@ async function handler(req, res) {
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     return res.status(500).json({ error: "Auth check failed." });
+  }
+
+  // dev.to's key is the deployment's, which is Relax's (orgShape.DEPLOYMENT_SCOPED).
+  // The admin sends x-org-id on every request, so in another org this refuses
+  // with the same sentence the MCP tools give rather than acting as Relax.
+  try {
+    assertDeploymentScope(deploymentScopedFamily("devto"), currentOrg());
+  } catch (e) {
+    return res.status(e.status || 403).json({ error: e.message, code: e.code });
   }
   if (!isDevtoConfigured())
     return res.status(503).json({ error: "dev.to is not configured (DEVTO_API_KEY)." });

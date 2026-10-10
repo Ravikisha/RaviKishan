@@ -15,6 +15,7 @@ import { connectionStatus } from "../../../lib/server/connectedAccount";
 import { providerIds, getProvider, providerConfig } from "../../../lib/server/integrations";
 import { allAccounts, missingScopes, shortScope } from "../../../lib/server/accountDirectory";
 import { withEnv } from "../../../lib/server/envStore";
+import { currentOrg, ensureOrgKnown, isOrgError } from "../../../lib/server/orgContext";
 
 // The shape the panels already render, built from a directory row. `accounts`
 // is new and additive: a panel that only reads the top-level fields keeps
@@ -95,7 +96,13 @@ async function handler(req, res) {
     await verifyAdmin(req);
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
 
-    const all = await allAccounts(idToken).catch(() => null);
+    // Outside the catch below: an org that does not exist is an error to
+    // report, not a reason to fall back to the unscoped legacy reader.
+    await ensureOrgKnown(idToken);
+    const all = await allAccounts(idToken).catch((e) => {
+      if (isOrgError(e)) throw e;
+      return null;
+    });
     let providers;
     if (all) {
       providers = providerIds().map((id) =>
@@ -108,7 +115,9 @@ async function handler(req, res) {
       // The directory could not be read at all. Rather than report every
       // provider as disconnected -- which would have the panels offering
       // Connect for accounts that are fine -- fall back to the single-account
-      // reader, which at least answers for the legacy connections.
+      // reader, which at least answers for the legacy connections. Those are
+      // Relax's alone, and connectionStatus reports "not connected" for them
+      // in any other org rather than lending Relax's logins out.
       providers = await Promise.all(
         providerIds().map((id) =>
           connectionStatus(idToken, id).catch((e) => ({
@@ -121,9 +130,10 @@ async function handler(req, res) {
     }
 
     res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ providers });
+    return res.status(200).json({ providers, orgId: currentOrg() });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
+    if (isOrgError(e)) return res.status(e.status || 400).json({ error: e.message, code: e.code });
     return res.status(500).json({ error: e.message || "Could not read the connections." });
   }
 }

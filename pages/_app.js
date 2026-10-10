@@ -97,10 +97,13 @@ function MyApp({ Component, pageProps }) {
     "/__githubpreview",
     "/__linkedinpreview",
     "/__mailpreview",
+    "/__memorypreview",
     "/__notespreview",
+    "/__orgspreview",
     "/__socialpreview",
     "/__taskspreview",
     "/__whatsapppreview",
+    "/__workbenchpreview",
   ];
   if (router.pathname === "/admin" || ADMIN_PREVIEWS.includes(router.pathname)) {
     return (

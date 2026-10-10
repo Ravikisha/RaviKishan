@@ -44,6 +44,7 @@ import {
 } from "../../lib/github";
 import { connectProvider, finishConnect, forgetAccount } from "../../lib/accountsClient";
 import { logAdminAction } from "../../lib/auditLog";
+import { adminRequest } from "../../lib/adminFetch";
 
 const GITHUB = "github";
 const fmt = (n) => (typeof n === "number" ? n.toLocaleString("en-US") : "—");
@@ -62,12 +63,11 @@ export default function GithubPanel({ user }) {
   const accounts = status?.accounts || [];
 
   const loadStatus = useCallback(async () => {
-    const res = await fetch("/api/integrations/status", {
+    // Through adminFetch: the org header limits the lanes to this org's
+    // GitHub accounts.
+    const res = await adminRequest("/api/integrations/status", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${await user.getIdToken()}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: "{}",
     });
     const json = await res.json().catch(() => ({}));
@@ -78,7 +78,7 @@ export default function GithubPanel({ user }) {
     };
     setStatus(gh);
     return gh;
-  }, [user]);
+  }, []);
 
   // Each account is read on its own, in parallel, and fails on its own: one
   // revoked token must not blank the lane of an account that is fine.

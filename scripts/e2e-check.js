@@ -2427,19 +2427,402 @@ async function agentSuite(browser) {
       JSON.stringify(lines.find((l) => !/Mono/.test(l.family)) || {})
     );
 
-    const jobs = await page.evaluate(() => ({
-      total: document.querySelectorAll(".ag-job").length,
-      failed: document.querySelectorAll(".ag-job.bad").length,
-      done: document.querySelectorAll(".ag-job.ok").length,
-      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    }));
-    check(jobs.total === 3, "every job is listed", String(jobs.total));
-    // A failed job that looks like a finished one is how you deploy a broken
-    // branch believing it passed.
-    check(jobs.failed === 1 && jobs.done === 1, "a failed job does not look like a finished one", `${jobs.failed} failed, ${jobs.done} done`);
-    check(!jobs.overflow, "the panel does not overflow the page");
+    // The run board answers "is it stuck" — grouped by that answer, and the
+    // answer is said in words on the row, not left to a colour.
+    for (const width of [390, 768, 1440]) {
+      await page.setViewport({ width, height: 900 });
+      await page.goto(`${BASE}/__agentpreview?noload`, { waitUntil: "networkidle2", timeout: 45000 });
+      await page.waitForSelector(".ag-run", { timeout: 30000 });
+      await page.waitForFunction(() => /left/.test(document.querySelector(".ag-card-clock")?.textContent || ""), { timeout: 10000 }).catch(() => {});
+      const at = `@${width}`;
+      const b = await page.evaluate(() => {
+        const row = (id) => document.querySelector(`.ag-run[data-job="${id}"]`);
+        const verdictOf = (id) => row(id)?.querySelector(".ag-verdict")?.textContent || "";
+        const logins = [...document.querySelectorAll(".ag-login")].map((l) => l.textContent);
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          rows: document.querySelectorAll(".ag-run").length,
+          groups: [...document.querySelectorAll(".ag-group")].map((g) => [...g.classList].find((c) => c !== "ag-group")),
+          stuck: row("j_stuck")?.className || "",
+          stuckVerdict: verdictOf("j_stuck"),
+          stuckMeter: !!row("j_stuck")?.querySelector(".ag-quiet.stuck"),
+          waitVerdict: verdictOf("j_wait"),
+          waitMeter: !!row("j_wait")?.querySelector(".ag-quiet"),
+          failed: row("j_fail")?.className || "",
+          done: row("j_done")?.className || "",
+          stopButtons: document.querySelectorAll(".ag-run .ag-stop").length,
+          tabs: document.querySelectorAll(".ag-tab").length,
+          devcode: document.querySelector(".ag-devcode")?.textContent || "",
+          logins,
+          orgSelect: [...document.querySelectorAll(".ag-new select")].map((s) => s.value),
+          startLabel: document.querySelector(".ag-start")?.textContent || "",
+          body: document.body.innerText,
+        };
+      });
+      check(b.overflow <= 0, `the agent panel does not overflow sideways ${at}`, `${b.overflow}px`);
+      check(b.rows === 5, `every run is on the board ${at}`, String(b.rows));
+      check(b.groups.join(",") === "ask,stuck,run,end", `grouped waiting / stuck / running / finished, in that order ${at}`, b.groups.join(","));
+      check(/\bstuck\b/.test(b.stuck) && b.stuckMeter, `a stalled run carries the stuck edge and a full meter ${at}`, b.stuck);
+      check(/No output for 7m/.test(b.stuckVerdict) && /41m/.test(b.stuckVerdict), `and says how long it has been silent ${at}`, b.stuckVerdict);
+      // A job waiting on a person is blocked, not drifting towards stuck.
+      check(/Waiting on you/.test(b.waitVerdict) && !b.waitMeter, `a waiting run is not counted towards stuck ${at}`, b.waitVerdict);
+      check(/\bbad\b/.test(b.failed) && /\bok\b/.test(b.done) && !/\bok\b/.test(b.failed), `a failed run does not look like a finished one ${at}`, `${b.failed} | ${b.done}`);
+      check(b.stopButtons === 3, `only live runs offer Stop ${at}`, String(b.stopButtons));
+      check(b.tabs === 4, `the four tabs are present ${at}`, String(b.tabs));
+      check(b.devcode === "KQ7M-W2PD", `a relayed Codex sign-in shows its device code ${at}`, b.devcode);
+      check(b.logins.some((t) => /pasted token, ending x9Qa/.test(t)), `a signed-in profile shows only the last four ${at}`);
+      check(b.orgSelect.includes("relax") && /Relax/.test(b.startLabel), `a new run starts in the current org ${at}`, `${b.orgSelect} / ${b.startLabel}`);
+      check(!/sk-ant-|ghp_[A-Za-z0-9]/.test(b.body), `no raw credential reaches the page ${at}`);
+    }
+
+    // The paste field is a password input, and it is empty after sending.
+    await page.setViewport({ width: 1440, height: 900 });
+    const pasteBtn = await page.evaluateHandle(() =>
+      [...document.querySelectorAll('.ag-login[data-tool="codex"] .ag-ghost')].find((x) => /Paste|Replace/.test(x.textContent)) || null
+    );
+    if (pasteBtn.asElement()) {
+      await pasteBtn.asElement().click();
+      await page.waitForSelector('.ag-paste input[type="password"]', { timeout: 5000 });
+      const kind = await page.$eval(".ag-paste input", (i) => i.type);
+      check(kind === "password", "the credential field is a password input", kind);
+      await page.type(".ag-paste input", "sk-proj-previewOnly0000WXYZ");
+      await page.click('.ag-paste button[type="submit"]');
+      await new Promise((r) => setTimeout(r, 300));
+      const after = await page.evaluate(() => ({
+        field: !!document.querySelector(".ag-paste input"),
+        body: document.body.innerText,
+      }));
+      check(!after.field, "the field is gone once the credential is sent");
+      check(!/previewOnly/.test(after.body), "and the credential is not echoed back", "");
+    } else {
+      bad("a profile offers to paste a credential", "no button");
+    }
   } catch (e) {
     bad("agent panel", e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+async function workbenchSuite(browser) {
+  console.log("\nworkbench: chat, desktop, terminal, previews and review");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  await withMode(page, "recruiter");
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => {
+    if (m.type() === "error" && !/favicon|Failed to load resource/i.test(m.text())) errors.push(m.text());
+  });
+  const go = async () => {
+    await page.goto(`${BASE}/__workbenchpreview`, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.waitForSelector(".wb-switch .wb-sw", { timeout: 30000 });
+    await page.waitForSelector(".wb-transcript", { timeout: 20000 });
+  };
+  const view = async (k) => {
+    await page.evaluate((k) => document.querySelector(`.wb-sw[data-view="${k}"]`)?.click(), k);
+    await page.waitForSelector(`[data-section="${k}"]`, { timeout: 10000 });
+  };
+  try {
+    for (const width of [390, 768, 1440]) {
+      const at = `@${width}`;
+      await page.setViewport({ width, height: 900 });
+      await go();
+
+      /* ---- chat ---- */
+      const c = await page.evaluate(() => {
+        const q = (s) => document.querySelector(s);
+        const tools = [...document.querySelectorAll(".wb-tool")].map((t) => ({ state: t.dataset.toolState, open: t.open, text: t.textContent }));
+        const inline = q(".wb-transcript .wb-tool-wrap .ag-card");
+        const deny = inline?.querySelector(".ag-deny")?.getBoundingClientRect();
+        const allow = inline?.querySelector(".ag-allow")?.getBoundingClientRect();
+        const code = q(".wb-code pre");
+        const transcript = q(".wb-transcript");
+        const switcher = q(".wb-switch");
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          tools,
+          inline: !!inline,
+          inlineAfterPush: !!inline && /git push/.test(inline.closest(".wb-tool-wrap")?.querySelector(".wb-tool")?.textContent || ""),
+          denyFirst: !!deny && !!allow && (deny.top < allow.top - 1 || (Math.abs(deny.top - allow.top) < 2 && deny.left < allow.left)),
+          denyBigger: !!deny && !!allow && deny.width * deny.height > allow.width * allow.height,
+          status: q(".wb-status")?.textContent || "",
+          statusLive: q(".wb-status")?.getAttribute("aria-live") || "",
+          caret: !!q(".wb-say.is-streaming .wb-caret"),
+          codeScrolls: !!code && code.scrollWidth > code.clientWidth,
+          codeFits: !!code && !!transcript && code.getBoundingClientRect().right <= transcript.getBoundingClientRect().right + 1,
+          chips: document.querySelectorAll(".wb-chip").length,
+          fixedChips: document.querySelectorAll(".wb-chip.fixed").length,
+          interrupt: !!q(".wb-interrupt"),
+          send: !!q(".wb-send"),
+          listShown: getComputedStyle(q(".wb-chat-list")).display !== "none",
+          switchPos: getComputedStyle(switcher).position,
+          tabsShown: [...document.querySelectorAll(".wb-sw")].filter((b) => getComputedStyle(b).display !== "none").map((b) => b.dataset.view || "more"),
+          proseMono: [...document.querySelectorAll(".wb-prose")].some((p) => /Mono/.test(getComputedStyle(p).fontFamily)),
+          proseSize: Math.max(...[...document.querySelectorAll(".wb-prose")].map((p) => parseFloat(getComputedStyle(p).fontSize))),
+          headingColor: getComputedStyle(q(".wb-chat-title h4")).color,
+          body: document.body.innerText,
+        };
+      });
+      check(c.overflow <= 0, `the workbench does not overflow sideways ${at}`, `${c.overflow}px`);
+      const failed = c.tools.find((t) => /npm run test:notes/.test(t.text));
+      check(failed?.state === "bad" && failed.open && /failed/.test(failed.text), `a failed tool call is red, open and says failed ${at}`, JSON.stringify(failed || {}).slice(0, 120));
+      check(c.tools.filter((t) => t.state === "ok").length === 2, `finished tool calls read as done ${at}`, String(c.tools.filter((t) => t.state === "ok").length));
+      check(c.inline && c.inlineAfterPush, `the approval sits inline, under the call it is about ${at}`);
+      check(c.denyFirst && c.denyBigger, `and Deny is the first, larger target ${at}`);
+      check(/waiting for your answer/i.test(c.status) && c.statusLive === "polite", `the chat says it is waiting on you, in a live region ${at}`, c.status);
+      check(c.caret, `streamed text shows it is still arriving ${at}`);
+      check(c.codeScrolls && c.codeFits, `a long code block scrolls inside itself ${at}`);
+      check(c.chips === 6 && c.fixedChips === 6, `a running chat shows its six settings as fixed labels ${at}`, `${c.chips}/${c.fixedChips}`);
+      check(c.interrupt && !c.send, `while it works the send button is Interrupt ${at}`);
+      check(!c.proseMono && c.proseSize < 16, `prose is not monospace and does not inherit a heading size ${at}`);
+      check(c.headingColor !== "rgb(0, 0, 0)" && !/rgb\(1[0-9], /.test(c.headingColor), `the conversation title is not pinned to the light-theme ink ${at}`, c.headingColor);
+      check(!/never-shown|ghp_[A-Za-z0-9]|sk-ant-/.test(c.body), `no raw credential reaches the page ${at}`);
+
+      if (width < 1000) {
+        check(c.switchPos === "fixed", `on a phone the switcher is a bar at the bottom ${at}`, c.switchPos);
+        check(c.tabsShown.join(",") === "chat,desktop,terminal,previews,review,more", `with the five views and More ${at}`, c.tabsShown.join(","));
+        check(!c.listShown, `one pane at a time: the conversation, not the list ${at}`);
+        await page.click(".wb-to-list");
+        const listed = await page.evaluate(() => ({
+          list: getComputedStyle(document.querySelector(".wb-chat-list")).display !== "none",
+          main: getComputedStyle(document.querySelector(".wb-chat-main")).display !== "none",
+        }));
+        check(listed.list && !listed.main, `Conversations opens the list in its place ${at}`);
+        await page.click(".wb-sw-more");
+        const sheet = await page.$$eval(".wb-more-sheet button", (b) => b.map((x) => x.textContent.trim()));
+        check(sheet.length === 4 && /Runs/.test(sheet[0]), `More holds Runs, Accounts, Features and WhatsApp ${at}`, sheet.join("|"));
+        await page.keyboard.press("Escape");
+      } else {
+        check(c.switchPos !== "fixed", `on a desk the switcher sits at the top ${at}`, c.switchPos);
+        check(c.tabsShown.length === 9 && !c.tabsShown.includes("more"), `every view is a tab, no More ${at}`, c.tabsShown.join(","));
+        check(c.listShown, `conversations and the open one sit side by side ${at}`);
+      }
+
+      // History is searched, not looked at.
+      if (width >= 1000) {
+        const rows0 = await page.$$eval(".wb-srow[data-session]", (r) => r.length);
+        check(rows0 === 20, `history shows 20 of 30 until asked for more ${at}`, String(rows0));
+        await page.type(".wb-search", "cgroup port");
+        const rows = await page.$$eval(".wb-srow[data-session]", (r) => r.map((x) => x.textContent));
+        check(rows.length === 3 && rows.every((t) => /cgroup/i.test(t)), `search narrows by every word ${at}`, String(rows.length));
+        await page.click(".wb-srow[data-session]");
+        const resume = await page.evaluate(() => ({
+          btn: [...document.querySelectorAll(".wb-resume button")].map((b) => b.textContent),
+          composer: !!document.querySelector(".wb-composer"),
+        }));
+        check(/Resume/.test(resume.btn[0] || "") && !resume.composer, `a past conversation opens read-only, with Resume ${at}`);
+      }
+
+      /* ---- desktop ---- */
+      // The box has no VNC (x11vnc cannot run under SELinux enforcing), so the
+      // default is the screenshot stream; the preview feeds it a static frame.
+      await go();
+      await view("desktop");
+      await page.evaluate(() => (window.__wbDesktopActions = []));
+      await page.waitForSelector('[data-section="desktop"] .wb-shot', { timeout: 10000 });
+      const ds = await page.evaluate(() => {
+        const sec = document.querySelector('[data-section="desktop"]');
+        const img = sec.querySelector(".wb-shot");
+        const r = img.getBoundingClientRect();
+        const scr = sec.querySelector(".wb-screen").getBoundingClientRect();
+        return {
+          status: sec.querySelector(".wb-drive")?.textContent || "",
+          statusLive: sec.querySelector(".wb-drive")?.getAttribute("aria-live") || "",
+          how: sec.querySelector(".wb-desk-how")?.textContent || "",
+          age: sec.querySelector(".wb-age")?.textContent || "",
+          ageLive: sec.querySelector(".wb-age")?.getAttribute("aria-live") || "",
+          take: sec.querySelector(".wb-take")?.disabled,
+          driving: !!sec.querySelector(".wb-screen.driving"),
+          deck: !!sec.querySelector(".wb-deck"),
+          alt: img.alt,
+          fits: r.width > 0 && r.right <= scr.right + 1 && Math.abs(r.width / r.height - 16 / 9) < 0.02,
+          log: sec.querySelectorAll(".wb-dlog-list li").length,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      check(/Watching\. Nothing you do here reaches the box/.test(ds.status) && ds.statusLive === "polite", `the stream opens watching, said in a live region ${at}`, ds.status);
+      check(/Screenshot stream/.test(ds.how) && /VNC off/.test(ds.how), `it says it is the screenshot stream because VNC is off ${at}`, ds.how);
+      check(/updated just now|a few seconds/.test(ds.age) && ds.ageLive === "polite", `the frame's age is shown, in a live region ${at}`, ds.age);
+      check(ds.take === false && !ds.driving && !ds.deck, `Take control is offered, nothing is driving yet ${at}`);
+      check(ds.fits, `the frame keeps the screen's shape and fits the pane ${at}`);
+      check(/desktop, 1600 by 900/.test(ds.alt), `the picture says what it is ${at}`, ds.alt);
+      check(ds.log === 4, `the side log lists desktop and browser actions only ${at}`, String(ds.log));
+      check(ds.overflow <= 0, `the stream does not overflow ${at}`, `${ds.overflow}px`);
+
+      // A click while only watching sends nothing.
+      await page.click('[data-section="desktop"] .wb-shot');
+      await new Promise((r) => setTimeout(r, 400));
+      check((await page.evaluate(() => window.__wbDesktopActions.length)) === 0, `a click while watching reaches nothing ${at}`);
+
+      await page.click('[data-section="desktop"] .wb-take');
+      await page.waitForSelector('[data-section="desktop"] .wb-deck', { timeout: 5000 });
+      const dv = await page.evaluate(() => {
+        const sec = document.querySelector('[data-section="desktop"]');
+        const scr = sec.querySelector(".wb-screen.driving");
+        return {
+          driving: !!scr,
+          edge: scr ? getComputedStyle(scr).borderTopColor : "",
+          status: sec.querySelector(".wb-drive")?.textContent || "",
+          keys: [...sec.querySelectorAll(".wb-key[data-combo]")].map((b) => b.dataset.combo).join(","),
+          scrolls: [...sec.querySelectorAll(".wb-key")].filter((b) => /Scroll/.test(b.textContent)).length,
+          type: !!sec.querySelector('input[aria-label="Text to type on the desktop"]'),
+          url: !!sec.querySelector('input[aria-label="Address to open on the desktop"]'),
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      check(dv.driving && dv.edge === "rgb(255, 176, 32)", `Take control puts the amber edge on the frame ${at}`, dv.edge);
+      check(/You are driving/.test(dv.status), `and says you are driving ${at}`, dv.status);
+      check(dv.keys === "Return,Escape,Tab,BackSpace,ctrl+l,ctrl+t,ctrl+w,ctrl+r,alt+Tab" && dv.scrolls === 2, `the key row and scroll buttons are there ${at}`, dv.keys);
+      check(dv.type && dv.url, `with a text field and an Open URL field ${at}`);
+      check(dv.overflow <= 0, `driving does not overflow ${at}`, `${dv.overflow}px`);
+
+      // Clicks at known spots on the picture map to screen pixels.
+      // Measured before every click: anything that reflows above the frame
+      // between two clicks would otherwise move the target.
+      const clickAt = async (fx, fy, opts = {}) => {
+        await page.$eval('[data-section="desktop"] .wb-shot', (img) => img.scrollIntoView({ block: "center" }));
+        const b = await page.$eval('[data-section="desktop"] .wb-shot', (img) => {
+          const r = img.getBoundingClientRect();
+          return { x: r.left, y: r.top, w: r.width, h: r.height };
+        });
+        await page.mouse.click(b.x + b.w * fx, b.y + b.h * fy, opts);
+      };
+      await clickAt(0.25, 0.5);
+      await page.waitForFunction(() => window.__wbDesktopActions.length >= 1, { timeout: 3000 });
+      await clickAt(0.75, 0.25, { button: "right" });
+      await clickAt(0.5, 0.5, { count: 2 });
+      await new Promise((r) => setTimeout(r, 500));
+      await page.click('[data-section="desktop"] .wb-key[data-combo="ctrl+l"]');
+      await page.type('[data-section="desktop"] input[aria-label="Text to type on the desktop"]', "hello box");
+      await page.keyboard.press("Enter");
+      await page.type('[data-section="desktop"] input[aria-label="Address to open on the desktop"]', "ravikishan.me/blog");
+      await page.keyboard.press("Enter");
+      await new Promise((r) => setTimeout(r, 300));
+      const acts = await page.evaluate(() => window.__wbDesktopActions);
+      // One CSS pixel of a 350px-wide phone frame is ~4.6 screen pixels, so the
+      // tolerance is a CSS pixel's worth, not a fixed 3.
+      const tol = Math.ceil(1600 / (await page.$eval('[data-section="desktop"] .wb-shot', (i) => i.getBoundingClientRect().width))) + 1;
+      const click = acts[0] || {};
+      check(click.action === "click" && click.button === "left" && Math.abs(click.x - 400) <= tol && Math.abs(click.y - 450) <= tol, `a click on the picture lands on screen pixels ${at}`, JSON.stringify(click));
+      const right = acts.find((a) => a.button === "right") || {};
+      check(right.action === "click" && Math.abs(right.x - 1200) <= tol && Math.abs(right.y - 225) <= tol, `a right-click is a right-click there ${at}`, JSON.stringify(right));
+      const dbl = acts.filter((a) => a.action === "double_click");
+      const middleClicks = acts.filter((a) => a.action === "click" && a.button === "left" && Math.abs(a.x - 800) <= tol);
+      check(dbl.length === 1 && middleClicks.length === 0, `a double-click is ONE double_click, not two clicks and one ${at}`, JSON.stringify(acts.map((a) => a.action)));
+      check(acts.some((a) => a.action === "key" && a.combo === "ctrl+l"), `a key button sends its combo ${at}`);
+      check(acts.some((a) => a.action === "type" && a.text === "hello box"), `typed text is sent as type ${at}`);
+      check(acts.some((a) => a.action === "open_url" && a.url === "https://ravikishan.me/blog"), `Open URL adds https:// to a bare address ${at}`);
+      const said = await page.$eval('[data-section="desktop"] .wb-deck .wb-note', (n) => ({ text: n.textContent, live: n.getAttribute("aria-live") }));
+      check(/Sent: opened https:\/\/ravikishan\.me\/blog/.test(said.text) && said.live === "polite", `what was sent is said back ${at}`, said.text);
+
+      await page.click('[data-section="desktop"] .wb-take');
+      check(!(await page.$('[data-section="desktop"] .wb-screen.driving')) && !(await page.$('[data-section="desktop"] .wb-deck')), `Hand back drops the amber edge and the controls ${at}`);
+
+      // A key button shows a focus ring when reached from the keyboard.
+      await page.focus('[data-section="desktop-stale"] input[aria-label="Text to type on the desktop"]');
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Tab");
+      const ring = await page.evaluate(() => {
+        const a = document.activeElement;
+        const cs = getComputedStyle(a);
+        return a?.classList.contains("wb-key") ? `${cs.outlineStyle} ${cs.outlineWidth}` : `not a key: ${a?.className}`;
+      });
+      check(/solid|auto/.test(ring) && !/ 0px$/.test(ring), `a key button shows a focus ring from the keyboard ${at}`, ring);
+
+      // A sign-in too old to drive: the refusal offers the sign-in in place.
+      await page.click('[data-section="desktop-stale"] .wb-key[data-combo="Return"]');
+      await page.waitForSelector('[data-section="desktop-stale"] .wb-stepup', { timeout: 3000 });
+      const su = await page.evaluate(() => {
+        const sec = document.querySelector('[data-section="desktop-stale"]');
+        return {
+          text: sec.querySelector(".wb-stepup")?.textContent || "",
+          role: sec.querySelector(".wb-stepup")?.getAttribute("role") || "",
+          btn: [...sec.querySelectorAll(".wb-stepup button")].map((b) => b.textContent).join("|"),
+          err: sec.querySelector(".wb-deck .admin-err")?.textContent || "",
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      check(/sign-in from the last 30 minutes/.test(su.text) && su.role === "alert" && /Sign in again/.test(su.btn), `a stale sign-in is offered a step-up, not an error ${at}`, su.text.slice(0, 80));
+      check(!su.err, `and no red error is shown for it ${at}`, su.err);
+      check(su.overflow <= 0, `the step-up does not overflow ${at}`, `${su.overflow}px`);
+
+      /* ---- desktop, disconnected ---- */
+      const d = await page.evaluate(() => {
+        const sec = document.querySelector('[data-section="desktop-off"]');
+        return {
+          empty: sec.querySelector(".wb-screen-empty")?.textContent || "",
+          take: sec.querySelector(".wb-take")?.disabled,
+          driving: !!sec.querySelector(".wb-screen.driving"),
+          shot: !!sec.querySelector(".wb-shot"),
+        };
+      });
+      check(/once the agent server is connected/.test(d.empty), `a disconnected desktop says so ${at}`, d.empty);
+      check(d.take === true && !d.driving && !d.shot, `and cannot be taken control of ${at}`);
+
+      /* ---- terminal ---- */
+      await view("terminal");
+      const t = await page.evaluate(() => ({
+        open: [...document.querySelectorAll(".wb-term button")].find((b) => /Open a shell/.test(b.textContent))?.disabled,
+        empty: document.querySelector(".wb-term .wb-screen-empty")?.textContent || "",
+      }));
+      check(t.open === true && /once the agent server is connected/.test(t.empty), `a disconnected terminal offers nothing to press ${at}`);
+
+      /* ---- previews ---- */
+      await view("previews");
+      const p = await page.evaluate(() => ({
+        ports: [...document.querySelectorAll(".wb-port")].map((x) => x.dataset.port),
+        sandbox: document.querySelector(".wb-pframe iframe")?.getAttribute("sandbox") || "",
+        expiry: document.querySelector(".wb-pexp")?.textContent || "",
+      }));
+      check(p.ports.join(",") === "3000,5173,8787", `every listening port is listed ${at}`, p.ports.join(","));
+      check(/allow-scripts/.test(p.sandbox) && !/allow-top-navigation/.test(p.sandbox), `an opened preview is sandboxed and cannot navigate the admin ${at}`, p.sandbox);
+      check(/more min/.test(p.expiry), `and says how long its access lasts ${at}`, p.expiry);
+
+      /* ---- review ---- */
+      await view("review");
+      const r = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".wb-op").length,
+        kinds: [...new Set([...document.querySelectorAll(".wb-op")].map((x) => x.dataset.kind))].sort().join(","),
+        pinned: document.querySelectorAll(".wb-pinned .ag-card").length,
+        pinnedFirst: (() => {
+          const pin = document.querySelector(".wb-pinned");
+          const ops = document.querySelector(".wb-ops");
+          return !!pin && !!ops && pin.getBoundingClientRect().top < ops.getBoundingClientRect().top;
+        })(),
+        denied: !!document.querySelector(".wb-op.d-denied"),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      check(r.rows === 12, `the timeline holds every entry ${at}`, String(r.rows));
+      check(r.kinds === "approval,browser,command,desktop,file,preview,terminal", `with every kind the server records ${at}`, r.kinds);
+      check(r.pinned === 2 && r.pinnedFirst, `approvals still waiting are pinned above it ${at}`, String(r.pinned));
+      check(r.denied, `a denied action carries the red edge ${at}`);
+      check(r.overflow <= 0, `the review view does not overflow ${at}`, `${r.overflow}px`);
+
+      const pick = async (group, label) =>
+        page.evaluate(
+          (group, label) => [...document.querySelectorAll(`.wb-seg[aria-label="${group}"] button`)].find((b) => b.textContent.startsWith(label))?.click(),
+          group,
+          label
+        );
+      await pick("Who did it", "You");
+      const you = await page.$$eval(".wb-op", (x) => x.map((o) => o.dataset.actor));
+      check(you.length === 3 && you.every((a) => a === "owner"), `"You" shows only what you did ${at}`, you.join(","));
+      await pick("Who did it", "Everyone");
+      await pick("What kind", "Approvals");
+      const ap = await page.$$eval(".wb-op", (x) => x.map((o) => o.dataset.kind));
+      check(ap.length === 3 && ap.every((k) => k === "approval"), `the kind filter narrows to approvals ${at}`, ap.join(","));
+      const counted = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('.wb-seg[aria-label="What kind"] button')].find((x) => x.textContent.startsWith("Approvals"));
+        return b?.querySelector("em")?.textContent || "";
+      });
+      check(counted === "3", `and its count promised exactly that ${at}`, counted);
+    }
+
+    check(!errors.length, "no page errors or console errors", errors.slice(0, 3).join(" | "));
+    check(!errors.some((e) => /hydrat/i.test(e)), "the workbench hydrates without a mismatch");
+  } catch (e) {
+    bad("workbench", e.message);
   } finally {
     await page.close();
   }
@@ -2526,6 +2909,350 @@ async function whatsappSuite(browser) {
   }
 }
 
+// /__memorypreview renders the REAL Memory panel parts inside the real
+// AdminShell against a seed chosen for the states that matter: a guess beside
+// a certainty (the edge weight IS the confidence), a memory nobody recalled in
+// half a year, a superseded decision, a recall already run. The assertions are
+// the ones a screenshot cannot make — that a pasted credential is refused
+// BEFORE it is sent, and that archived memory stays out of view until asked.
+async function memorySuite(browser) {
+  console.log("\nmemory panel");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  try {
+    for (const width of [390, 768, 1440]) {
+      await page.setViewport({ width, height: 900 });
+      await page.goto(`${BASE}/__memorypreview?noload`, { waitUntil: "networkidle2", timeout: 60000 });
+      await page.waitForSelector(".mm-row", { timeout: 30000 });
+      const at = `@${width}`;
+
+      const seen = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll(".mm-list .mm-row")];
+        const edgeOf = (r) => parseFloat(getComputedStyle(r).getPropertyValue("--mm-edge")) || 0;
+        const byText = (re) => rows.find((r) => re.test(r.querySelector(".mm-text")?.textContent || ""));
+        const sure = byText(/Amber #FFB020/);
+        const guess = byText(/Probably prefers LinkedIn/);
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          state: document.querySelector(".mm-state")?.textContent || "",
+          rows: rows.length,
+          gone: rows.filter((r) => r.classList.contains("gone")).length,
+          sureEdge: sure ? edgeOf(sure) : 0,
+          guessEdge: guess ? edgeOf(guess) : 0,
+          stale: document.querySelectorAll(".mm-list .mm-stale").length,
+          open: document.querySelectorAll(".mm-row.open .mm-edit").length,
+          recalled: document.querySelectorAll(".mm-recalled li").length,
+          layers: [...document.querySelectorAll('.mm-chips[aria-label="Layer"] .mm-chip')].map((b) => b.textContent),
+          search: !!document.querySelector(".mm-search"),
+          remember: !!document.querySelector(".mm-new .mm-go"),
+          scope: [...document.querySelectorAll('.mm-new [role="radio"]')].map((b) => b.getAttribute("aria-checked")),
+        };
+      });
+
+      check(seen.overflow <= 0, `the memory panel does not overflow sideways ${at}`, `${seen.overflow}px`);
+      check(/reach agents working in/.test(seen.state) && /relax/.test(seen.state), `the headline says who the memory reaches ${at}`, seen.state.slice(0, 90));
+      check(/guess/.test(seen.state), `and counts the guesses ${at}`);
+      check(seen.rows === 6 && seen.gone === 0, `archived memory is out of view until asked for ${at}`, `${seen.rows} rows, ${seen.gone} archived`);
+      check(seen.sureEdge > seen.guessEdge && seen.guessEdge >= 1, `a certainty carries a heavier edge than a guess ${at}`, `${seen.sureEdge} vs ${seen.guessEdge}`);
+      check(seen.stale >= 1, `a memory nobody recalls is marked stale ${at}`, String(seen.stale));
+      check(seen.open === 1, `the opened row edits in place ${at}`, String(seen.open));
+      check(seen.recalled > 0, `the recall probe lists what an agent would be handed ${at}`, String(seen.recalled));
+      check(seen.layers.length === 3 && seen.search && seen.remember, `filters, search and Remember are present ${at}`, seen.layers.join("|"));
+      check(seen.scope.filter((x) => x === "true").length === 1, `exactly one layer is chosen for a new memory ${at}`, seen.scope.join(","));
+    }
+
+    // Archived too: the replaced decision appears, with the dashed edge.
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.click(".mm-arch input");
+    await page.waitForSelector(".mm-row.gone", { timeout: 5000 }).catch(() => {});
+    const arch = await page.evaluate(() => {
+      const g = document.querySelector(".mm-row.gone");
+      return { n: document.querySelectorAll(".mm-row.gone").length, meta: g?.querySelector(".mm-meta")?.textContent || "" };
+    });
+    check(arch.n === 1 && /replaced/.test(arch.meta), "Archived too shows the superseded decision as replaced", JSON.stringify(arch));
+
+    // A pasted credential is refused as it is typed, and Remember cannot fire.
+    // Assembled at run time so this file never holds a key-shaped literal.
+    const fake = ["sk", "ant", "api03", "Zz9Yy8Xx7Ww6Vv5Uu4Tt3Ss2Rr1Qq0Pp"].join("-");
+    await page.type("#mm-new-text", `the deploy key is ${fake}`);
+    const sec = await page.evaluate(() => ({
+      refuse: document.querySelector(".mm-new .mm-refuse")?.getAttribute("role") || "",
+      text: document.querySelector(".mm-new .mm-refuse")?.textContent || "",
+      disabled: document.querySelector(".mm-new .mm-go")?.disabled,
+    }));
+    check(sec.refuse === "alert", "a credential typed into Remember is refused in place");
+    check(/Secrets/.test(sec.text), "and the refusal points at the secret store", sec.text.slice(0, 90));
+    check(!sec.text.includes(fake), "and does not repeat the value");
+    check(sec.disabled === true, "and Remember cannot be pressed");
+
+    // An ordinary sentence goes through and lands at the top.
+    await page.$eval("#mm-new-text", (t) => {
+      const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+      set.call(t, "");
+      t.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.type("#mm-new-text", "Kontainer integration tests need a cgroup v2 host.");
+    await page.click(".mm-new .mm-go");
+    await page.waitForFunction(() => /Remembered/.test(document.querySelector(".mm-new .mm-ok")?.textContent || ""), { timeout: 5000 }).catch(() => {});
+    const added = await page.evaluate(() => ({
+      ok: document.querySelector(".mm-new .mm-ok")?.textContent || "",
+      first: document.querySelector(".mm-list .mm-row .mm-text")?.textContent || "",
+      cleared: document.querySelector("#mm-new-text").value === "",
+    }));
+    check(/Remembered/.test(added.ok) && /cgroup v2/.test(added.first), "a plain sentence is remembered and listed first", added.first.slice(0, 60));
+    check(added.cleared, "and the field clears");
+
+    check(
+      !errors.some((e) => /hydrat|does not match/i.test(e)),
+      "the memory preview renders without a page error",
+      errors.join(" | ").slice(0, 200)
+    );
+  } catch (e) {
+    bad("memory panel", e.message);
+  } finally {
+    await page.close();
+  }
+
+  // /api/memory reads what every agent is handed, and can rewrite or delete
+  // it. It must refuse anyone who is not the signed-in admin, on EVERY action
+  // — an unknown one included — and the refusal must carry no memory.
+  console.log("\n/api/memory refuses anonymous callers");
+  const actions = [
+    [{ action: "kinds" }, "kinds"],
+    [{ action: "list" }, "list"],
+    [{ action: "search", query: "deploy" }, "search"],
+    [{ action: "recall", task: "write a LinkedIn post" }, "recall"],
+    [{ action: "get", id: "m_pref_amber" }, "get"],
+    [{ action: "remember", text: "Always deploy on Fridays.", kind: "preference", scope: "global" }, "remember"],
+    [{ action: "update", id: "m_pref_amber", text: "Purple is fine." }, "update"],
+    [{ action: "forget", id: "m_pref_amber", confirm: true }, "forget"],
+    [{ action: "nonsense" }, "an unknown action"],
+  ];
+  for (const [body, name] of actions) {
+    try {
+      const res = await fetch(`${BASE}/api/memory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-org-id": "relax" },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      check(res.status === 401, `/api/memory ${name} refuses an anonymous caller`, String(res.status));
+      check(!/"memories"|"memory"|confidence|lastUsedAt/.test(text), `and the ${name} refusal carries no memory`, text.slice(0, 120));
+    } catch (e) {
+      bad(`memory ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer forged.not.ajwt" },
+      body: JSON.stringify({ action: "list" }),
+    });
+    check(res.status === 401, "/api/memory refuses a forged bearer token", String(res.status));
+  } catch (e) {
+    bad("memory forged", e.message);
+  }
+  try {
+    const res = await fetch(`${BASE}/api/memory`, { method: "GET" });
+    check(res.status === 405, "/api/memory refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("memory GET", e.message);
+  }
+}
+
+// /__orgspreview renders the REAL AdminShell (with its org switcher) and the
+// Orgs panel's exported parts against a fixed seed: a login shared by two
+// orgs, a login whose ONLY org is Relax, a legacy row, an org name long enough
+// to wrap. The assertions are the ones a screenshot cannot make — that the one
+// refusal that protects a credential (a login left in no org) happens in
+// place, and that "which org am I acting in" is answered at every width.
+async function orgsSuite(browser) {
+  console.log("\norgs panel");
+  const page = await browser.newPage();
+  await page.bringToFront();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  try {
+    for (const width of [390, 768, 1440]) {
+      await page.setViewport({ width, height: 900 });
+      await page.goto(`${BASE}/__orgspreview?noload`, { waitUntil: "networkidle2", timeout: 60000 });
+      await page.waitForSelector(".og-login", { timeout: 30000 });
+      const at = `@${width}`;
+
+      const seen = await page.evaluate(() => {
+        const rowFor = (label) =>
+          [...document.querySelectorAll(".og-login")].find(
+            (li) => (li.querySelector(".og-login-who")?.firstChild?.textContent || "").trim() === label
+          );
+        const chipsOf = (li) =>
+          li
+            ? [...li.querySelectorAll(".og-chip")].map((b) => ({
+                name: b.textContent.trim(),
+                on: b.classList.contains("on"),
+                pressed: b.getAttribute("aria-pressed"),
+                disabled: b.disabled,
+              }))
+            : null;
+        const current = [...document.querySelectorAll(".og-org.on")];
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          current: current.length,
+          currentName: current[0]?.querySelector(".og-org-name")?.textContent || "",
+          actingPills: document.querySelectorAll(".og-acting").length,
+          shared: chipsOf(rowFor("Ravi Kishan")),
+          soleRelax: chipsOf(rowFor("Ravikisha")),
+          legacy: chipsOf(rowFor("ravi@outlook.example")),
+        };
+      });
+
+      check(seen.overflow <= 0, `nothing overflows sideways ${at}`, `${seen.overflow}px`);
+      check(seen.current === 1 && seen.actingPills === 1, `exactly one org is marked as the one acted in ${at}`, `${seen.current}/${seen.actingPills}`);
+      check(/Relax/.test(seen.currentName) && /Acting in/.test(seen.currentName), `and it is Relax, saying "Acting in" ${at}`, seen.currentName);
+
+      const sharedOn = (seen.shared || []).filter((c) => c.on).map((c) => c.name);
+      check(
+        sharedOn.length === 2 && sharedOn.includes("Relax") && sharedOn.includes("Acme Labs"),
+        `the shared channel shows both orgs filled ${at}`,
+        JSON.stringify(sharedOn)
+      );
+      check((seen.shared || []).every((c) => c.pressed === String(c.on)), `a chip's aria-pressed matches what it shows ${at}`);
+      check((seen.legacy || []).length > 0 && seen.legacy.every((c) => c.disabled), `a legacy row's chips cannot be pressed ${at}`);
+
+      // The refusal that protects a credential: Relax is the ONLY org using
+      // this login, so un-filing it would leave it in no org at all.
+      const relaxChip = await page.evaluateHandle(() => {
+        const li = [...document.querySelectorAll(".og-login")].find(
+          (x) => (x.querySelector(".og-login-who")?.firstChild?.textContent || "").trim() === "Ravikisha"
+        );
+        return [...(li?.querySelectorAll(".og-chip.on") || [])].find((b) => /Relax/.test(b.textContent)) || null;
+      });
+      if (relaxChip.asElement()) {
+        await relaxChip.asElement().click();
+        await page.waitForSelector(".og-refuse", { timeout: 5000 }).catch(() => {});
+        const after = await page.evaluate(() => {
+          const li = [...document.querySelectorAll(".og-login")].find(
+            (x) => (x.querySelector(".og-login-who")?.firstChild?.textContent || "").trim() === "Ravikisha"
+          );
+          const refuse = li?.querySelector(".og-refuse");
+          return {
+            refused: !!refuse && refuse.getAttribute("role") === "alert",
+            text: refuse?.textContent || "",
+            stillOn: [...(li?.querySelectorAll(".og-chip.on") || [])].some((b) => /Relax/.test(b.textContent)),
+            elsewhere: document.querySelectorAll(".og-refuse").length,
+          };
+        });
+        check(after.refused, `removing a login's last org is refused in place ${at}`);
+        check(/at least one org/.test(after.text), `and says why ${at}`, after.text.slice(0, 80));
+        check(after.stillOn, `and the chip stays filled ${at}`);
+        check(after.elsewhere === 1, `the refusal sits on that row only ${at}`, String(after.elsewhere));
+      } else {
+        bad(`the relax-only login has a filled Relax chip ${at}`, "not found");
+      }
+
+      // The switcher: on a phone it lives in the sheet the footer bar opens.
+      const mobile = await page.evaluate(() => {
+        const bar = document.querySelector(".ad-mobile-bar");
+        // offsetParent is null for a position:fixed element, so measure instead.
+        return !!bar && getComputedStyle(bar).display !== "none" && bar.getBoundingClientRect().height > 0;
+      });
+      if (mobile) {
+        const hint = await page.$eval(".ad-mobile-bar", (b) => b.textContent);
+        check(/Relax/.test(hint), `the phone's footer bar names the org ${at}`, hint);
+        await page.click(".ad-mobile-bar");
+        await page.waitForSelector(".ad-sheet .ad-org-btn", { timeout: 5000 });
+      }
+      const btnSel = mobile ? ".ad-sheet .ad-org-btn" : ".ad-rail .ad-org-btn, .ad-org-btn";
+      const btn = await page.evaluate((sel) => {
+        const b = [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length > 0);
+        return b ? { text: b.textContent, popup: b.getAttribute("aria-haspopup") } : null;
+      }, btnSel);
+      check(!!btn && /Relax/.test(btn.text) && btn.popup === "menu", `the org switcher is present and names Relax ${at}`, JSON.stringify(btn));
+      if (btn) {
+        await page.evaluate((sel) => {
+          [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length > 0).click();
+        }, btnSel);
+        await page.waitForSelector(".ad-org-menu", { timeout: 5000 }).catch(() => {});
+        const menu = await page.evaluate(() => {
+          const m = [...document.querySelectorAll(".ad-org-menu")].find((x) => x.getClientRects().length > 0);
+          if (!m) return null;
+          const items = [...m.querySelectorAll('[role="menuitemradio"]')];
+          const r = m.getBoundingClientRect();
+          return {
+            items: items.length,
+            checked: items.filter((i) => i.getAttribute("aria-checked") === "true").map((i) => i.textContent),
+            manage: !!m.querySelector(".ad-org-manage"),
+            inside: r.left >= -1 && r.right <= window.innerWidth + 1,
+          };
+        });
+        check(menu && menu.items === 3, `the menu lists every org ${at}`, JSON.stringify(menu));
+        check(menu && menu.checked.length === 1 && /Relax/.test(menu.checked[0]), `with Relax checked as current ${at}`);
+        check(menu && menu.inside, `and stays on screen ${at}`);
+        await page.keyboard.press("Escape");
+        await new Promise((r) => setTimeout(r, 150));
+        const closed = await page.evaluate(
+          () => ![...document.querySelectorAll(".ad-org-menu")].some((x) => x.getClientRects().length > 0)
+        );
+        check(closed, `Escape closes it ${at}`);
+      }
+    }
+    check(
+      !errors.some((e) => /hydrat|does not match/i.test(e)),
+      "the preview renders without a page error",
+      errors.join(" | ").slice(0, 200)
+    );
+  } catch (e) {
+    bad("orgs panel", e.message);
+  } finally {
+    await page.close();
+  }
+
+  // /api/orgs edits who may act as which account, and can delete an org. It
+  // must refuse anyone who is not the signed-in admin, on EVERY action, and
+  // the refusal must not depend on the action being a known one.
+  console.log("\n/api/orgs refuses anonymous callers");
+  const actions = [
+    [{ action: "list" }, "list"],
+    [{ action: "get", orgId: "relax" }, "get"],
+    [{ action: "overview", orgId: "relax" }, "overview"],
+    [{ action: "create", name: "Evil Corp" }, "create"],
+    [{ action: "update", orgId: "relax", name: "Pwned" }, "update"],
+    [{ action: "delete", orgId: "acme", confirm: true }, "delete"],
+    [{ action: "assign", provider: "youtube", accountId: "UC1", orgIds: ["evil"] }, "assign"],
+    [{ action: "migrate", dryRun: false }, "migrate"],
+  ];
+  for (const [body, name] of actions) {
+    try {
+      const res = await fetch(`${BASE}/api/orgs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-org-id": "relax" },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      check(res.status === 401, `/api/orgs ${name} refuses an anonymous caller`, String(res.status));
+      check(!/relax__|connectedAccounts|orgIds/.test(text), `and the ${name} refusal names nothing`, text.slice(0, 120));
+    } catch (e) {
+      bad(`orgs ${name}`, e.message);
+    }
+  }
+  try {
+    const res = await fetch(`${BASE}/api/orgs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer forged.not.ajwt" },
+      body: JSON.stringify({ action: "list" }),
+    });
+    check(res.status === 401, "/api/orgs refuses a forged bearer token", String(res.status));
+  } catch (e) {
+    bad("orgs forged", e.message);
+  }
+  try {
+    const res = await fetch(`${BASE}/api/orgs`, { method: "GET" });
+    check(res.status === 405, "/api/orgs refuses a GET outright", String(res.status));
+  } catch (e) {
+    bad("orgs GET", e.message);
+  }
+}
 
 (async () => {
   const which = process.argv[2] || "all";
@@ -2552,7 +3279,10 @@ async function whatsappSuite(browser) {
       await notesSuite(browser);
       await contactsSuite(browser);
       await agentSuite(browser);
+      await workbenchSuite(browser);
       await whatsappSuite(browser);
+      await orgsSuite(browser);
+      await memorySuite(browser);
       await integrationsAuthSuite();
       await seoSuite();
     } finally {
@@ -2585,6 +3315,30 @@ async function whatsappSuite(browser) {
     const browser = await launch({ headful: !!process.env.HEADFUL });
     try {
       await agentSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "workbench") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await workbenchSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "orgs") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await orgsSuite(browser);
+    } finally {
+      await browser.close();
+    }
+  }
+  if (which === "memory") {
+    const browser = await launch({ headful: !!process.env.HEADFUL });
+    try {
+      await memorySuite(browser);
     } finally {
       await browser.close();
     }

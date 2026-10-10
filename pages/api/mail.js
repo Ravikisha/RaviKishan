@@ -12,6 +12,7 @@ import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
 import { recordActivity } from "../../lib/server/activityLog.js";
 import { withEnv } from "../../lib/server/envStore";
 import * as mail from "../../lib/server/mailBoard.js";
+import { currentOrg, ensureOrgKnown } from "../../lib/server/orgContext";
 
 const audit = (idToken, claims, action, target, detail = "") =>
   recordActivity(idToken, {
@@ -32,6 +33,10 @@ async function handler(req, res) {
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const { action, provider, accountId } = req.body || {};
     res.setHeader("Cache-Control", "no-store");
+    // Every mailbox here is the current org's (the directory resolves inside
+    // it). An org that does not exist is refused now, not reported as an org
+    // with no mail.
+    await ensureOrgKnown(idToken);
 
     if (action === "accounts") {
       // The default is read here rather than in a second round trip, because
@@ -53,6 +58,8 @@ async function handler(req, res) {
           isDefault: defaults.mail === a.key,
         })),
         hasDefault: boxes.some((a) => defaults.mail === a.key),
+        // The defaults read above are THIS org's — say which org that is.
+        orgId: currentOrg(),
         capabilities: mail.CAPABILITIES,
       });
     }

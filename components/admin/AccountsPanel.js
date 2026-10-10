@@ -23,6 +23,14 @@
 // The left edge carries connection state, as everywhere else in this console:
 // solid for a live connection, dashed for one that still lives in the old
 // single-account store and needs reconnecting, red when a token has run out.
+//
+// EVERYTHING HERE IS ONE ORG'S. The roster, the people, "who does what" and
+// the connect grid all act in the org the console is in (adminFetch sends it
+// as x-org-id), so the status line opens by naming it. A login several orgs
+// share says so on its row ("Also in"), and disconnecting it here only takes
+// THIS org off it — the credential goes when no org is left using it.
+// Membership itself is edited in the Orgs tab, the one place that sees all of
+// them.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   assignIdentity,
@@ -38,6 +46,8 @@ import {
   connectKey,
   setAgentReadable,
 } from "../../lib/accountsClient";
+import { loadOrgs } from "../../lib/orgsClient";
+import { currentOrgId } from "../../lib/orgState";
 
 const UNSORTED = "__unsorted";
 
@@ -58,11 +68,19 @@ export default function AccountsPanel() {
   const [adding, setAdding] = useState(false);
   const [newIdentity, setNewIdentity] = useState({ label: "", email: "", note: "" });
   const [justSet, setJustSet] = useState("");
+  const [orgNames, setOrgNames] = useState({});
   const claimed = useRef(false);
+  const orgId = currentOrgId();
 
   const refresh = useCallback(async () => {
     try {
-      setData(await loadDirectory());
+      // The org names only label "Also in"; a failure there must not cost
+      // the roster, so it is read beside the directory and allowed to fail.
+      const [dir, orgList] = await Promise.all([loadDirectory(), loadOrgs().catch(() => null)]);
+      setData(dir);
+      if (orgList?.orgs) {
+        setOrgNames(Object.fromEntries(orgList.orgs.map((o) => [o.id, o.name])));
+      }
       setErr("");
     } catch (e) {
       setErr(e.message);
@@ -168,6 +186,9 @@ export default function AccountsPanel() {
     };
   }, [accounts, identities]);
 
+  const orgName = (id) => orgNames[id] || (id === "relax" ? "Relax" : id);
+  const here = orgName(data?.orgId || orgId);
+
   const act = async (label, fn) => {
     setBusy(label);
     setErr("");
@@ -207,8 +228,9 @@ export default function AccountsPanel() {
       <header className="ac-top">
         <div>
           <p className={`ac-state ac-${health.tone}`}>
+            <strong className="ac-org">In {here}.</strong>{" "}
             {accounts.length === 0
-              ? "Nothing connected yet. Connect an account below and it stays connected — agents and the admin both use it."
+              ? `Nothing connected in ${here} yet. Connect an account below and it stays connected — agents and the admin both use it, whenever they act in ${here}.`
               : health.parts.length
               ? `${accounts.length} accounts, ${health.people || "no"} ${
                   health.people === 1 ? "person" : "people"
@@ -259,8 +281,19 @@ export default function AccountsPanel() {
                   onAssign={(identityId) =>
                     act("Moving…", () => assignIdentity(a.provider, a.accountId, identityId))
                   }
+                  alsoIn={(a.orgIds || []).filter((o) => o !== (data.orgId || orgId)).map(orgName)}
+                  orgLabel={here}
                   onForget={() =>
-                    act("Disconnecting…", () => forgetAccount(a.provider, a.accountId))
+                    act("Disconnecting…", async () => {
+                      const out = await forgetAccount(a.provider, a.accountId);
+                      setMsg(
+                        out?.deleted === false && out?.remaining?.length
+                          ? `${a.label} removed from ${here}. It stays connected for ${out.remaining
+                              .map(orgName)
+                              .join(", ")}.`
+                          : `${a.label} disconnected.`
+                      );
+                    })
                   }
                   apiKey={providers.some((p) => p.id === a.provider && p.auth === "apiKey")}
                   onAgentReadable={(value) =>
@@ -476,6 +509,8 @@ function Row({
   onOpen,
   onAssign,
   onForget,
+  alsoIn = [],
+  orgLabel = "",
   onReconnect,
   apiKey,
   onAgentReadable,
@@ -494,7 +529,10 @@ function Row({
     <li className={`ac-row ac-${edge}${open ? " on" : ""}`}>
       <button type="button" className="ac-row-main" onClick={onOpen} aria-expanded={open}>
         <span className="ac-prov-of">{providerLabel(account.provider)}</span>
-        <span className="ac-who">{account.label}</span>
+        <span className="ac-who">
+          {account.label}
+          {alsoIn.length ? <span className="ac-also">Also in {alsoIn.join(", ")}</span> : null}
+        </span>
         <span className="ac-chips">
           {chips.map((c) => (
             <span
@@ -581,8 +619,10 @@ function Row({
                 Reconnect
               </button>
             )}
+            {/* Shared with another org: this takes only THIS org off it, and
+                the button says so rather than promising a disconnect. */}
             <button type="button" className="ac-danger" onClick={onForget} disabled={account.legacy}>
-              Disconnect
+              {alsoIn.length && orgLabel ? `Remove from ${orgLabel}` : "Disconnect"}
             </button>
           </div>
 
@@ -773,6 +813,17 @@ function Styles() {
         font-size: 13.5px;
         color: var(--a-text, #e7e8ee);
         overflow-wrap: anywhere;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .ac-also {
+        font-size: 11.5px;
+        color: var(--a-dim, #8b90a0);
+      }
+      .ac-org {
+        color: var(--a-text, #e7e8ee);
+        font-weight: 600;
       }
       .ac-chips {
         margin-left: auto;

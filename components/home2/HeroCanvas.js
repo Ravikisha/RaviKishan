@@ -42,18 +42,57 @@ function Mesh({ reduced }) {
   );
 }
 
+// This canvas is decoration, so a browser without WebGL must get NO canvas,
+// never a broken page. Without these guards three.js throws while creating
+// its renderer, nothing catches it, and Next replaces the WHOLE site with
+// "Application error: a client-side exception has occurred" — measured on
+// Chromium 151 under a GPU-less display (llvmpipe), where the context probe
+// can even succeed and the renderer still fail. Both are needed: the probe
+// avoids mounting at all where WebGL is plainly absent, the boundary catches
+// the case where it looked present and was not.
+function webglAvailable() {
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl2") || c.getContext("webgl");
+    if (!gl) return false;
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+class CanvasBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {}
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 const HeroCanvas = ({ reduced = false }) => {
+  // Decided once, on the client only (this module is loaded with ssr: false).
+  const ok = useMemo(() => typeof document !== "undefined" && webglAvailable(), []);
+  if (!ok) return null;
   return (
-    <Canvas
-      dpr={[1, 1.8]}
-      camera={{ position: [0, 0, 6], fov: 45 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      style={{ pointerEvents: "none" }}
-    >
-      <Suspense fallback={null}>
-        <Mesh reduced={reduced} />
-      </Suspense>
-    </Canvas>
+    <CanvasBoundary>
+      <Canvas
+        dpr={[1, 1.8]}
+        camera={{ position: [0, 0, 6], fov: 45 }}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        style={{ pointerEvents: "none" }}
+      >
+        <Suspense fallback={null}>
+          <Mesh reduced={reduced} />
+        </Suspense>
+      </Canvas>
+    </CanvasBoundary>
   );
 };
 

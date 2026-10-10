@@ -66,7 +66,12 @@ export class Approvals {
   }
 
   // Called by the permission-prompt tool. Resolves to { allow, reason }.
-  ask(jobId, req) {
+  // `timeoutMs` shortens the wait for one card — the desktop API answers an
+  // HTTP caller that gives up after ~20s, and a card left open past that
+  // would let a click land after nobody was waiting for it. Never longer than
+  // the default: deny-on-timeout only gets stricter.
+  ask(jobId, req, { timeoutMs } = {}) {
+    const wait = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(timeoutMs, this.timeoutMs) : this.timeoutMs;
     if (this.remembered(jobId, req)) {
       return Promise.resolve({ allow: true, reason: "Allowed earlier in this job." });
     }
@@ -82,17 +87,17 @@ export class Approvals {
       summary: summarise(req),
       cwd: req.cwd || "",
       askedAt: this.now(),
-      expiresAt: this.now() + this.timeoutMs,
+      expiresAt: this.now() + wait,
     };
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.answer(id, {
           allow: false,
-          reason: `Nobody answered within ${Math.round(this.timeoutMs / 60000)} minutes, so it was refused.`,
+          reason: wait >= 60000 ? `Nobody answered within ${Math.round(wait / 60000)} minutes, so it was refused.` : `Nobody answered within ${Math.round(wait / 1000)} seconds, so it was refused.`,
           timedOut: true,
         });
-      }, this.timeoutMs);
+      }, wait);
       // Deliberately NOT unref'd. The daemon's listening socket keeps the
       // process alive anyway, so unref bought nothing — and it made the
       // deny-on-timeout rule, the most important one in this file, impossible
@@ -140,6 +145,19 @@ export function summarise(req) {
       return `Edit ${input.file_path || "a file"}`;
     case "WebFetch":
       return `Fetch ${input.url || "a URL"}`;
+    // A desktop action from agentd's own gate (desktop.js). The approval card
+    // must say exactly what will happen on the shared screen.
+    case "Desktop": {
+      const a = input.action;
+      if (a === "click" || a === "double_click") return `Desktop: ${a === "click" ? "click" : "double-click"} ${input.button || "left"} at (${input.x}, ${input.y})`;
+      if (a === "move") return `Desktop: move the pointer to (${input.x}, ${input.y})`;
+      if (a === "type") return `Desktop: type "${String(input.text || "").slice(0, 200)}"`;
+      if (a === "key") return `Desktop: press ${input.combo}`;
+      if (a === "scroll") return `Desktop: scroll ${input.direction} ${input.amount}`;
+      if (a === "open_url") return `Desktop: open ${input.url}`;
+      if (a === "focus_window") return `Desktop: focus the window "${input.window}"`;
+      return `Desktop: ${a}`;
+    }
     default:
       return `${req.tool}${input.file_path ? ` on ${input.file_path}` : ""}`;
   }

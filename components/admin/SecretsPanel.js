@@ -18,7 +18,7 @@
 // amber) rather than a toggle you have to open each entry to check. Everything
 // else about an entry is behind the row.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { auth } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { reauthenticate } from "../../lib/reauth";
 
 const KINDS = [
@@ -41,22 +41,9 @@ const BLANK = {
   agentReadable: false,
 };
 
-async function call(body) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in.");
-  const res = await fetch("/api/secrets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const e = new Error(json.error || `HTTP ${res.status}`);
-    e.code = json.code || "";
-    throw e;
-  }
-  return json;
-}
+// Through adminFetch: secrets are filed per org, and the header is what makes
+// this list the current org's and a save land in it.
+const call = (body) => adminJson("/api/secrets", body);
 
 export default function SecretsPanel({ user }) {
   const [configured, setConfigured] = useState(null);

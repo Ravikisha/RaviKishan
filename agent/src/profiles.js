@@ -51,25 +51,76 @@ export function assertProfileName(name) {
 
 export const profileDir = (name) => path.join(paths.profiles, assertProfileName(name));
 
+// A pasted token lives here, beside the tool's own config dir rather than in
+// it: the tool never reads or rewrites this file, so `claude auth logout` or a
+// version upgrade cannot leave a half-valid copy behind. Mode 600, owned by
+// the agent user, and never anywhere else — not Firestore, not a log.
+export const tokenFile = (name, tool) => path.join(profileDir(name), `.${tool}-token`);
+
+export function storedToken(name, tool) {
+  try {
+    const t = fs.readFileSync(tokenFile(name, tool), "utf8").trim();
+    return t || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+// Variables that belong to agentd and must not reach a job. The job is code
+// written by a model acting on a phone instruction; the site's MCP token is
+// handed to it deliberately, through its MCP config, and only when the policy
+// has an approval gate — not by inheriting the daemon's whole environment.
+const DAEMON_ONLY = /^(AGENT_MCP_TOKEN|AGENT_ADMIN_EMAILS)$/;
+const scrubbed = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !DAEMON_ONLY.test(k)));
+
 // The environment a tool runs under for a given profile. This is the whole
 // multi-account mechanism — everything else is bookkeeping.
 export function profileEnv(name, { tool = "claude" } = {}) {
   const dir = profileDir(name);
   const base = {
-    ...process.env,
+    ...scrubbed(),
     HOME: dir,
     // Neither tool should be able to reach the server operator's own dotfiles.
     XDG_CONFIG_HOME: path.join(dir, ".config"),
     XDG_CACHE_HOME: path.join(dir, ".cache"),
+    // The shared desktop (agentd-desktop.service). A GUI app a job or chat
+    // launches appears where the owner is watching, never on a hidden screen.
+    DISPLAY: process.env.AGENT_DISPLAY || ":1",
   };
 
   if (tool === "claude") {
-    return { ...base, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
+    const env = { ...base, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
+    // A `claude setup-token` token, pasted in the panel. When present it wins
+    // over whatever OAuth login sits in the config dir — it is the one the
+    // operator chose most recently and on purpose.
+    const token = storedToken(name, "claude");
+    if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token;
+    else delete env.CLAUDE_CODE_OAUTH_TOKEN;
+    return env;
   }
   if (tool === "codex") {
     return { ...base, CODEX_HOME: path.join(dir, "codex") };
   }
   throw new ProfileError(`Unknown tool "${tool}". Known tools: claude, codex.`);
+}
+
+// The environment the VERIFY step runs under. It runs package scripts from a
+// repo a model has just edited, with no approval gate, so it gets less than the
+// agent did: the daemon's variables scrubbed as always, no subscription token,
+// no config dir, and a HOME of its own — not the profile directory, where the
+// pasted tokens sit one `cat ~/.claude-token` away.
+export function verifyEnv(name, { home } = {}) {
+  assertProfileName(name);
+  const env = scrubbed();
+  for (const k of Object.keys(env)) {
+    if (/^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_HOME|CLAUDE_CONFIG_DIR|GH_TOKEN|GITHUB_TOKEN)$/.test(k)) delete env[k];
+  }
+  if (home) {
+    env.HOME = home;
+    env.XDG_CONFIG_HOME = path.join(home, ".config");
+    env.XDG_CACHE_HOME = path.join(home, ".cache");
+  }
+  return env;
 }
 
 export function ensureProfile(name) {
@@ -92,13 +143,13 @@ export function listProfiles() {
         // Presence of a credentials file is the only thing readable without
         // running the tool; `claude auth status` is authoritative and the
         // server asks it on demand rather than guessing from the filesystem.
-        claude: hasCredentials(path.join(dir, "claude")),
-        codex: hasCredentials(path.join(dir, "codex")),
+        claude: !!storedToken(e.name, "claude") || hasCredentials(path.join(dir, "claude")),
+        codex: !!storedToken(e.name, "codex") || hasCredentials(path.join(dir, "codex")),
       };
     });
 }
 
-function hasCredentials(dir) {
+export function hasCredentials(dir) {
   if (!fs.existsSync(dir)) return false;
   // Both tools write a credentials or auth json somewhere under their config
   // dir; the name has changed between versions, so this looks for the shape

@@ -14,6 +14,7 @@ import {
   redirectUriFor,
 } from "../../../../lib/server/integrations";
 import { withEnv } from "../../../../lib/server/envStore";
+import { currentOrg, ensureOrgKnown } from "../../../../lib/server/orgContext";
 
 async function handler(req, res) {
   if (req.method !== "POST") {
@@ -23,6 +24,11 @@ async function handler(req, res) {
 
   try {
     const claims = await verifyAdmin(req);
+    const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    // The org the panel is acting in (x-org-id, laid down by withEnv). Checked
+    // to exist BEFORE the consent screen: finding out afterwards would mean a
+    // full round trip through Google that ends in "no such org".
+    const orgId = await ensureOrgKnown(idToken).then(() => currentOrg());
     const provider = String(req.query.provider || "");
     const asked = getProvider(provider);
     if (asked.auth === "apiKey") {
@@ -63,10 +69,13 @@ async function handler(req, res) {
         // connection begun from the account list belongs back in the account
         // list, not on the GitHub tab.
         from: String(req.body?.from || "").slice(0, 24),
+        // Sealed, so the account lands in the org that started the consent
+        // even though the callback itself carries no header.
+        orgId,
       }),
     });
 
-    return res.status(200).json({ url, redirectUri, provider: cfg.id });
+    return res.status(200).json({ url, redirectUri, provider: cfg.id, orgId });
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     return res.status(e.status || 500).json({ error: e.message || "Could not start the connection." });

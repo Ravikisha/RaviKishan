@@ -20,6 +20,7 @@ import * as xapi from "../../lib/server/xapi";
 import * as insights from "../../lib/server/socialInsights";
 import * as directory from "../../lib/server/accountDirectory";
 import { withEnv } from "../../lib/server/envStore";
+import { currentOrg, ensureOrgKnown, isOrgError } from "../../lib/server/orgContext";
 
 const PROVIDERS = ["youtube", "instagram", "x"];
 
@@ -34,6 +35,9 @@ async function handler(req, res) {
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const { action, provider, accountId } = req.body || {};
     res.setHeader("Cache-Control", "no-store");
+    // Up front, because the account list below catches per provider and an
+    // unknown org would otherwise read as three services not set up.
+    await ensureOrgKnown(idToken);
 
     // Answerable with no provider credential, so the panel can render before
     // anything is connected — which is when it most needs to explain itself.
@@ -49,7 +53,9 @@ async function handler(req, res) {
           }))
         )
       );
-      return res.status(200).json({ providers: all });
+      // accountStatus lists through connectedStore, which keeps only this
+      // org's accounts — the roster is the org's, not the deployment's.
+      return res.status(200).json({ providers: all, orgId: currentOrg() });
     }
     // How did it do. Kept beside the posting actions rather than in a route of
     // its own because it is the same three accounts and the same credential —
@@ -276,8 +282,9 @@ async function handler(req, res) {
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     if (e instanceof ConnectedAuthError) {
-      return res.status(409).json({ error: e.message, code: e.code, provider: e.provider });
+      return res.status(409).json({ error: e.message, code: e.code, provider: e.provider, orgId: e.orgId || currentOrg() });
     }
+    if (isOrgError(e)) return res.status(e.status || 400).json({ error: e.message, code: e.code });
     return res.status(e.status || 400).json({ error: e.message || "That did not work." });
   }
 }

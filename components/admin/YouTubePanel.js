@@ -29,7 +29,7 @@
 // The switcher above the figures is the place you choose; the selected chip
 // wears the console's one amber edge, as everywhere else.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { auth } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
 import { connectProvider, finishConnect } from "../../lib/accountsClient";
 
 const RANGES = [
@@ -48,21 +48,8 @@ const FIGURES = [
   ["averageViewDuration", "Average view", "s"],
 ];
 
-async function call(body) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in.");
-  const res = await fetch("/api/social", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${await user.getIdToken()}`,
-    },
-    body: JSON.stringify({ provider: "youtube", ...body }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-  return json;
-}
+// Through adminFetch, so only this org's channels are listed or acted as.
+const call = (body) => adminJson("/api/social", { provider: "youtube", ...body });
 
 const fmt = (n) =>
   n === null || n === undefined ? "—" : n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Math.round(n).toLocaleString();

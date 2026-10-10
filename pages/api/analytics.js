@@ -7,7 +7,9 @@
 // There is no write action here and there cannot usefully be one: the stored
 // connection holds `analytics.readonly`.
 import { verifyAdmin, AuthError } from "../../lib/server/verifyAdmin";
-import { connectedToken, accountStatus, ConnectedAuthError } from "../../lib/server/connectedStore";
+import { accountStatus, ConnectedAuthError } from "../../lib/server/connectedStore";
+import { tokenFor } from "../../lib/server/accountDirectory";
+import { currentOrg, ensureOrgKnown, isOrgError } from "../../lib/server/orgContext";
 import * as ga from "../../lib/server/googleAnalytics";
 import { withEnv } from "../../lib/server/envStore";
 
@@ -22,6 +24,9 @@ async function handler(req, res) {
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const { action, accountId, propertyId } = req.body || {};
     res.setHeader("Cache-Control", "no-store");
+    // Before the account list, whose own catch would otherwise turn an
+    // unknown org into "Analytics is not set up".
+    await ensureOrgKnown(idToken);
 
     // Answerable with no provider credential, so the panel renders a Connect
     // button that explains itself before anything is connected.
@@ -42,7 +47,10 @@ async function handler(req, res) {
         .json({ metrics: ga.METRICS, dimensions: ga.DIMENSIONS, ranges: Object.keys(ga.RANGES) });
     }
 
-    const { token } = await connectedToken(idToken, "analytics", accountId);
+    // Through the directory, not straight to the store: that is what applies
+    // the org's own Site analytics DEFAULT when the panel names no account,
+    // and what refuses an account that belongs to another org.
+    const { token } = await tokenFor(idToken, { service: "siteAnalytics", provider: "analytics", accountId });
 
     if (action === "properties") {
       return res.status(200).json({ properties: await ga.listProperties(token) });
@@ -99,8 +107,9 @@ async function handler(req, res) {
   } catch (e) {
     if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
     if (e instanceof ConnectedAuthError) {
-      return res.status(409).json({ error: e.message, code: e.code });
+      return res.status(409).json({ error: e.message, code: e.code, orgId: e.orgId || currentOrg() });
     }
+    if (isOrgError(e)) return res.status(e.status || 400).json({ error: e.message, code: e.code });
     if (e instanceof ga.AnalyticsError) {
       return res.status(e.status || 400).json({ error: e.message });
     }

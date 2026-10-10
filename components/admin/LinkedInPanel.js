@@ -49,6 +49,13 @@ import {
   removePost,
 } from "../../lib/linkedinClient";
 import { logAdminAction } from "../../lib/auditLog";
+import { adminJson, adminRequest } from "../../lib/adminFetch";
+import { orgKey } from "../../lib/orgState";
+
+// Remembered choices are PER ORG: the account selected in Relax may not be in
+// this org at all, and the GA property is read under GaPanel's per-org key.
+const ACCOUNT_KEY = () => orgKey("rk-linkedin-account");
+const GA_KEY = () => orgKey("rk-ga-property");
 import {
   MAX_HEADLINE_CHARS,
   canonicalHeadline,
@@ -117,17 +124,14 @@ export default function LinkedInPanel({ user }) {
     selectedRef.current = selected;
     if (!selected) return;
     try {
-      localStorage.setItem("rk-linkedin-account", selected);
+      localStorage.setItem(ACCOUNT_KEY(), selected);
     } catch (_) {}
   }, [selected]);
 
   const load = useCallback(async () => {
     setBusy("Checking the connection…");
     try {
-      const all = await fetch("/api/integrations/status", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${await user.getIdToken()}` },
-      })
+      const all = await adminRequest("/api/integrations/status", { method: "POST" })
         .then((r) => r.json())
         .catch(() => ({ providers: [] }));
       const li = (all.providers || []).find((p) => p.provider === "linkedin") || {
@@ -146,7 +150,7 @@ export default function LinkedInPanel({ user }) {
         if (cur && list.some((a) => a.accountId === cur)) return cur;
         let want = "";
         try {
-          want = localStorage.getItem("rk-linkedin-account") || "";
+          want = localStorage.getItem(ACCOUNT_KEY()) || "";
         } catch (_) {}
         if (want && list.some((a) => a.accountId === want)) return want;
         return list[0]?.accountId || "";
@@ -165,7 +169,7 @@ export default function LinkedInPanel({ user }) {
         const who = (() => {
           if (selectedRef.current) return selectedRef.current;
           try {
-            return localStorage.getItem("rk-linkedin-account") || "";
+            return localStorage.getItem(ACCOUNT_KEY()) || "";
           } catch (_) {
             return "";
           }
@@ -178,7 +182,7 @@ export default function LinkedInPanel({ user }) {
     } finally {
       setBusy("");
     }
-  }, [user]);
+  }, []);
 
   // Reach is fetched separately and never blocks the page: it crosses to the
   // Analytics API, it is the slowest thing here, and an Analytics account that
@@ -189,7 +193,7 @@ export default function LinkedInPanel({ user }) {
       try {
         const want = (() => {
           try {
-            return localStorage.getItem("rk-ga-property") || "";
+            return localStorage.getItem(GA_KEY()) || "";
           } catch (_) {
             return "";
           }
@@ -297,12 +301,8 @@ export default function LinkedInPanel({ user }) {
     setErr("");
     setBusy("Opening LinkedIn…");
     try {
-      const res = await fetch("/api/integrations/linkedin/start", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${await user.getIdToken()}` },
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Could not start the connection.");
+      // The org rides in the header and is sealed into the OAuth state.
+      const j = await adminJson("/api/integrations/linkedin/start", { from: "linkedin" });
       window.location.assign(j.url);
     } catch (e) {
       setBusy("");

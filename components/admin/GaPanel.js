@@ -19,7 +19,8 @@
 // A change measured from zero is shown as "new" rather than as a percentage,
 // because a percentage of zero is infinity and reads as a bug.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { auth } from "../../lib/firebase";
+import { adminJson } from "../../lib/adminFetch";
+import { orgKey } from "../../lib/orgState";
 import { beginConnect, finishConnect } from "../../lib/socialClient";
 
 const RANGES = [
@@ -43,22 +44,17 @@ const fmt = (n, metric) => {
   return n >= 10000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString();
 };
 
-async function call(body) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in.");
-  const res = await fetch("/api/analytics", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-  return json;
-}
+// Through adminFetch: the org header decides which Analytics accounts — and so
+// which properties — this page can see.
+const call = (body) => adminJson("/api/analytics", body);
 
 // Remembered across visits: picking the property again every time you open the
 // tab is the kind of friction that stops a dashboard being read.
-const REMEMBER = "rk-ga-property";
+//
+// Kept PER ORG: a property chosen in Relax belongs to Relax's Google account,
+// and preselecting it inside another org would ask for a report that org
+// cannot read. LinkedInPanel reads the same key for its reach figures.
+const REMEMBER = () => orgKey("rk-ga-property");
 
 // Google matches a redirect URI EXACTLY — scheme, host, port and path — and
 // ravikishan.me answers on www (the apex 308s there). Registering only one of
@@ -140,7 +136,7 @@ export default function GaPanel() {
           setProperties(list);
           let want = "";
           try {
-            want = localStorage.getItem(REMEMBER) || "";
+            want = localStorage.getItem(REMEMBER()) || "";
           } catch (_) {}
           setProperty(list.some((p) => p.id === want) ? want : list[0]?.id || "");
         }
@@ -158,7 +154,7 @@ export default function GaPanel() {
     setErr("");
     try {
       try {
-        localStorage.setItem(REMEMBER, property);
+        localStorage.setItem(REMEMBER(), property);
       } catch (_) {}
       const [summary, pages, sources, realtime] = await Promise.all([
         call({ action: "summary", propertyId: property, range }),

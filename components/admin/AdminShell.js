@@ -22,6 +22,14 @@
 //             all three said "there are numbers", not "here is what needs you".
 //   status    the first thing in the rail is whether anything needs you at
 //             all. The hero of a control panel is its state, not its name.
+//
+// THE BRAND SLOT IS THE ORG. It used to say "Control", which named the product
+// and told you nothing. Since organisations, every panel acts inside one org
+// — its logins, its defaults, its people — so "which org am I in" is the one
+// question every section now depends on, and the slot at the top of the rail
+// answers it. The org's own colour is a thin bar on the name's left edge (an
+// identity, not a state); amber stays reserved for "the selected one", which
+// in the menu is the org you are acting in.
 import React, { useEffect, useRef, useState } from "react";
 
 // A badge is either a bare number (a plain count) or { count, tone, noun }.
@@ -32,6 +40,93 @@ const readBadge = (b) => {
   return b.count > 0 ? { count: b.count, tone: b.tone || "count", noun: b.noun || "" } : null;
 };
 
+const orgNameOf = (org, fallbackId) =>
+  org?.name || (!fallbackId || fallbackId === "relax" ? "Relax" : fallbackId);
+
+// The org switcher: the console's identity. A button naming the org, opening a
+// menu of every org with "Manage orgs" beneath a hairline. Choosing another org
+// RELOADS the admin (lib/orgState.js says why); this component only reports
+// the choice.
+export function OrgSwitcher({ org, orgId, orgs = [], onOrg, onManage, compact = false }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const id = org?.id || orgId || "relax";
+  const name = orgNameOf(org, id);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false);
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const list = orgs.length ? orgs : [{ id, name }];
+  const count = (n) => (n === 1 ? "1 login" : `${n} logins`);
+
+  return (
+    <div className={`ad-org${compact ? " compact" : ""}${open ? " open" : ""}`} ref={ref}>
+      <button
+        type="button"
+        className="ad-org-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title={`Acting in ${name}. Every section uses this org's logins.`}
+      >
+        <span className="ad-org-bar" style={{ background: org?.color || "#3a4154" }} aria-hidden="true" />
+        <span className="ad-org-name">{name}</span>
+        <span className="ad-org-caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="ad-org-menu" role="menu" aria-label="Switch org">
+          {list.map((o) => {
+            const on = o.id === id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={on}
+                className={`ad-org-item${on ? " on" : ""}`}
+                onClick={() => {
+                  setOpen(false);
+                  if (!on) onOrg?.(o.id);
+                }}
+              >
+                <i style={{ background: o.color || "#3a4154" }} aria-hidden="true" />
+                <span className="ad-org-item-name">{o.name}</span>
+                {on ? (
+                  <em>Acting in</em>
+                ) : typeof o.accountCount === "number" ? (
+                  <small>{count(o.accountCount)}</small>
+                ) : null}
+              </button>
+            );
+          })}
+          {onManage ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="ad-org-manage"
+              onClick={() => {
+                setOpen(false);
+                onManage();
+              }}
+            >
+              Manage orgs
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AdminShell({
   tabs,
   view,
@@ -41,8 +136,13 @@ export default function AdminShell({
   email,
   onSignOut,
   badges = {},
+  org = null,
+  orgId = "relax",
+  orgs = [],
+  onOrg,
   children,
 }) {
+  const canManage = tabs.some(([k]) => k === "orgs");
   const [sheet, setSheet] = useState(false);
   const listRef = useRef(null);
   const [marker, setMarker] = useState({ top: 0, height: 0, ready: false });
@@ -121,8 +221,13 @@ export default function AdminShell({
       {/* ---------- desktop rail ---------- */}
       <nav className="ad-rail" aria-label="Sections">
         <div className="ad-brand">
-          <span className="ad-dot" aria-hidden="true" />
-          <span>Control</span>
+          <OrgSwitcher
+            org={org}
+            orgId={orgId}
+            orgs={orgs}
+            onOrg={onOrg}
+            onManage={canManage ? () => onView("orgs") : null}
+          />
         </div>
 
         {/* Before you choose a section, the rail answers the only question
@@ -200,7 +305,11 @@ export default function AdminShell({
         aria-expanded={sheet}
       >
         <span className="ad-mobile-now">{currentLabel}</span>
-        <span className="ad-mobile-hint">{tabs.length} sections</span>
+        {/* The org, on the one piece of chrome a phone always shows. */}
+        <span className="ad-mobile-hint">
+          <i style={{ background: org?.color || "#3a4154" }} aria-hidden="true" />
+          {orgNameOf(org, orgId)}
+        </span>
         <span className="ad-chev" aria-hidden="true" />
       </button>
 
@@ -225,6 +334,23 @@ export default function AdminShell({
                   ) : null}
                 </button>
               ))}
+            </div>
+            <div className="ad-sheet-org">
+              <OrgSwitcher
+                org={org}
+                orgId={orgId}
+                orgs={orgs}
+                onOrg={onOrg}
+                compact
+                onManage={
+                  canManage
+                    ? () => {
+                        onView("orgs");
+                        setSheet(false);
+                      }
+                    : null
+                }
+              />
             </div>
             <div className="ad-sheet-foot">
               <span className="ad-who">{email}</span>
@@ -291,11 +417,159 @@ export default function AdminShell({
           font-size: 15px;
           letter-spacing: -0.02em;
         }
-        .ad-dot {
-          width: 9px;
-          height: 9px;
-          border-radius: 50%;
-          background: var(--a-amber);
+        /* ---- the org switcher ---- */
+        .ad-rail .ad-brand {
+          padding: 0 0 14px;
+        }
+        .ad-org {
+          position: relative;
+          min-width: 0;
+          flex: 1;
+        }
+        .ad-org-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 7px 10px;
+          background: none;
+          border: 1px solid transparent;
+          border-radius: 10px;
+          color: var(--a-text);
+          font: inherit;
+          cursor: pointer;
+          text-align: left;
+        }
+        .ad-org-btn:hover,
+        .ad-org.open .ad-org-btn {
+          border-color: var(--a-line);
+          background: var(--a-raise);
+        }
+        .ad-org-bar {
+          flex: none;
+          width: 4px;
+          height: 22px;
+          border-radius: 2px;
+        }
+        .ad-org-name {
+          flex: 1;
+          min-width: 0;
+          font-family: "Space Grotesk", sans-serif;
+          font-weight: 700;
+          font-size: 17px;
+          letter-spacing: -0.025em;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ad-org-caret {
+          flex: none;
+          width: 7px;
+          height: 7px;
+          border-right: 1.5px solid var(--a-dim);
+          border-bottom: 1.5px solid var(--a-dim);
+          transform: rotate(45deg);
+          margin: -3px 2px 0 0;
+          transition: transform 0.16s ease;
+        }
+        .ad-org.open .ad-org-caret {
+          transform: rotate(-135deg);
+          margin-top: 3px;
+        }
+        .ad-org-menu {
+          position: absolute;
+          z-index: 40;
+          top: calc(100% + 6px);
+          left: 0;
+          right: 0;
+          min-width: 210px;
+          max-height: 60vh;
+          overflow-y: auto;
+          padding: 6px;
+          border-radius: 12px;
+          border: 1px solid var(--a-line);
+          background: var(--a-raise);
+          box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
+        .ad-org-item,
+        .ad-org-manage {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          width: 100%;
+          padding: 9px 10px;
+          border: 0;
+          border-left: 2px solid transparent;
+          border-radius: 0 8px 8px 0;
+          background: none;
+          color: var(--a-dim);
+          font: inherit;
+          font-size: 13px;
+          text-align: left;
+          cursor: pointer;
+        }
+        .ad-org-item:hover,
+        .ad-org-manage:hover {
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--a-text);
+        }
+        /* Amber means the selected one: here, the org you are acting in. */
+        .ad-org-item.on {
+          border-left-color: var(--a-amber);
+          color: var(--a-text);
+          font-weight: 600;
+        }
+        .ad-org-item i {
+          flex: none;
+          width: 3px;
+          height: 14px;
+          border-radius: 2px;
+        }
+        .ad-org-item-name {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .ad-org-item em,
+        .ad-org-item small {
+          flex: none;
+          font-style: normal;
+          font-size: 10.5px;
+          font-weight: 500;
+          color: var(--a-dim);
+        }
+        .ad-org-item em {
+          color: var(--a-amber);
+        }
+        .ad-org-manage {
+          margin-top: 5px;
+          padding-top: 10px;
+          border-top: 1px solid var(--a-line);
+          border-radius: 0;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ad-org-caret {
+            transition: none;
+          }
+        }
+        /* In the mobile sheet the menu opens upward: the sheet sits on the
+           bottom edge of the screen and there is nothing below it. */
+        .ad-org.compact .ad-org-btn {
+          border-color: var(--a-line);
+          background: var(--a-raise);
+          padding: 11px 12px;
+        }
+        .ad-org.compact .ad-org-menu {
+          top: auto;
+          bottom: calc(100% + 6px);
+        }
+        .ad-sheet-org {
+          margin-top: 12px;
         }
         .ad-list {
           position: relative;
@@ -566,8 +840,21 @@ export default function AdminShell({
         }
         .ad-mobile-hint {
           margin-left: auto;
-          font-size: 11.5px;
+          min-width: 0;
+          max-width: 55%;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          font-size: 12px;
           color: var(--a-dim);
+          white-space: nowrap;
+          overflow: hidden;
+        }
+        .ad-mobile-hint i {
+          flex: none;
+          width: 3px;
+          height: 13px;
+          border-radius: 2px;
         }
         .ad-chev {
           width: 9px;

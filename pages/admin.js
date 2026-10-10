@@ -35,8 +35,10 @@ import DriftPanel from "../components/admin/DriftPanel";
 import LinkedInPanel from "../components/admin/LinkedInPanel";
 import SocialPanel from "../components/admin/SocialPanel";
 import AccountsPanel from "../components/admin/AccountsPanel";
+import OrgsPanel from "../components/admin/OrgsPanel";
 import YouTubePanel from "../components/admin/YouTubePanel";
 import SecretsPanel from "../components/admin/SecretsPanel";
+import MemoryPanel from "../components/admin/MemoryPanel";
 import EnvPanel from "../components/admin/EnvPanel";
 import ContactsPanel from "../components/admin/ContactsPanel";
 import McpPanel from "../components/admin/McpPanel";
@@ -60,6 +62,8 @@ import {
 } from "../lib/assetUrl";
 import AdminShell from "../components/admin/AdminShell";
 import useTabInUrl from "../lib/useTabInUrl";
+import { currentOrgId, setOrg, DEFAULT_ORG } from "../lib/orgState";
+import { loadOrgs } from "../lib/orgsClient";
 import { logAdminAction } from "../lib/auditLog";
 
 // How many published snapshots to keep for rollback.
@@ -93,6 +97,10 @@ export const TABS = [
 
   ["vault", "Vault", "Stored"],
   ["secrets", "Secrets", "Stored"],
+  // What the agents have been taught. Stored, beside Secrets, because it is
+  // the other thing kept FOR the agents — and the opposite trade: everything
+  // here is meant to be recalled into a prompt, so nothing secret may be.
+  ["memory", "Memory", "Stored"],
   ["env", "Environment", "Access"],
   ["assets", "Assets", "Stored"],
   ["ops", "Backup & log", "Stored"],
@@ -104,6 +112,9 @@ export const TABS = [
 
 
   ["accounts", "Accounts", "Access"],
+  // Beside Accounts: Accounts is what ONE org holds; Orgs is where the orgs
+  // themselves, and every login's membership across them, are managed.
+  ["orgs", "Orgs", "Access"],
   ["agent", "Agent", "Access"],
 
   ["mcp", "MCP", "Access"],
@@ -529,6 +540,41 @@ const GoogleMark = () => (
   </svg>
 );
 
+/* ---------- the org this console acts in ---------- */
+
+// The org is read ONCE per page load (lib/orgState.js) — from ?org=, which the
+// OAuth callback appends so a consent lands back in the org it started in,
+// then from localStorage, then Relax. Switching reloads the page, so nothing
+// here ever has to track a change: it only fetches the list for the switcher.
+//
+// The list comes from /api/orgs. If it cannot be read (an older deployment,
+// a network fault) the switcher still names the current org by its id, and the
+// console keeps working — the org header is what matters, not this list.
+function useOrgs() {
+  const [orgId] = useState(() => currentOrgId());
+  const [orgs, setOrgs] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const reloadOrgs = React.useCallback(async () => {
+    try {
+      const out = await loadOrgs();
+      setOrgs(out.orgs || []);
+      setLoaded(true);
+    } catch (_) {
+      /* the switcher falls back to the id; panels say what failed */
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadOrgs();
+  }, [reloadOrgs]);
+
+  const org = orgs.find((o) => o.id === orgId) || null;
+  // Relax always exists, so only another org can be missing.
+  const unknownOrg = loaded && !org && orgId !== DEFAULT_ORG;
+  return { orgId, org, orgs, unknownOrg, reloadOrgs };
+}
+
 /* ---------- editor ---------- */
 
 function Editor({ user }) {
@@ -542,6 +588,7 @@ function Editor({ user }) {
   const [view, setView] = useTabInUrl(TABS);
   const badges = useBadges();
   const imageSpecFor = useImageSpecFor();
+  const { orgId, org, orgs, unknownOrg, reloadOrgs } = useOrgs();
 
   // load current content (Firestore doc, or seed from defaults if none)
   useEffect(() => {
@@ -703,6 +750,10 @@ function Editor({ user }) {
       onView={setView}
       email={user.email}
       badges={badges}
+      org={org}
+      orgId={orgId}
+      orgs={orgs}
+      onOrg={setOrg}
       onSignOut={() => signOut(auth)}
       actions={
         view === "content" ? (
@@ -729,6 +780,19 @@ function Editor({ user }) {
         ) : null
       }
     >
+      {unknownOrg ? (
+        // An org that no longer exists (deleted in another tab, or a stale
+        // link) would make every org-scoped call fail with "no such org".
+        // Say so once, at the top, with the way out.
+        <div className="admin-orgwarn" role="alert">
+          <span>
+            There is no org called <strong>{orgId}</strong> any more, so nothing here can act in it.
+          </span>
+          <button type="button" className="admin-ghost" onClick={() => setOrg(DEFAULT_ORG)}>
+            Switch to Relax
+          </button>
+        </div>
+      ) : null}
       {view === "content" ? (
         <ContentContext.Provider value={content}>
           <div className="admin-userline">
@@ -770,8 +834,12 @@ function Editor({ user }) {
         <EnvPanel />
       ) : view === "secrets" ? (
         <SecretsPanel user={user} />
+      ) : view === "memory" ? (
+        <MemoryPanel />
       ) : view === "accounts" ? (
         <AccountsPanel />
+      ) : view === "orgs" ? (
+        <OrgsPanel onOrgsChanged={reloadOrgs} />
       ) : view === "youtube" ? (
         <YouTubePanel />
       ) : view === "social" ? (
@@ -1196,6 +1264,18 @@ export function Styles() {
       .admin-err {
         color: #ff6b6b;
         font-size: 12px;
+      }
+      .admin-orgwarn {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 16px;
+        margin: 16px 20px 0;
+        padding: 10px 14px;
+        border-left: 3px solid #a33b45;
+        background: rgba(163, 59, 69, 0.08);
+        font-size: 13px;
+        color: var(--a-text, #e7e8ee);
       }
       .admin-google {
         display: flex;

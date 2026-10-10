@@ -71,6 +71,21 @@ export async function verifyToken(token) {
   return claims;
 }
 
+// Whether a socket may be SENT a broadcast. Outbound needs the same proof as
+// inbound: a broadcast carries job transcripts, approval cards, WhatsApp
+// messages and a relayed sign-in's device code, and a socket that connected
+// and stayed silent used to receive all of it — enough to finish the owner's
+// Codex sign-in with somebody else's account. Open, authenticated, and with a
+// token that has not expired.
+export function canReceive(ws, { now = Date.now() } = {}) {
+  if (!ws || ws.readyState !== 1 || !ws.authed) return false;
+  const exp = Number(ws.authed.exp || 0);
+  return exp * 1000 > now;
+}
+
+// How long a socket may stay open without authenticating.
+export const AUTH_GRACE_MS = 10_000;
+
 // A WebSocket authenticates on connect, but a socket opened an hour ago is not
 // proof of anything now — so anything that ACTS re-checks. The token's own
 // expiry is what makes this meaningful.
@@ -81,6 +96,21 @@ export function assertFresh(claims, { maxAgeSec = 3600 } = {}) {
   }
   if (claims.auth_time && now - claims.auth_time > maxAgeSec * 24) {
     throw new AuthError("That sign-in is too old for this. Sign in again.", 403);
+  }
+  return true;
+}
+
+// Step-up: the terminal and taking control of the desktop need a sign-in from
+// the last 30 minutes, the same rule the site applies to opening the vault.
+// `auth_time` does not move on a silent token refresh, which is what makes it
+// a real check — a phone left unlocked on a table keeps a fresh TOKEN for
+// ever, but not a fresh SIGN-IN.
+export const RECENT_SIGN_IN_SEC = 30 * 60;
+export function assertRecentSignIn(claims, { maxAgeSec = RECENT_SIGN_IN_SEC, now = Date.now(), what = "This" } = {}) {
+  assertFresh(claims);
+  const at = Number(claims?.auth_time || 0);
+  if (!at || Math.floor(now / 1000) - at > maxAgeSec) {
+    throw new AuthError(`${what} needs a sign-in from the last ${Math.round(maxAgeSec / 60)} minutes. Sign in again, then retry.`, 403);
   }
   return true;
 }
